@@ -821,22 +821,57 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	}
 	if !lvl.InBounds(next) || !lvl.Walkable(next) {
 		if lit := lvl.LitterAt(next); lit != nil && lit.BlocksMovement {
-			switch lit.Category {
-			case "impassable":
-				g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
-			case "destructible":
-				g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
-				// Optionally destroy on bump: remove litter
-				// For now, just bump, don't destroy
-			default:
-				g.Logf("You bump the wall.")
+			if lit.Category == "impassable" {
+				if msg, ok := litterAltBump(lit.Kind); ok {
+					g.Logf("%s", msg)
+				} else {
+					g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
+				}
+				return ActionResult{}
 			}
+			if lit.Category == "destructible" {
+				// Find mutable reference by position
+				idx := -1
+				for i := range lvl.Litter {
+					if lvl.Litter[i].Pos == next {
+						idx = i
+						break
+					}
+				}
+				if idx >= 0 {
+					obj := &lvl.Litter[idx]
+					obj.Hits++
+					if obj.Hits == 1 {
+						g.Logf("The %s blocks the way.", strings.ReplaceAll(obj.Kind, "_", " "))
+						return ActionResult{}
+					}
+					// Second+ bump: attack it; requires value (HP) to break.
+					mem := g.Party.Members[g.Party.Selected]
+					base := (mem.ATK[0] + mem.ATK[1]) / 2
+					if base < 2 {
+						base = 2
+					}
+					dmg := base + g.RNG.IntN(3)
+					obj.HP -= dmg
+					g.Party.Active = g.Party.Selected
+					if obj.HP <= 0 {
+						g.Logf("You smash the %s for %d damage -- it shatters! (%d/%d)", strings.ReplaceAll(obj.Kind, "_", " "), dmg, 0, obj.MaxHP)
+						lvl.Litter = append(lvl.Litter[:idx], lvl.Litter[idx+1:]...)
+					} else {
+						g.Logf("You strike the %s for %d damage (%d/%d HP).", strings.ReplaceAll(obj.Kind, "_", " "), dmg, obj.HP, obj.MaxHP)
+					}
+					g.EndPlayerTurn("")
+					return ActionResult{Attacked: true}
+				}
+				g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
+				return ActionResult{}
+			}
+			g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
 		} else {
 			g.Logf("You bump the wall.")
 		}
 		return ActionResult{}
 	}
-	// Check enemy at next
 	for _, e := range lvl.Enemies {
 		if e.IsAlive() && e.Pos == next {
 			g.Party.Active = g.Party.Selected

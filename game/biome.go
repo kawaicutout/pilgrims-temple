@@ -47,8 +47,11 @@ type LitterObj struct {
 	Glyph          rune   `json:"glyph"`
 	BlocksMovement bool   `json:"blocksMovement"`
 	BlocksFOV      bool   `json:"blocksFOV"`
+	HP             int    `json:"hp,omitempty"`
+	MaxHP          int    `json:"maxHP,omitempty"`
+	Color          string `json:"color,omitempty"` // hex or token for per-biome tint
+	Hits           int    `json:"hits,omitempty"`  // bumps into destructible (first is bump, later are attacks)
 }
-
 type biomesFile struct {
 	Biomes []Biome `json:"biomes"`
 	Notes  string  `json:"notes"`
@@ -190,9 +193,64 @@ func (b Biome) TintColor() string {
 // PrimaryColor shortcut.
 func (b Biome) PrimaryColor() string { return b.TintColor() }
 
-// ---------------------------------------------------------------------------
-// Litter helpers
-// ---------------------------------------------------------------------------
+func (b Biome) FloorColor() string {
+	switch b.ID {
+	case "crypt":
+		return "#4a4642" // desaturated base
+	case "ossuary":
+		return "#4f453f" // warmer bone
+	case "fungal":
+		return "#3e4a3e" // greenish damp
+	case "jungle":
+		return "#3d4a3a" // overgrown
+	case "cinder":
+		return "#4a3d3a" // ashen red
+	default:
+		// fallback: darken primary toward bg #141210
+		return "#4a4642"
+	}
+}
+
+func (b Biome) WallColor() string {
+	switch b.ID {
+	case "crypt":
+		return "#6b645c"
+	case "ossuary":
+		return "#7a6a5a"
+	case "fungal":
+		return "#5a6a5a"
+	case "jungle":
+		return "#4a6a4a"
+	case "cinder":
+		return "#6a5a4a"
+	default:
+		return "#6b645c"
+	}
+}
+
+func FloorColorForLevel(lvl *Level) string {
+	if lvl == nil || lvl.BiomeID == "" {
+		return "#4a4642"
+	}
+	for _, b := range LoadBiomes() {
+		if b.ID == lvl.BiomeID {
+			return b.FloorColor()
+		}
+	}
+	return "#4a4642"
+}
+
+func WallColorForLevel(lvl *Level) string {
+	if lvl == nil || lvl.BiomeID == "" {
+		return "#6b645c"
+	}
+	for _, b := range LoadBiomes() {
+		if b.ID == lvl.BiomeID {
+			return b.WallColor()
+		}
+	}
+	return "#6b645c"
+}
 
 func litterGlyph(kind string) rune {
 	switch kind {
@@ -259,9 +317,88 @@ func litterBlocks(kind, category string) (blocksMove, blocksFOV bool) {
 
 func newLitterObj(pos Pos, kind, category string) LitterObj {
 	bm, bf := litterBlocks(kind, category)
-	return LitterObj{Pos: pos, Kind: kind, Category: category, Glyph: litterGlyph(kind), BlocksMovement: bm, BlocksFOV: bf}
+	obj := LitterObj{Pos: pos, Kind: kind, Category: category, Glyph: litterGlyph(kind), BlocksMovement: bm, BlocksFOV: bf}
+	// Assign HP for destructibles (requires value to break).
+	if category == "destructible" {
+		hp := litterHP(kind)
+		obj.HP = hp
+		obj.MaxHP = hp
+	}
+	// Assign per-biome color where appropriate.
+	if col := litterColor(kind); col != "" {
+		obj.Color = col
+	}
+	return obj
 }
 
+func litterHP(kind string) int {
+	switch kind {
+	case "urn", "spore_pod":
+		return 5
+	case "barrel", "ash_barrel":
+		return 8
+	case "crate", "bone_pile", "vine_cluster":
+		return 10
+	case "mushroom_cap":
+		return 6
+	case "cinder_block":
+		return 14
+	default:
+		return 8
+	}
+}
+
+func litterColor(kind string) string {
+	switch kind {
+	case "mushroom_cap", "spore_pod", "fungal_column":
+		return "#6a8a6a" // fungal green
+	case "vine_cluster", "vine_wall", "thicket":
+		return "#6a8a5a" // jungle green
+	case "moss":
+		return "#5a6a4a" // jungle/fungal moss
+	case "slime":
+		return "#5a7a5a"
+	case "ash", "ash_barrel", "cinder_block", "cinder_column":
+		return "#7a6a5a" // cinder ash
+	case "lava_pit":
+		return "#8a5a4a" // hot cinder
+	case "bone_pile", "bone_column", "bone_dust", "rubble_wall":
+		return "#8a7a6a" // ossuary bone
+	case "column", "altar", "sarcophagus", "urn":
+		return "#6a7a7a" // crypt stone
+	case "rubble", "dust":
+		return "" // keep neutral floor
+	case "puddle":
+		return "#5a6a7a" // damp slate
+	default:
+		return ""
+	}
+}
+
+func litterAltBump(kind string) (string, bool) {
+	switch kind {
+	case "pit":
+		return "The darkness extends deep below — you cannot pass.", true
+	case "lava_pit":
+		return "Heat shimmers over the lava pit — the edge holds.", true
+	case "thicket":
+		return "The thicket is too dense to push through.", true
+	case "vine_wall":
+		return "Vines block the way, pulsing faintly.", true
+	case "fungal_column":
+		return "The fungal column is rooted deep.", true
+	case "column", "cinder_column", "bone_column":
+		return "The column is unyielding stone.", true
+	case "altar":
+		return "The altar is immovable, humming faintly.", true
+	case "sarcophagus":
+		return "The sarcophagus is sealed shut.", true
+	case "rubble_wall":
+		return "The rubble wall is too unstable to cross.", true
+	default:
+		return "", false
+	}
+}
 // stairsReachableViaBFS checks StairsUp -> StairsDown over walkable tiles plus litter blocks.
 func stairsReachableViaBFS(lvl *Level) bool {
 	if lvl == nil {

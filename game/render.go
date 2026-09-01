@@ -84,13 +84,17 @@ func (g *Game) Render() Frame {
 				if fg == "" && p != g.Party.Pos {
 					if lit := lvl.LitterAt(p); lit != nil {
 						glyph = lit.Glyph
-						switch lit.Category {
-						case "impassable":
-							fg = "wall"
-						case "destructible":
-							fg = "gray-2"
-						default:
-						fg = "floor"
+						if lit.Color != "" {
+							fg = lit.Color
+						} else {
+							switch lit.Category {
+							case "impassable":
+								fg = WallColorForLevel(lvl)
+							case "destructible":
+								fg = "gray-2"
+							default:
+								fg = FloorColorForLevel(lvl)
+							}
 						}
 					}
 				}
@@ -100,9 +104,9 @@ func (g *Game) Render() Frame {
 				} else if fg == "" {
 					switch lvl.At(p) {
 					case TileWall:
-						fg = "wall"
+						fg = WallColorForLevel(lvl)
 					case TileFloor:
-						fg = "floor"
+						fg = FloorColorForLevel(lvl)
 					case TileStairsDown, TileStairsUp:
 						fg = "gold"
 					default:

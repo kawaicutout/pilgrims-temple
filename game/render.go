@@ -47,7 +47,7 @@ func (g *Game) Render() Frame {
 				// Check enemy at pos
 				for _, e := range lvl.Enemies {
 					if e.IsAlive() && e.Pos == p {
-						glyph = e.Glyph
+						glyph = e.Glyph()
 						fg = "enemy"
 						break
 					}

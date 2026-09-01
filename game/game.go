@@ -99,22 +99,19 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		return ActionResult{}
 	}
 	// Check enemy at next
+	// Check enemy at next
 	for _, e := range lvl.Enemies {
 		if e.IsAlive() && e.Pos == next {
-			// Bump combat
 			g.Party.Active = g.Party.Selected
-			dmgDealt, dmgTakenRaw, killed := PlayerBumpEnemy(g.RNG, g.Party, e)
-			if killed {
-				g.Logf("You hit %s for %d — slain!", e.Name, dmgDealt)
+			attacker := g.Party.Members[g.Party.Active].Name
+			dmg, hitIdx, killed := PlayerBumpEnemy(g.RNG, g.Party, e)
+			memberName := e.MemberDisplayName(hitIdx)
+			if !e.IsAlive() {
+				g.Logf("%s hits %s for %d -- party slain!", attacker, e.DisplayName(), dmg)
+			} else if killed {
+				g.Logf("%s hits %s for %d -- slain!", attacker, memberName, dmg)
 			} else {
-				g.Logf("You hit %s for %d.", e.Name, dmgDealt)
-				g.Party.ApplyDamage(g.RNG, dmgTakenRaw)
-				// Log actual post-DEF? We log raw; with DEF variation the displayed number may be 1 higher than actual.
-				g.Logf("%s hits you for %d.", e.Name, dmgTakenRaw)
-				if g.Party.LivingCount() == 0 {
-					g.Over = true
-					g.Logf("You have fallen. Seed %d.", g.Seed)
-				}
+				g.Logf("%s hits %s for %d.", attacker, memberName, dmg)
 			}
 			g.EndPlayerTurn("")
 			return ActionResult{Attacked: true}
@@ -251,19 +248,20 @@ func (g *Game) EnemyTurn() {
 		if !e.IsAlive() {
 			continue
 		}
-		// Simple AI: if adjacent to player, attack; else if player visible, step toward; else wander
-		if !lvl.Visible[e.Pos.Y][e.Pos.X] && !g.CurLevel().Visible[e.Pos.Y][e.Pos.X] {
-			// Not visible to player, but enemy may still see? Symmetric for M1: use same FOV stub.
-			// For M1, enemies act regardless; keep simple distance check
-		}
+		e.EnsureActive()
 		dx := g.Party.Pos.X - e.Pos.X
 		dy := g.Party.Pos.Y - e.Pos.Y
 		cheb := max(abs(dx), abs(dy))
 		if cheb == 1 {
-			// Attack — raw roll; DEF applied inside ApplyDamage to the actual hit member
-			raw := RollRaw(g.RNG, e.ATK[0], e.ATK[1])
-			g.Party.ApplyDamage(g.RNG, raw)
-			g.Logf("%s hits you for %d.", e.Name, raw)
+			atk := e.Members[e.Active]
+			raw := RollRaw(g.RNG, atk.ATK[0], atk.ATK[1])
+			hitIdx, actual := g.Party.ApplyDamage(g.RNG, raw)
+			defender := "you"
+			if hitIdx >= 0 && hitIdx < len(g.Party.Members) {
+				defender = g.Party.Members[hitIdx].Name
+			}
+			attackerName := e.MemberDisplayName(e.Active)
+			g.Logf("%s hits %s for %d.", attackerName, defender, actual)
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
 				g.Logf("You have fallen. Seed %d.", g.Seed)

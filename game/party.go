@@ -83,57 +83,56 @@ func (p *Party) EnsureSelection() {
 	}
 }
 
-func (p *Party) ApplyDamage(rng *rand.Rand, raw int) {
+func (p *Party) ApplyDamage(rng *rand.Rand, raw int) (hitIdx int, actual int) {
 	// Active-weighted targeting (DESIGN 3.4). raw is pre-DEF roll; DEF of the hit member is subtracted here.
+	// Returns index of member hit and actual damage after DEF.
 	n := p.LivingCount()
 	if n == 0 {
-		return
+		return -1, 0
 	}
-	apply := func(m *Member) {
-		dmg := raw - m.DEF
-		if dmg < 1 {
-			dmg = 1
-		}
-		m.HP -= dmg
-		if m.HP <= 0 {
-			m.HP = 0
-			m.Alive = false
-		}
-	}
+	var target *Member
+	var idx int
 	if n == 1 {
-		for _, m := range p.Members {
+		for i, m := range p.Members {
 			if m.IsAlive() {
-				apply(m)
+				target = m
+				idx = i
 				break
 			}
 		}
-		return
-	}
-	// Build weight: active 0.5 + 0.5/N each.
-	// P(active)=0.5+0.5/N, P(other)=0.5/N.
-	p.EnsureSelection()
-	// Find active member pointer
-	activeIdx := p.Active
-	// Collect living indices
-	var livingIdx []int
-	for i, m := range p.Members {
-		if m.IsAlive() {
-			livingIdx = append(livingIdx, i)
-		}
-	}
-	// Roll - 50% to active, 50% uniform among all living (including active)
-	r := rng.Float64()
-	if r < 0.5 {
-		m := p.Members[activeIdx]
-		if !m.IsAlive() {
-			m = p.Members[livingIdx[rng.IntN(len(livingIdx))]]
-		}
-		apply(m)
 	} else {
-		idx := livingIdx[rng.IntN(len(livingIdx))]
-		m := p.Members[idx]
-		apply(m)
+		p.EnsureSelection()
+		activeIdx := p.Active
+		var livingIdx []int
+		for i, m := range p.Members {
+			if m.IsAlive() {
+				livingIdx = append(livingIdx, i)
+			}
+		}
+		r := rng.Float64()
+		if r < 0.5 {
+			if p.Members[activeIdx].IsAlive() {
+				target = p.Members[activeIdx]
+				idx = activeIdx
+			} else {
+				idx = livingIdx[rng.IntN(len(livingIdx))]
+				target = p.Members[idx]
+			}
+		} else {
+			idx = livingIdx[rng.IntN(len(livingIdx))]
+			target = p.Members[idx]
+		}
 	}
+	actual = raw - target.DEF
+	if actual < 1 {
+		actual = 1
+	}
+	target.HP -= actual
+	if target.HP <= 0 {
+		target.HP = 0
+		target.Alive = false
+	}
+	return idx, actual
 }
 
 // GenerateParty creates starting party (M1 solo 1, M2+ 2 per DESIGN 4.2).

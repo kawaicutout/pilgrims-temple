@@ -1,9 +1,9 @@
 package game
 
 import (
+	"fmt"
 	"math/rand/v2"
 )
-
 // Level holds one floor.
 type Level struct {
 	W, H   int
@@ -47,19 +47,121 @@ func (l *Level) Set(p Pos, t Tile) {
 func (l *Level) Walkable(p Pos) bool { return l.At(p).Walkable() }
 func (l *Level) BlocksFOV(p Pos) bool { return l.At(p).BlocksFOV() }
 
-// EnemyParty is M1 minimal enemy (party of one for now).
+// EnemyParty is a party of 1-4 monsters sharing one tile (DESIGN 3.1).
+// Members share Pos; Active selects the actor per turn.
 type EnemyParty struct {
-	Pos    Pos
-	Glyph  rune
-	Name   string
-	HP     int
-	MaxHP  int
-	ATK    [2]int // min,max inclusive
-	Alive  bool
-	Active int // for M1 always 0
+	Pos     Pos
+	Members []*Member
+	Active  int
 }
 
-func (e *EnemyParty) IsAlive() bool { return e.Alive && e.HP > 0 }
+func (e *EnemyParty) IsAlive() bool {
+	for _, m := range e.Members {
+		if m.IsAlive() {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *EnemyParty) LivingCount() int {
+	n := 0
+	for _, m := range e.Members {
+		if m.IsAlive() {
+			n++
+		}
+	}
+	return n
+}
+
+func (e *EnemyParty) Glyph() rune {
+	for _, m := range e.Members {
+		if m.IsAlive() {
+			switch m.Class {
+			case "goblin":
+				return 'g'
+			case "orc":
+				return 'o'
+			case "kobold":
+				return 'k'
+			case "rat":
+				return 'r'
+			default:
+				if len(m.Name) > 0 {
+					return rune(m.Name[0])
+				}
+				return 'e'
+			}
+		}
+	}
+	return 'e'
+}
+
+func (e *EnemyParty) DisplayName() string {
+	// For single, just name; for party show "goblin x3" etc. Used for bump log when party not yet numbered.
+	if len(e.Members) == 1 {
+		return e.Members[0].Name
+	}
+	// Count by class
+	counts := map[string]int{}
+	for _, m := range e.Members {
+		if m.IsAlive() {
+			counts[m.Class]++
+		}
+	}
+	if len(counts) == 1 {
+		for cls, n := range counts {
+			return fmt.Sprintf("%s x%d", cls, n)
+		}
+	}
+	return fmt.Sprintf("%s +%d", e.Members[0].Name, len(e.Members)-1)
+}
+
+// MemberDisplayName returns "goblin #1" style for a specific member index, numbered within its duplicate type.
+func (e *EnemyParty) MemberDisplayName(idx int) string {
+	if idx < 0 || idx >= len(e.Members) {
+		return "unknown"
+	}
+	m := e.Members[idx]
+	base := m.Class
+	if base == "" {
+		base = m.Name
+	}
+	// Count duplicates of same base up to idx
+	num := 1
+	total := 0
+	for _, o := range e.Members {
+		if o.Class == base || o.Name == base {
+			total++
+		}
+	}
+	if total == 1 {
+		return base
+	}
+	for i, o := range e.Members {
+		if o.Class == base || o.Name == base {
+			if i == idx {
+				break
+			}
+			num++
+		}
+	}
+	return fmt.Sprintf("%s #%d", base, num)
+}
+
+func (e *EnemyParty) EnsureActive() {
+	if len(e.Members) == 0 {
+		return
+	}
+	if e.Active < 0 || e.Active >= len(e.Members) || !e.Members[e.Active].IsAlive() {
+		for i, m := range e.Members {
+			if m.IsAlive() {
+				e.Active = i
+				return
+			}
+		}
+	}
+}
 
 // Generate fills a level with rooms+corridors and stairs. Deterministic from rng.
 func (l *Level) Generate(rng *rand.Rand, floor int) {
@@ -146,12 +248,10 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 			}
 		}
 	}
-	// Spawn enemies: deeper floors -> more
-	enemyCount := 3 + floor*2 + rng.IntN(3)
-	glyphs := []rune{'g', 'o', 'k', 'r'}
-	names := []string{"goblin", "orc", "kobold", "rat"}
-	for i := 0; i < enemyCount; i++ {
-		// Pick random floor tile not on stairs
+	// Spawn enemy parties: deeper floors -> more and larger
+	partyCount := 3 + floor*2 + rng.IntN(3)
+	baseNames := []string{"goblin", "orc", "kobold", "rat"}
+	for i := 0; i < partyCount; i++ {
 		var p Pos
 		for tries := 0; tries < 100; tries++ {
 			rr := rooms[rng.IntN(len(rooms))]
@@ -162,7 +262,6 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 			if !l.Walkable(p) {
 				continue
 			}
-			// Avoid stacking
 			occupied := false
 			for _, e := range l.Enemies {
 				if e.Pos == p {
@@ -174,17 +273,41 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 				break
 			}
 		}
-		idx := rng.IntN(len(glyphs))
-		hp := 6 + floor*2 + rng.IntN(4)
-		atkMin := 2 + floor
-		atkMax := atkMin + 2 + rng.IntN(2)
-		l.Enemies = append(l.Enemies, &EnemyParty{
-			Pos:   p,
-			Glyph: glyphs[idx],
-			Name:  names[idx],
-			HP:    hp, MaxHP: hp,
-			ATK:   [2]int{atkMin, atkMax},
-			Alive: true,
-		})
+		// Party size scales with depth: 1 on floor 0, up to 4 on floor 7
+		partySize := 1
+		if floor >= 1 && rng.IntN(3) == 0 {
+			partySize++
+		}
+		if floor >= 3 && rng.IntN(2) == 0 {
+			partySize++
+		}
+		if floor >= 5 && rng.IntN(2) == 0 {
+			partySize++
+		}
+		if partySize > 4 {
+			partySize = 4
+		}
+		if floor >= 2 && rng.IntN(4) == 0 {
+			partySize = 1 + rng.IntN(2) // occasional small party even deep
+		}
+		idx := rng.IntN(len(baseNames))
+		baseName := baseNames[idx]
+		ep := &EnemyParty{Pos: p, Active: 0}
+		for m := 0; m < partySize; m++ {
+			hp := 6 + floor*2 + rng.IntN(4)
+			atkMin := 2 + floor
+			atkMax := atkMin + 2 + rng.IntN(2)
+			mem := &Member{
+				Name:  baseName,
+				Class: baseName,
+				HP:    hp, MaxHP: hp,
+				ATK:   [2]int{atkMin, atkMax},
+				DEF:   0,
+				Light: 0,
+				Alive: true,
+			}
+			ep.Members = append(ep.Members, mem)
+		}
+		l.Enemies = append(l.Enemies, ep)
 	}
 }

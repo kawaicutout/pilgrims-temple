@@ -73,10 +73,10 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	}
 	lvl := g.CurLevel()
 	next := g.Party.Pos.Add(dir)
-	// Stay in place (wait) if dir none
+	// Stay in place (wait) if dir none - silent per UI parity
 	if dir == DirNone {
 		g.Party.Active = g.Party.Selected
-		g.EndPlayerTurn("You wait.")
+		g.EndPlayerTurn("")
 		return ActionResult{Moved: false}
 	}
 	if !lvl.InBounds(next) || !lvl.Walkable(next) {
@@ -105,17 +105,17 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			return ActionResult{Attacked: true}
 		}
 	}
-	// Move
+	// Move - silent (log reserved for combat/stairs/ambience)
 	g.Party.Pos = next
 	g.Party.Active = g.Party.Selected
 	// Check relic on final floor
 	if g.Floor == g.Tuning.Floors-1 && next == g.Relic {
 		g.Over = true
 		g.Won = true
-		g.Logf("You claim the relic! Victory — seed %d.", g.Seed)
+		g.Logf("You claim the relic! Victory - seed %d.", g.Seed)
 		return ActionResult{Moved: true}
 	}
-	g.EndPlayerTurn(fmt.Sprintf("You move %s.", dirName(dir)))
+	g.EndPlayerTurn("")
 	return ActionResult{Moved: true}
 }
 

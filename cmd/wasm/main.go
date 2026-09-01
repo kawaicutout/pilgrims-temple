@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"syscall/js"
 	"time"
 
@@ -22,7 +21,6 @@ func main() {
 	gameDiv := doc.Call("getElementById", "game")
 	statusDiv := doc.Call("getElementById", "status")
 	if gameDiv.IsNull() {
-		// Create fallback elements
 		body := doc.Get("body")
 		gameDiv = doc.Call("createElement", "div")
 		gameDiv.Set("id", "game")
@@ -32,27 +30,22 @@ func main() {
 		body.Call("appendChild", statusDiv)
 	}
 
-	// Apply tokens-backed styling via CSS already in tokens.css.
 	render := func() {
 		frame := g.Render()
-		// Build HTML grid: map + panel side-by-side, then status/log/hints
-		// Use monospaced pre blocks.
 		html := buildHTML(frame, tuning)
 		gameDiv.Set("innerHTML", html)
-		statusDiv.Set("textContent", fmt.Sprintf("Seed %d | Floor %d/%d | Turn %d | %s", g.Seed, g.Floor+1, tuning.Floors, g.Turn, frame.Status))
+		// Status bar is separate element for parity with terminal's y=H line
+		statusDiv.Set("textContent", frame.Status)
 		if g.Over {
 			if g.Won {
-				statusDiv.Set("textContent", fmt.Sprintf("VICTORY! Seed %d — refresh to play again.", g.Seed))
+				statusDiv.Set("textContent", "VICTORY! Seed "+itoa(g.Seed)+" - refresh to play again.")
 			} else {
-				statusDiv.Set("textContent", fmt.Sprintf("YOU DIED. Seed %d — refresh to play again.", g.Seed))
+				statusDiv.Set("textContent", "YOU DIED. Seed "+itoa(g.Seed)+" - refresh to play again.")
 			}
 		}
-		_ = statusDiv
 	}
-
 	render()
 
-	// Keyboard handling
 	var keyHandler js.Func
 	keyHandler = js.FuncOf(func(this js.Value, args []js.Value) any {
 		if g.Over {
@@ -61,9 +54,7 @@ func main() {
 		e := args[0]
 		key := e.Get("key").String()
 		code := e.Get("code").String()
-		// Ignore if modifier held? Still allow.
 		k := game.NormalizeKey(key, code)
-		// Swallow movement keys to prevent scroll
 		switch k {
 		case game.KeyUp, game.KeyDown, game.KeyLeft, game.KeyRight, game.KeyUpLeft, game.KeyUpRight, game.KeyDownLeft, game.KeyDownRight, game.KeyWait:
 			e.Call("preventDefault")
@@ -73,16 +64,32 @@ func main() {
 		return nil
 	})
 	js.Global().Get("document").Call("addEventListener", "keydown", keyHandler)
-
-	// Keep alive
 	select {}
 }
 
+func itoa(v int64) string {
+	// avoid fmt import for tiny wasm
+	s := ""
+	if v == 0 {
+		return "0"
+	}
+	neg := false
+	if v < 0 {
+		neg = true
+		v = -v
+	}
+	for v > 0 {
+		s = string(rune('0'+v%10)) + s
+		v /= 10
+	}
+	if neg {
+		s = "-" + s
+	}
+	return s
+}
+
 func buildHTML(frame game.Frame, tuning game.Tuning) string {
-	// Colors matching tokens.css
-	// Use inline spans for per-cell color. Map uses truecolor tokens.
 	esc := func(s string) string {
-		// minimal escape
 		out := ""
 		for _, ch := range s {
 			switch ch {
@@ -98,39 +105,53 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 		}
 		return out
 	}
-	_ = esc
+	// Panel width for parity with terminal: MinCols - MapWidth - 1 gap
+	panelMax := tuning.Layout.MinCols - tuning.Map.Width - 1
+	if panelMax < 10 {
+		panelMax = 29
+	}
 	html := `<div style="display:flex;gap:16px;align-items:flex-start"><div style="font-family:var(--font-monospace);line-height:var(--map-line-height);white-space:pre">`
 	for y := range frame.H {
 		for x := range frame.W {
 			cell := frame.Cells[y][x]
 			col := colorForToken(cell.FG)
 			ch := string(cell.Glyph)
-			if ch == " " {
-				ch = " "
-			}
-			// Use span per cell for truecolor; wall/floor etc.
-			html += fmt.Sprintf(`<span style="color:%s">%s</span>`, col, esc(ch))
+			html += `<span style="color:` + col + `">` + esc(ch) + `</span>`
 		}
-		// Append panel line to the right (inline)
 		if y < len(frame.Panel) {
 			line := frame.Panel[y]
+			// Truncate to panelMax with ellipsis, same as terminal's w - panelX logic
+			runes := []rune(line)
+			if len(runes) > panelMax {
+				if panelMax > 1 {
+					runes = runes[:panelMax-1]
+					runes = append(runes, '…')
+				} else {
+					runes = runes[:panelMax]
+				}
+				line = string(runes)
+			}
 			if len(line) > 0 && line[0] == '>' {
-				html += fmt.Sprintf(`<span style="color:var(--gold-bright)"> %s</span>`, esc(line))
+				html += `<span style="color:var(--gold-bright)"> ` + esc(line) + `</span>`
 			} else {
-				html += fmt.Sprintf(`<span style="color:var(--gray-1)"> %s</span>`, esc(line))
+				html += `<span style="color:var(--gray-1)"> ` + esc(line) + `</span>`
 			}
 		}
 		html += "\n"
 	}
 	html += `</div></div>`
-	// Status + log + hints
-	html += fmt.Sprintf(`<div style="color:var(--gold);margin-top:8px">%s</div>`, esc(frame.Status))
-	html += `<div style="color:var(--gray-1);margin-top:4px">`
+	// Log (8 lines) - parity with terminal's log at y=H+1
+	html += `<div style="color:var(--gray-1);margin-top:4px;font-family:var(--font-monospace);white-space:pre">`
 	for _, line := range frame.Log {
-		html += esc(line) + "<br>"
+		if line == "" {
+			html += "<br>"
+		} else {
+			html += esc(line) + "<br>"
+		}
 	}
 	html += `</div>`
-	html += fmt.Sprintf(`<div style="color:var(--gray-2);margin-top:8px">%s</div>`, esc(frame.Hints))
+	// Hints - parity with terminal's bottom row
+	html += `<div style="color:var(--gray-2);margin-top:8px;font-family:var(--font-monospace)">` + esc(frame.Hints) + `</div>`
 	return html
 }
 

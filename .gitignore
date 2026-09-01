@@ -1,6 +1,6 @@
-# binaries
-pilgrims-temple
-pilgrims-temple.exe
+# binaries (root only; bin/ is intentionally tracked)
+/pilgrims-temple
+/pilgrims-temple.exe
 pilgrims-temple-web.zip
 /tmp/
 *.tmp

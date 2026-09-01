@@ -1,21 +1,35 @@
 GO      ?= go
 BIN      = pilgrims-temple
+BIN_LINUX   = bin/pilgrims-temple
+BIN_WINDOWS = bin/pilgrims-temple.exe
 WASM     = web/main.wasm
 WASM_BR  = web/main.wasm.br
 WASM_EXEC_JS = web/wasm_exec.js
 
 LDFLAGS  = -s -w
 
-.PHONY: all run terminal wasm wasm-br web zip clean vet test
-
+.PHONY: all run terminal wasm wasm-br web zip bin clean vet test
 all: terminal wasm
-
-# ---- terminal ----
-terminal:
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(BIN) ./cmd/terminal
 
 run: terminal
 	./$(BIN)
+
+# ---- bin (cross-platform) ----
+bin: bin-linux bin-windows
+
+bin-linux: $(BIN_LINUX)
+bin-windows: $(BIN_WINDOWS)
+
+$(BIN_LINUX): cmd/terminal/*.go game/*.go game/data/*.json
+	mkdir -p bin
+	GOOS=linux GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_LINUX) ./cmd/terminal
+	@ls -lh $(BIN_LINUX)
+
+$(BIN_WINDOWS): cmd/terminal/*.go game/*.go game/data/*.json
+	mkdir -p bin
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_WINDOWS) ./cmd/terminal
+	@ls -lh $(BIN_WINDOWS)
+
 
 # ---- wasm ----
 wasm: $(WASM) $(WASM_EXEC_JS)
@@ -70,3 +84,4 @@ test:
 clean:
 	rm -f $(BIN) $(WASM) $(WASM_BR) pilgrims-temple-web.zip
 	rm -f $(WASM_EXEC_JS)
+	rm -rf bin

@@ -129,10 +129,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyStairsUp
 	case "Enter":
 		return KeyEnter
-	case "q":
+	case "q", "Q":
 		return KeySelect1
-	case "Q":
-		return KeyQuit
 	case "w", "W":
 		return KeySelect2
 	case "e", "E":

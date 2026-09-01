@@ -7,13 +7,17 @@
 <link rel="stylesheet" href="tokens.css">
 <style>
   html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-monospace); }
-  #game { white-space: pre; line-height: var(--map-line-height); padding: 16px; }
-  .status { color: var(--gold); font-size: 14px; padding: 8px 16px; }
+  #game { white-space: pre; line-height: var(--map-line-height); padding: 16px 16px 0 16px; }
+  .status { color: var(--gold); font-size: 14px; padding: 8px 16px; font-family: var(--font-monospace); white-space: pre; }
+  #log { color: var(--gray-1); font-family: var(--font-monospace); white-space: pre; padding: 4px 16px 0 16px; line-height: 1.15; }
+  #hints { color: var(--gray-2); font-family: var(--font-monospace); padding: 8px 16px 16px 16px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <div id="game">Loading Pilgrim's Temple…</div>
 <div class="status" id="status">Booting WASM…</div>
+<div id="log"></div>
+<div id="hints"></div>
 <script src="wasm_exec.js"></script>
 <script>
 (function() {

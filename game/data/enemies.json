@@ -1,0 +1,70 @@
+{
+  "notes": "Pilgrim's Temple — enemy types. Colors are desaturated per design-guide. damageType physical rolls vs DEF, magic vs MDEF. effect is placeholder string (e.g. hex) applied on effectChance roll — log only. talentChance/affixChance per depth are base chances; level generation scales them for floor>=3. regen heals 1/turn if alive.",
+  "enemies": [
+    {
+      "id": "goblin",
+      "name": "Goblin",
+      "glyph": "g",
+      "color": "#5a7a5a",
+      "damageType": "physical",
+      "effect": "hex",
+      "effectChance": 0.08,
+      "regen": false,
+      "xp": 10,
+      "talentChance": 0.08,
+      "affixChance": 0.04
+    },
+    {
+      "id": "orc",
+      "name": "Orc",
+      "glyph": "o",
+      "color": "#8a7a6a",
+      "damageType": "physical",
+      "effect": "rend",
+      "effectChance": 0.10,
+      "regen": false,
+      "xp": 15,
+      "talentChance": 0.10,
+      "affixChance": 0.05
+    },
+    {
+      "id": "kobold",
+      "name": "Kobold",
+      "glyph": "k",
+      "color": "#6a7a7a",
+      "damageType": "magic",
+      "effect": "hex",
+      "effectChance": 0.20,
+      "regen": false,
+      "xp": 12,
+      "talentChance": 0.12,
+      "affixChance": 0.06
+    },
+    {
+      "id": "rat",
+      "name": "Rat",
+      "glyph": "r",
+      "color": "#7a7a7a",
+      "damageType": "physical",
+      "effect": "",
+      "effectChance": 0.0,
+      "regen": false,
+      "xp": 8,
+      "talentChance": 0.04,
+      "affixChance": 0.02
+    },
+    {
+      "id": "troll",
+      "name": "Troll",
+      "glyph": "T",
+      "color": "#6a8a6a",
+      "damageType": "physical",
+      "effect": "regenerate",
+      "effectChance": 0.12,
+      "regen": true,
+      "xp": 30,
+      "talentChance": 0.18,
+      "affixChance": 0.09
+    }
+  ]
+}

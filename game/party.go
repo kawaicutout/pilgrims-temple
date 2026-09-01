@@ -1,21 +1,30 @@
 package game
 
 import (
+	"encoding/json"
 	"math/rand/v2"
+	"strings"
 )
 
 // Member is one character in the party.
 type Member struct {
-	Name    string
-	Class   string
-	HP      int
-	MaxHP   int
-	ATK     [2]int // min,max
-	DEF     int
-	Light   int
-	Alive   bool
-	Talents []string
-	Affixes []string
+	Name         string
+	Class        string
+	HP           int
+	MaxHP        int
+	ATK          [2]int // min,max
+	DEF          int
+	MDEF         int
+	Light        int
+	Alive        bool
+	Talents      []string
+	Affixes      []string
+	DamageType   string  // physical or magic; empty means physical
+	Effect       string
+	EffectChance float64
+	Regen        bool
+	XP           int
+	Color        string
 }
 
 func (m *Member) IsAlive() bool { return m.Alive && m.HP > 0 }
@@ -85,8 +94,12 @@ func (p *Party) EnsureSelection() {
 }
 
 func (p *Party) ApplyDamage(rng *rand.Rand, raw int) (hitIdx int, actual int) {
-	// Active-weighted targeting (DESIGN 3.4). raw is pre-DEF roll; DEF of the hit member is subtracted here.
-	// Returns index of member hit and actual damage after DEF.
+	return p.ApplyDamageWithType(rng, raw, false)
+}
+
+// ApplyDamageWithType applies raw damage choosing DEF vs MDEF based on isMagic.
+func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitIdx int, actual int) {
+	// Active-weighted targeting (DESIGN 3.4). raw is pre-DEF roll; DEF/MDEF of the hit member is subtracted here.
 	n := p.LivingCount()
 	if n == 0 {
 		return -1, 0
@@ -124,7 +137,11 @@ func (p *Party) ApplyDamage(rng *rand.Rand, raw int) (hitIdx int, actual int) {
 			target = p.Members[idx]
 		}
 	}
-	actual = raw - target.DEF
+	def := target.DEF
+	if isMagic {
+		def = target.MDEF
+	}
+	actual = raw - def
 	if actual < 1 {
 		actual = 1
 	}
@@ -168,21 +185,138 @@ func GeneratePartyWithClasses(rng *rand.Rand, classes []string, level int) *Part
 	return &Party{Members: members, Pos: Pos{0, 0}, Selected: 0, Active: 0}
 }
 
+// classStats holds per-class tuning from classes.json.
+type classStats struct {
+	HitDice      string `json:"hitDice"`
+	Attack       int    `json:"attack"`
+	Defense      int    `json:"defense"`
+	MagicDefense int    `json:"magicDefense"`
+}
+
+var classStatsCache map[string]classStats
+
+func loadClassStats() map[string]classStats {
+	if classStatsCache != nil {
+		return classStatsCache
+	}
+	b, err := RawJSON("classes.json")
+	if err != nil {
+		classStatsCache = map[string]classStats{}
+		return classStatsCache
+	}
+	var raw struct {
+		Classes []struct {
+			ID           string `json:"id"`
+			HitDice      string `json:"hitDice"`
+			Attack       int    `json:"attack"`
+			Defense      int    `json:"defense"`
+			MagicDefense int    `json:"magicDefense"`
+		} `json:"classes"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		classStatsCache = map[string]classStats{}
+		return classStatsCache
+	}
+	m := map[string]classStats{}
+	for _, c := range raw.Classes {
+		m[c.ID] = classStats{HitDice: c.HitDice, Attack: c.Attack, Defense: c.Defense, MagicDefense: c.MagicDefense}
+	}
+	classStatsCache = m
+	return m
+}
+
+func hitDiceSides(s string) int {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "d4":
+		return 4
+	case "d6":
+		return 6
+	case "d8":
+		return 8
+	case "d10":
+		return 10
+	case "d12":
+		return 12
+	default:
+		return 6
+	}
+}
+
+func rollHD(rng *rand.Rand, sides int) int {
+	if rng == nil {
+		return (sides + 1) / 2
+	}
+	return 1 + rng.IntN(sides)
+}
+
 func generateMember(rng *rand.Rand, class string, level int, used map[string]bool) *Member {
-	hp := 20 + rng.IntN(6) + (level-1)*4
-	atkMin := 3 + (level-1)
+	if level < 1 {
+		level = 1
+	}
+	stats := loadClassStats()[class]
+	// Defaults if class not found
+	sides := hitDiceSides(stats.HitDice)
+	if stats.HitDice == "" {
+		sides = 6
+		if class == "fighter" || class == "paladin" || class == "barbarian" {
+			sides = 10
+		} else if class == "wizard" {
+			sides = 4
+		} else if class == "cleric" || class == "druid" {
+			sides = 8
+		} else {
+			sides = 6
+		}
+	}
+	baseATK := stats.Attack
+	baseDEF := stats.Defense
+	baseMDEF := stats.MagicDefense
+	// Fallbacks if JSON missing fields
+	if stats.HitDice == "" && stats.Attack == 0 && stats.Defense == 0 && stats.MagicDefense == 0 {
+		switch class {
+		case "fighter":
+			baseATK, baseDEF, baseMDEF = 3, 2, 1
+		case "paladin":
+			baseATK, baseDEF, baseMDEF = 3, 2, 1
+		case "barbarian":
+			baseATK, baseDEF, baseMDEF = 3, 2, 1
+		case "cleric":
+			baseATK, baseDEF, baseMDEF = 1, 1, 2
+		case "druid":
+			baseATK, baseDEF, baseMDEF = 1, 1, 2
+		case "rogue":
+			baseATK, baseDEF, baseMDEF = 2, 1, 1
+		case "bard":
+			baseATK, baseDEF, baseMDEF = 1, 1, 2
+		case "wizard":
+			baseATK, baseDEF, baseMDEF = 1, 0, 3
+		default:
+			baseATK, baseDEF, baseMDEF = 2, 1, 1
+		}
+	}
+	// HP: 10 + 3*HD at level 1, +1 HD per additional level
+	diceCount := 3 + (level - 1)
+	hp := 10
+	for range diceCount {
+		hp += rollHD(rng, sides)
+	}
+	// Attack range: base + (level-1) with small variance
+	atkMin := baseATK + (level - 1)
 	atkMax := atkMin + 2 + rng.IntN(2)
 	if used == nil {
 		used = map[string]bool{}
 	}
 	name := GenerateName(rng, used)
 	return &Member{
-		Name:  name,
-		Class: class,
-		HP:    hp, MaxHP: hp,
-		ATK:   [2]int{atkMin, atkMax},
-		DEF:   rng.IntN(2),
-		Light: 6 + rng.IntN(2),
-		Alive: true,
+		Name:       name,
+		Class:      class,
+		HP:         hp,
+		MaxHP:      hp,
+		ATK:        [2]int{atkMin, atkMax},
+		DEF:        baseDEF,
+		MDEF:       baseMDEF,
+		Light:      6 + rng.IntN(2),
+		Alive:      true,
+		DamageType: "physical",
 	}
 }

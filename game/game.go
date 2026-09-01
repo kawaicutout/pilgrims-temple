@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"math/rand/v2"
+	"unicode"
 )
 
 // Game holds run state.
@@ -47,6 +48,26 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	g.Floor = 0
 	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
 	g.Logf("You stand at the temple threshold.")
+	// Debug log for deeper enemy talents/affixes
+	for fi, lvl := range g.Levels {
+		if fi < 3 {
+			continue
+		}
+		for _, e := range lvl.Enemies {
+			for _, m := range e.Members {
+				if len(m.Talents) > 0 {
+					for _, tl := range m.Talents {
+						g.Logf("enemy gains talent %s (%s floor %d)", tl, m.Class, fi+1)
+					}
+				}
+				if len(m.Affixes) > 0 {
+					for _, af := range m.Affixes {
+						g.Logf("enemy gains affix %s (%s floor %d)", af, m.Class, fi+1)
+					}
+				}
+			}
+		}
+	}
 	g.UpdateFOV()
 	return g
 }
@@ -54,6 +75,7 @@ type LevelUpState struct {
 	NewLevel int
 	Picks    []TalentPick
 	Current  int
+	Cursor   int
 }
 
 type TalentPick struct {
@@ -181,6 +203,26 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 	if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
 		g.LevelUpPending = nil
 		g.Logf("Level up complete.")
+	} else {
+		g.LevelUpPending.Cursor = 0
+	}
+}
+
+func (g *Game) MoveLevelUpCursor(delta int) {
+	if g.LevelUpPending == nil || len(g.LevelUpPending.Picks) == 0 {
+		return
+	}
+	pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
+	if pick.IsAffix {
+		return
+	}
+	n := len(pick.Options)
+	if n == 0 {
+		return
+	}
+	g.LevelUpPending.Cursor = (g.LevelUpPending.Cursor + delta) % n
+	if g.LevelUpPending.Cursor < 0 {
+		g.LevelUpPending.Cursor += n
 	}
 }
 
@@ -303,6 +345,13 @@ func (g *Game) applyStarvation() {
 
 func (g *Game) Logf(fmtStr string, args ...any) {
 	s := fmt.Sprintf(fmtStr, args...)
+	if len(s) > 0 {
+		rs := []rune(s)
+		if unicode.IsLower(rs[0]) {
+			rs[0] = unicode.ToUpper(rs[0])
+			s = string(rs)
+		}
+	}
 	g.Log = append(g.Log, s)
 	if len(g.Log) > g.Tuning.Layout.LogLines {
 		g.Log = g.Log[len(g.Log)-g.Tuning.Layout.LogLines:]
@@ -337,7 +386,8 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	for _, e := range lvl.Enemies {
 		if e.IsAlive() && e.Pos == next {
 			g.Party.Active = g.Party.Selected
-			attacker := g.Party.Members[g.Party.Active].Name
+			attackerMember := g.Party.Members[g.Party.Active]
+			attacker := attackerMember.Name
 			dmg, hitIdx, killed := PlayerBumpEnemy(g.RNG, g.Party, e)
 			memberName := e.MemberDisplayName(hitIdx)
 			if !e.IsAlive() {
@@ -348,6 +398,16 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 				g.GainXP(10 + g.Floor*5)
 			} else {
 				g.Logf("%s hits %s for %d.", attacker, memberName, dmg)
+			}
+			// Player effect placeholder
+			if attackerMember.EffectChance > 0 && g.RNG.Float64() < attackerMember.EffectChance {
+				effect := attackerMember.Effect
+				if effect == "" {
+					effect = "hex"
+				}
+				// defender for placeholder is the hit member name
+				defenderName := memberName
+				g.Logf("%s tries to %s %s", attacker, effect, defenderName)
 			}
 			// If level up pending, pause before enemy turn (world pauses)
 			if g.LevelUpPending != nil {
@@ -490,6 +550,8 @@ func (g *Game) EnemyTurn() {
 		if !e.IsAlive() {
 			continue
 		}
+		// Regen tick for troll and similar
+		e.RegenTick()
 		e.EnsureActive()
 		dx := g.Party.Pos.X - e.Pos.X
 		dy := g.Party.Pos.Y - e.Pos.Y
@@ -497,13 +559,24 @@ func (g *Game) EnemyTurn() {
 		if cheb == 1 {
 			atk := e.Members[e.Active]
 			raw := RollRaw(g.RNG, atk.ATK[0], atk.ATK[1])
-			hitIdx, actual := g.Party.ApplyDamage(g.RNG, raw)
+			isMagic := atk.DamageType == "magic"
+			hitIdx, actual := g.Party.ApplyDamageWithType(g.RNG, raw, isMagic)
 			defender := "you"
 			if hitIdx >= 0 && hitIdx < len(g.Party.Members) {
 				defender = g.Party.Members[hitIdx].Name
 			}
 			attackerName := e.MemberDisplayName(e.Active)
 			g.Logf("%s hits %s for %d.", attackerName, defender, actual)
+			// Effect placeholder roll
+			if atk.EffectChance > 0 {
+				if g.RNG.Float64() < atk.EffectChance {
+					effect := atk.Effect
+					if effect == "" {
+						effect = "hex"
+					}
+					g.Logf("%s tries to %s %s", attackerName, effect, defender)
+				}
+			}
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
 				g.Logf("You have fallen. Seed %d.", g.Seed)

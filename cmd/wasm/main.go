@@ -17,6 +17,8 @@ func main() {
 	doc := js.Global().Get("document")
 	gameDiv := doc.Call("getElementById", "game")
 	statusDiv := doc.Call("getElementById", "status")
+	logDiv := doc.Call("getElementById", "log")
+	hintsDiv := doc.Call("getElementById", "hints")
 	if gameDiv.IsNull() {
 		body := doc.Get("body")
 		gameDiv = doc.Call("createElement", "div")
@@ -25,6 +27,20 @@ func main() {
 		statusDiv = doc.Call("createElement", "div")
 		statusDiv.Set("id", "status")
 		body.Call("appendChild", statusDiv)
+		logDiv = doc.Call("createElement", "div")
+		logDiv.Set("id", "log")
+		body.Call("appendChild", logDiv)
+		hintsDiv = doc.Call("createElement", "div")
+		hintsDiv.Set("id", "hints")
+		body.Call("appendChild", hintsDiv)
+	}
+	// Helper to render log/hints into separate divs between map and hints, mirroring terminal y=H status.
+	renderLogHints := func(frame game.Frame) {
+		if logDiv.IsNull() || hintsDiv.IsNull() {
+			return
+		}
+		logDiv.Set("innerHTML", buildLogHTML(frame.Log))
+		hintsDiv.Set("textContent", frame.Hints)
 	}
 	type appState int
 	const (
@@ -41,6 +57,7 @@ func main() {
 		frame := game.RenderMainMenu(tuning, menu.Selected)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
 	}
 	renderCharSelect := func() {
 		if cs == nil {
@@ -49,6 +66,7 @@ func main() {
 		frame := game.RenderCharSelect(tuning, cs)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
 	}
 	renderGame := func() {
 		if g == nil {
@@ -57,6 +75,7 @@ func main() {
 		frame := g.Render()
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
 		if g.Quit {
 			statusDiv.Set("textContent", "Quit to menu. Seed "+itoa(g.Seed)+" - refresh or Esc")
 		} else if g.Won {
@@ -67,6 +86,7 @@ func main() {
 			frame2 := g.RenderLevelUp()
 			gameDiv.Set("innerHTML", buildHTML(frame2, tuning))
 			statusDiv.Set("textContent", frame2.Status)
+			renderLogHints(frame2)
 		}
 	}
 	renderLevelUp := func() {
@@ -76,6 +96,7 @@ func main() {
 		frame := g.RenderLevelUp()
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
 	}
 
 	renderMenu()
@@ -158,15 +179,30 @@ func main() {
 			if g.LevelUpPending != nil {
 				pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
 				handled := false
+				cursorMoved := false
 				switch k {
+				case game.KeyUp:
+					if !pick.IsAffix {
+						g.MoveLevelUpCursor(-1)
+						cursorMoved = true
+					}
+				case game.KeyDown:
+					if !pick.IsAffix {
+						g.MoveLevelUpCursor(1)
+						cursorMoved = true
+					}
 				case game.KeyEnter:
-					g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+					idx := 0
+					if !pick.IsAffix {
+						idx = g.LevelUpPending.Cursor
+					}
+					g.ApplyTalentPick(g.LevelUpPending.Current, idx)
 					handled = true
 				case game.KeyQuit:
 					g.ApplyTalentPick(g.LevelUpPending.Current, 0)
 					handled = true
 				}
-				if !handled && !pick.IsAffix {
+				if !handled && !cursorMoved && !pick.IsAffix {
 					switch key {
 					case "1":
 						g.ApplyTalentPick(g.LevelUpPending.Current, 0)
@@ -288,16 +324,34 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 		html += "\n"
 	}
 	html += `</div></div>`
-	html += `<div style="color:var(--gray-1);margin-top:4px;font-family:var(--font-monospace);white-space:pre">`
-	for _, line := range frame.Log {
+	return html
+}
+
+func buildLogHTML(lines []string) string {
+	esc := func(s string) string {
+		out := ""
+		for _, ch := range s {
+			switch ch {
+			case '&':
+				out += "&amp;"
+			case '<':
+				out += "&lt;"
+			case '>':
+				out += "&gt;"
+			default:
+				out += string(ch)
+			}
+		}
+		return out
+	}
+	html := ""
+	for _, line := range lines {
 		if line == "" {
 			html += "<br>"
 		} else {
 			html += esc(line) + "<br>"
 		}
 	}
-	html += `</div>`
-	html += `<div style="color:var(--gray-2);margin-top:8px;font-family:var(--font-monospace)">` + esc(frame.Hints) + `</div>`
 	return html
 }
 

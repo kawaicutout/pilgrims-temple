@@ -46,9 +46,9 @@ case "${XDG_CURRENT_DESKTOP:-}" in
     if [ -f "$HOME/.config/kdeglobals" ]; then
       kde_term=$(grep -E '^TerminalApplication=' "$HOME/.config/kdeglobals" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
       case "$kde_term" in
-        alacritty) command -v alacritty >/dev/null 2>&1 && exec alacritty -o window.dimensions.columns="$COLS" -o window.dimensions.lines="$ROWS" -e "$BIN" "$@" ;;
+        alacritty) command -v alacritty >/dev/null 2>&1 && exec alacritty -o window.dimensions.columns="$COLS" -o window.dimensions.lines="$ROWS" -o 'font.normal.family="Libertinus Mono"' -e "$BIN" "$@" ;;
         konsole) command -v konsole >/dev/null 2>&1 && exec konsole -p TerminalColumns="$COLS" -p TerminalRows="$ROWS" -e "$BIN" "$@" ;;
-        kitty) command -v kitty >/dev/null 2>&1 && exec kitty -o initial_window_width="${COLS}c" -o initial_window_height="${ROWS}c" "$BIN" "$@" ;;
+        kitty) command -v kitty >/dev/null 2>&1 && exec kitty -o 'font_family="Libertinus Mono"' -o initial_window_width="${COLS}c" -o initial_window_height="${ROWS}c" "$BIN" "$@" ;;
         foot) command -v foot >/dev/null 2>&1 && exec foot -W "${COLS}x${ROWS}" -e "$BIN" "$@" ;;
         xterm) command -v xterm >/dev/null 2>&1 && exec xterm -geometry "${COLS}x${ROWS}" -e "$BIN" "$@" ;;
       esac
@@ -60,8 +60,8 @@ for cand in konsole gnome-terminal alacritty kitty foot xterm; do
   case "$cand" in
     konsole) exec konsole -p TerminalColumns="$COLS" -p TerminalRows="$ROWS" -e "$BIN" "$@" ;;
     gnome-terminal) exec gnome-terminal --geometry="${COLS}x${ROWS}" -- "$BIN" "$@" ;;
-    alacritty) exec alacritty -o window.dimensions.columns="$COLS" -o window.dimensions.lines="$ROWS" -e "$BIN" "$@" ;;
-    kitty) exec kitty -o initial_window_width="${COLS}c" -o initial_window_height="${ROWS}c" "$BIN" "$@" ;;
+    alacritty) exec alacritty -o window.dimensions.columns="$COLS" -o window.dimensions.lines="$ROWS" -o 'font.normal.family="Libertinus Mono"' -e "$BIN" "$@" ;;
+    kitty) exec kitty -o 'font_family="Libertinus Mono"' -o initial_window_width="${COLS}c" -o initial_window_height="${ROWS}c" "$BIN" "$@" ;;
     foot) exec foot -W "${COLS}x${ROWS}" -e "$BIN" "$@" ;;
     xterm) exec xterm -geometry "${COLS}x${ROWS}" -e "$BIN" "$@" ;;
   esac

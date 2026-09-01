@@ -1,3 +1,7 @@
+// Terminal frontend: uses system monospace via tcell; web build imports Libertinus Mono
+// via web/tokens.css @import. run.sh passes font override for terminals that support it
+// (alacritty -o font.normal.family="Libertinus Mono", kitty -o font_family="Libertinus Mono");
+// foot/gnome-terminal use config/gsettings, not flags. Bin builds rely on system fallback.
 package main
 
 import (
@@ -312,15 +316,30 @@ func main() {
 				if g.LevelUpPending != nil {
 					pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
 					handled := false
+					cursorMoved := false
 					switch k {
+					case game.KeyUp:
+						if !pick.IsAffix {
+							g.MoveLevelUpCursor(-1)
+							cursorMoved = true
+						}
+					case game.KeyDown:
+						if !pick.IsAffix {
+							g.MoveLevelUpCursor(1)
+							cursorMoved = true
+						}
 					case game.KeyEnter:
-						g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+						idx := 0
+						if !pick.IsAffix {
+							idx = g.LevelUpPending.Cursor
+						}
+						g.ApplyTalentPick(g.LevelUpPending.Current, idx)
 						handled = true
 					case game.KeyQuit:
 						g.ApplyTalentPick(g.LevelUpPending.Current, 0)
 						handled = true
 					}
-					if !handled && !pick.IsAffix {
+					if !handled && !cursorMoved && !pick.IsAffix {
 						switch key {
 						case "1":
 							g.ApplyTalentPick(g.LevelUpPending.Current, 0)

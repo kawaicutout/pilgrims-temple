@@ -120,8 +120,9 @@ func (g *Game) Render() Frame {
 		} else {
 			classFG = "gray-1"
 		}
-		panel = append(panel, nameLine, classLine, "")
-		panelFG = append(panelFG, fg, classFG, "gray-1")
+		statsLine := fmt.Sprintf("  ATK %d-%d DEF %d MDEF %d", m.ATK[0], m.ATK[1], m.DEF, m.MDEF)
+		panel = append(panel, nameLine, classLine, statsLine)
+		panelFG = append(panelFG, fg, classFG, classFG)
 	}
 	// Pad to 4 slots (each slot is 3 lines)
 	for len(panel) < 12 {
@@ -190,20 +191,20 @@ func (g *Game) RenderLevelUp() Frame {
 		opt := pick.Options[0]
 		fg := "gold"
 		drawCentered(cells, w, 6, fmt.Sprintf("> %s", opt), fg)
-		drawCentered(cells, w, 8, "Press Enter to accept", "gray-2")
 	} else {
 		drawCentered(cells, w, 4, fmt.Sprintf("%s (%s) choose talent:", pick.MemberName, pick.Class), "gray-1")
+		cursor := g.LevelUpPending.Cursor
 		for i, opt := range pick.Options {
 			fg := "gray-1"
 			prefix := "  "
-			if i == 0 {
+			if i == cursor {
 				prefix = "> "
 				fg = "gold-bright"
 			}
 			line := fmt.Sprintf("%s%d: %s", prefix, i+1, opt)
 			drawCentered(cells, w, 6+i*2, line, fg)
 		}
-		drawCentered(cells, w, 12, "Press 1/2/3 or Enter for first", "gray-2")
+		drawCentered(cells, w, 12, "Up/Down + Enter: choose  1/2/3: quick pick", "gray-2")
 	}
 	panel := []string{"", fmt.Sprintf("Lvl %d", g.Level), fmt.Sprintf("Pick %d/%d", g.LevelUpPending.Current+1, len(g.LevelUpPending.Picks))}
 	panelFG := []string{"gray-1", "gray-1", "gray-1"}
@@ -212,7 +213,7 @@ func (g *Game) RenderLevelUp() Frame {
 		panelFG = append(panelFG, "gray-1")
 	}
 	status := fmt.Sprintf("Level up! Choose for %s", pick.MemberName)
-	hints := "1/2/3 or Enter: choose  Esc: skip (not recommended)"
+	hints := "Up/Down: move  Enter: choose  1/2/3: quick pick  Esc: skip"
 	if pick.IsAffix {
 		hints = "Enter: accept affix"
 	}

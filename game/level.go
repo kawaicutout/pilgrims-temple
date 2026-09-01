@@ -1,6 +1,7 @@
 package game
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 )
@@ -86,6 +87,8 @@ func (e *EnemyParty) Glyph() rune {
 				return 'k'
 			case "rat":
 				return 'r'
+			case "troll":
+				return 'T'
 			default:
 				if len(m.Name) > 0 {
 					return rune(m.Name[0])
@@ -161,6 +164,92 @@ func (e *EnemyParty) EnsureActive() {
 			}
 		}
 	}
+}
+
+// RegenTick heals regen members 1/turn if alive.
+func (e *EnemyParty) RegenTick() {
+	for _, m := range e.Members {
+		if m.IsAlive() && m.Regen && m.HP < m.MaxHP {
+			m.HP++
+			if m.HP > m.MaxHP {
+				m.HP = m.MaxHP
+			}
+		}
+	}
+}
+
+// enemyEntry mirrors enemies.json.
+type enemyEntry struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Glyph        string  `json:"glyph"`
+	Color        string  `json:"color"`
+	DamageType   string  `json:"damageType"`
+	Effect       string  `json:"effect"`
+	EffectChance float64 `json:"effectChance"`
+	Regen        bool    `json:"regen"`
+	XP           int     `json:"xp"`
+	TalentChance float64 `json:"talentChance"`
+	AffixChance  float64 `json:"affixChance"`
+}
+
+type enemiesFile struct {
+	Enemies []enemyEntry `json:"enemies"`
+}
+
+var enemiesCache []enemyEntry
+
+func loadEnemies() []enemyEntry {
+	if enemiesCache != nil {
+		return enemiesCache
+	}
+	b, err := RawJSON("enemies.json")
+	if err != nil {
+		enemiesCache = []enemyEntry{
+			{ID: "goblin", Name: "Goblin", Glyph: "g", Color: "#5a7a5a", DamageType: "physical", Effect: "hex", EffectChance: 0.08, XP: 10, TalentChance: 0.08, AffixChance: 0.04},
+			{ID: "orc", Name: "Orc", Glyph: "o", Color: "#8a7a6a", DamageType: "physical", Effect: "rend", EffectChance: 0.10, XP: 15, TalentChance: 0.10, AffixChance: 0.05},
+			{ID: "kobold", Name: "Kobold", Glyph: "k", Color: "#6a7a7a", DamageType: "magic", Effect: "hex", EffectChance: 0.20, XP: 12, TalentChance: 0.12, AffixChance: 0.06},
+			{ID: "rat", Name: "Rat", Glyph: "r", Color: "#7a7a7a", DamageType: "physical", Effect: "", EffectChance: 0.0, XP: 8, TalentChance: 0.04, AffixChance: 0.02},
+			{ID: "troll", Name: "Troll", Glyph: "T", Color: "#6a8a6a", DamageType: "physical", Effect: "regenerate", EffectChance: 0.12, Regen: true, XP: 30, TalentChance: 0.18, AffixChance: 0.09},
+		}
+		return enemiesCache
+	}
+	var f enemiesFile
+	if err := json.Unmarshal(b, &f); err != nil || len(f.Enemies) == 0 {
+		enemiesCache = []enemyEntry{
+			{ID: "goblin", Name: "Goblin", Glyph: "g", Color: "#5a7a5a", DamageType: "physical", XP: 10},
+			{ID: "orc", Name: "Orc", Glyph: "o", Color: "#8a7a6a", DamageType: "physical", XP: 15},
+			{ID: "kobold", Name: "Kobold", Glyph: "k", Color: "#6a7a7a", DamageType: "magic", XP: 12},
+			{ID: "rat", Name: "Rat", Glyph: "r", Color: "#7a7a7a", DamageType: "physical", XP: 8},
+			{ID: "troll", Name: "Troll", Glyph: "T", Color: "#6a8a6a", DamageType: "physical", Regen: true, XP: 30},
+		}
+		return enemiesCache
+	}
+	enemiesCache = f.Enemies
+	return enemiesCache
+}
+
+// GetEnemyData returns a copy of enemies data for external use.
+func GetEnemyData() []enemyEntry {
+	src := loadEnemies()
+	out := make([]enemyEntry, len(src))
+	copy(out, src)
+	return out
+}
+
+func pickEnemyForFloor(rng *rand.Rand, floor int) enemyEntry {
+	entries := loadEnemies()
+	var pool []enemyEntry
+	for _, e := range entries {
+		if e.ID == "troll" && floor < 3 {
+			continue
+		}
+		pool = append(pool, e)
+	}
+	if len(pool) == 0 {
+		pool = entries
+	}
+	return pool[rng.IntN(len(pool))]
 }
 
 // Generate fills a level with rooms+corridors and stairs. Deterministic from rng.
@@ -250,8 +339,7 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 	}
 	// Spawn enemy parties: deeper floors -> more and larger
 	partyCount := 3 + floor*2 + rng.IntN(3)
-	baseNames := []string{"goblin", "orc", "kobold", "rat"}
-	for i := 0; i < partyCount; i++ {
+	for range partyCount {
 		var p Pos
 		for tries := 0; tries < 100; tries++ {
 			rr := rooms[rng.IntN(len(rooms))]
@@ -290,21 +378,77 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 		if floor >= 2 && rng.IntN(4) == 0 {
 			partySize = 1 + rng.IntN(2) // occasional small party even deep
 		}
-		idx := rng.IntN(len(baseNames))
-		baseName := baseNames[idx]
 		ep := &EnemyParty{Pos: p, Active: 0}
-		for m := 0; m < partySize; m++ {
+		for range partySize {
+			entry := pickEnemyForFloor(rng, floor)
 			hp := 6 + floor*2 + rng.IntN(4)
+			if entry.Regen {
+				hp += 4
+			}
 			atkMin := 2 + floor
 			atkMax := atkMin + 2 + rng.IntN(2)
+			if entry.DamageType == "magic" && floor > 2 {
+				atkMin++
+				atkMax++
+			}
+			def := 0
+			mdef := 0
+			if floor >= 2 {
+				def = floor / 3
+				mdef = floor / 4
+			}
+			if entry.ID == "orc" {
+				def++
+			}
+			if entry.ID == "kobold" {
+				mdef++
+			}
+			if entry.ID == "troll" {
+				def++
+				mdef++
+			}
 			mem := &Member{
-				Name:  baseName,
-				Class: baseName,
-				HP:    hp, MaxHP: hp,
-				ATK:   [2]int{atkMin, atkMax},
-				DEF:   0,
-				Light: 0,
-				Alive: true,
+				Name:         entry.Name,
+				Class:        entry.ID,
+				HP:           hp, MaxHP: hp,
+				ATK:          [2]int{atkMin, atkMax},
+				DEF:          def,
+				MDEF:         mdef,
+				Light:        0,
+				Alive:        true,
+				DamageType:   entry.DamageType,
+				Effect:       entry.Effect,
+				EffectChance: entry.EffectChance,
+				Regen:        entry.Regen,
+				XP:           entry.XP,
+				Color:        entry.Color,
+			}
+			if mem.EffectChance < 0 {
+				mem.EffectChance = 0
+			}
+			if mem.EffectChance > 0.3 {
+				mem.EffectChance = 0.3
+			}
+			if floor >= 3 {
+				talentChance := entry.TalentChance
+				affixChance := entry.AffixChance
+				if floor >= 5 {
+					talentChance += 0.05
+					affixChance += 0.03
+				}
+				if talentChance > 0 && rng.Float64() < talentChance {
+					opts := GetTalentOptions(rng, mem.Class, 1)
+					if len(opts) > 0 {
+						chosen := opts[0]
+						mem.Talents = append(mem.Talents, chosen)
+						_ = fmt.Sprintf("enemy gains talent %s", chosen)
+					}
+				}
+				if affixChance > 0 && rng.Float64() < affixChance {
+					aff := GetRandomAffix(rng)
+					mem.Affixes = append(mem.Affixes, aff)
+					_ = fmt.Sprintf("enemy gains affix %s", aff)
+				}
 			}
 			ep.Members = append(ep.Members, mem)
 		}

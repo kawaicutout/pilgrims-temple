@@ -672,9 +672,81 @@ func (g *Game) handleMerchant(f *Feature) {
 	if f == nil || !f.IsMerchant() {
 		return
 	}
-	g.Logf("Merchant (M) - browse wares (merchant shop not yet implemented).")
+	lvl := g.CurLevel()
+	m := SpawnMerchant(g.RNG, lvl, f.Pos)
+	if m == nil || len(m.Wares) == 0 {
+		g.Logf("Merchant (M) has nothing to sell right now.")
+		g.removeFeatureAt(f.Pos, FeatureMerchant)
+		return
+	}
+	// Build offer list
+	var offerStr string
+	for i, w := range m.Wares {
+		if i > 0 {
+			offerStr += ", "
+		}
+		offerStr += fmt.Sprintf("%s (%dg)", w.Name, w.Price)
+	}
+	// Find cheapest affordable ware
+	cheapestIdx := -1
+	cheapestPrice := 1 << 30
+	for i, w := range m.Wares {
+		if g.Gold >= w.Price && w.Price < cheapestPrice {
+			cheapestPrice = w.Price
+			cheapestIdx = i
+		}
+	}
+	if cheapestIdx == -1 {
+		g.Logf("Merchant offers: %s -- need more gold (you have %dg).", offerStr, g.Gold)
+		return
+	}
+	w := m.Wares[cheapestIdx]
+	if err := g.BuyWare(m, w.ID); err != nil {
+		g.Logf("Merchant: %v", err)
+		return
+	}
+	// Apply ware effect
+	switch w.ID {
+	case "ration":
+		g.Food += 50
+		g.FoodFloat += 50
+		g.Logf("Merchant sells %s for %dg (+50 food).", w.Name, w.Price)
+	case "potion_heal":
+		healed := 0
+		for _, mem := range g.Party.Members {
+			if mem.IsAlive() && mem.HP < mem.MaxHP {
+				mem.HP += 10
+				if mem.HP > mem.MaxHP {
+					mem.HP = mem.MaxHP
+				}
+				healed++
+			}
+		}
+		if healed > 0 {
+			g.Logf("Merchant sells %s for %dg (healed %d members +10 HP).", w.Name, w.Price, healed)
+		} else {
+			g.Logf("Merchant sells %s for %dg (already at full health).", w.Name, w.Price)
+		}
+	case "scroll_upgrade":
+		members := g.Party.LivingMembers()
+		if len(members) > 0 {
+			picked := members[g.RNG.IntN(len(members))]
+			if g.RNG.IntN(2) == 0 {
+				picked.ATK[0]++
+				picked.ATK[1]++
+				g.Logf("Merchant sells %s for %dg (%s ATK %d-%d).", w.Name, w.Price, picked.Name, picked.ATK[0], picked.ATK[1])
+			} else {
+				picked.DEF++
+				g.Logf("Merchant sells %s for %dg (%s DEF %d).", w.Name, w.Price, picked.Name, picked.DEF)
+			}
+		} else {
+			g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
+		}
+	default:
+		g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
+	}
+	g.removeFeatureAt(f.Pos, FeatureMerchant)
 }
-
 func (g *Game) handlePitfall(f *Feature) bool {
 	if f == nil || !f.IsPitfall() {
 		return false

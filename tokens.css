@@ -1,0 +1,40 @@
+@import url("https://fonts.googleapis.com/css2?family=Libertinus+Mono&display=swap");
+
+/* Design tokens — Pilgrim's Temple (Party Roguelike) web build.
+   Mirror of docs/design-guide.md. Core background with gold/red/slate accents,
+   all colors desaturated. Both builds (terminal and web) share this identity. */
+
+:root {
+  /* Core */
+  --bg:            #141210; /* near-black, slightly warm */
+  --fg:            #e6e0d8; /* near-white text and glyphs */
+  --floor:         #4a4642; /* decorative open floor glyph */
+  --wall:          #6b645c; /* wall and pillar glyph */
+  --gray-4:        #2c2927;
+  --gray-3:        #3d3936;
+  --gray-2:        #8a857e; /* dim read-only labels */
+  --gray-1:        #b5aea5;
+
+  /* Accents (desaturated) */
+  --gold:          #b8975a; /* positive, warnings, panel headers, numbers (~6.8:1) */
+  --gold-bright:   #d3ad6b; /* emphasized, cursor (~8.9:1) */
+  --red:           #a8564a; /* large/graphical damage only (~3.6:1); not small text */
+  --red-bright:    #c96a5a; /* small damage text (~5.1:1) */
+  --slate:         #6e8fb5; /* atmosphere, sensory log entries (~5.6:1) */
+
+  /* Typography */
+  --font-monospace:
+    "Libertinus Mono",
+    ui-monospace,
+    "Courier New",
+    monospace;
+
+  /* Layout */
+  --map-cell:       16px;
+  --map-line-height: 1.15;
+}
+
+/* Accessibility floor: informational glyphs never fall below 3:1 against
+   their background. --floor is decorative only and never carries required
+   information. Small text uses --red-bright, never --red (which is for
+   large or graphical emphasis only). See docs/design-guide.md Section 6. */

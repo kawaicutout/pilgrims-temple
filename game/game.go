@@ -242,6 +242,7 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 			// passive refill bonus handled on ration use; no instant stat
 		}
 	}
+	g.LevelUpPending.Current++
 	if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
 		g.LevelUpPending = nil
 		g.Logf("Level up complete.")

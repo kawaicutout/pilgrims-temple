@@ -91,19 +91,26 @@ func (p *Party) BestLight() int {
 }
 
 // CarryCapacity is sum of living members' carry (DESIGN 4.3/7.1). Mirrors BestLight
-// pattern but summed, not max. Base per member is 10; Burden-Bearer / Burdened add 3.
+// pattern but summed, not max. Base per member is 5; Burden-Bearer / Burdened add 3.
 func (p *Party) CarryCapacity() int {
 	sum := 0
 	for _, m := range p.Members {
 		if m.IsAlive() {
 			c := m.Carry
 			if c == 0 {
-				c = 10 // fixup for old saves / defaults
+				c = 5 // fixup for old saves / defaults
 			}
 			sum += c
 		}
 	}
 	return sum
+}
+
+// CarryUsed is sum of inventory weight. No floor-item loot is currently
+// spawned/consumed, so this returns 0; when potions/scrolls counting is
+// implemented it should sum held item counts.
+func (p *Party) CarryUsed() int {
+	return 0
 }
 
 func (p *Party) EnsureSelection() {
@@ -351,7 +358,7 @@ func generateMember(rng *rand.Rand, class string, level int, used map[string]boo
 		DEF:        baseDEF,
 		MDEF:       baseMDEF,
 		Light:      6 + rng.IntN(2),
-		Carry:      10,
+		Carry:      5,
 		Alive:      true,
 		DamageType: "physical",
 	}

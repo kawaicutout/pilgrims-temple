@@ -136,17 +136,17 @@ func (g *Game) Render() Frame {
 		panel = append(panel, "")
 		panelFG = append(panelFG, "gray-1")
 	}
-	// Carry capacity (sum of members) — visible so Burden-Bearer is meaningful
-	carry := g.Party.CarryCapacity()
-	panel = append(panel, fmt.Sprintf("Carry: %d", carry))
-	panelFG = append(panelFG, "gold")
+	// Inventory placeholders — Carry is shown in status bar / panel below map, not side panel
 	panel = append(panel, "Potions:", "  (none)", "Scrolls:", "  (none)")
 	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1")
-	// Status - Floor | FOOD | Carry | Level/XP | Turn (no HP, no Seed)
+	// Status - Floor | Food | Carry | Level/XP | Turn (no HP, no Seed)
+	// Panel below map (status bar) shows Carry as "Carry C/M" in gold; Food is capitalized as "Food" not "FOOD".
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
-	foodStr := fmt.Sprintf("FOOD %d %s", g.Food, g.HungerState())
-	carryStr := fmt.Sprintf("Carry %d", carry)
-	levelStr := fmt.Sprintf("Lvl %d XP %d/%d", g.Level, g.XP, g.XPToNext)
+	foodStr := fmt.Sprintf("Food %d %s", g.Food, g.HungerState())
+	carryMax := g.Party.CarryCapacity()
+	carryUsed := g.Party.CarryUsed()
+	carryStr := fmt.Sprintf("Carry %d/%d", carryUsed, carryMax)
+	levelStr := fmt.Sprintf("Level %d XP %d/%d", g.Level, g.XP, g.XPToNext)
 	status := fmt.Sprintf("%s | %s | %s | %s | Turn %d", floorStr, foodStr, carryStr, levelStr, g.Turn)
 	// Log padded to 8
 	logLines := make([]string, t.Layout.LogLines)
@@ -316,7 +316,7 @@ func (g *Game) RenderHelpOverlay() Frame {
 		{"Rest: R heals each living member 15 HP over 10 turns;", "gray-2"},
 		{"world advances; ends early if foe appears or hunger ticks.", "gray-2"},
 		{"", "bg"},
-		{fmt.Sprintf("Seed %d | FOOD %d (%s) | Lvl %d XP %d/%d | Floor %d/%d | Turn %d", g.Seed, g.Food, g.HungerState(), g.Level, g.XP, g.XPToNext, g.Floor+1, t.Floors, g.Turn), "gold"},
+		{fmt.Sprintf("Seed %d | Food %d (%s) | Lvl %d XP %d/%d | Floor %d/%d | Turn %d", g.Seed, g.Food, g.HungerState(), g.Level, g.XP, g.XPToNext, g.Floor+1, t.Floors, g.Turn), "gold"},
 	}
 	// Center vertically
 	startY := (h - len(lines)) / 2

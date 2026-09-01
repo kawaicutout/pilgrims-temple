@@ -32,11 +32,18 @@ type Game struct {
 	Relic          Pos `json:"relic"`
 	Wizard         bool `json:"wizard"`
 	HelpActive     bool `json:"helpActive"`
+	VisitedFloors          map[int]bool `json:"visitedFloors"`
+	TransitionFiredForLevel map[int]bool `json:"transitionFiredForLevel"`
+	RelicCollected         bool `json:"relicCollected"`
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
-	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1}
+	g := &Game{
+		Seed: seed, RNG: rng, Tuning: tuning,
+		Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1,
+		VisitedFloors: make(map[int]bool), TransitionFiredForLevel: make(map[int]bool),
+	}
 	g.XPToNext = g.xpForNext()
 	g.Levels = make([]*Level, tuning.Floors)
 	for i := range tuning.Floors {
@@ -53,6 +60,9 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	// Find nearby free tile if stairs blocked by enemy (rare)
 	g.Party.Pos = start
 	g.Floor = 0
+	// Mark starting floor visited and transition-fired so re-entry does not re-fire before relic.
+	g.VisitedFloors[0] = true
+	g.TransitionFiredForLevel[0] = true
 	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
 	g.Logf("You stand at the temple threshold.")
 	// Debug log for deeper enemy talents/affixes
@@ -192,7 +202,7 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 			m.Light++
 		case "burdened":
 			if m.Carry == 0 {
-				m.Carry = 10
+				m.Carry = 5
 			}
 			m.Carry += 3
 		}
@@ -216,7 +226,7 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 			m.ATK[1] += 2
 		case "burden_bearer":
 			if m.Carry == 0 {
-				m.Carry = 10
+				m.Carry = 5
 			}
 			m.Carry += 3
 		case "light_bearer":
@@ -471,7 +481,23 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	if g.Floor == g.Tuning.Floors-1 && next == g.Relic {
 		g.Over = true
 		g.Won = true
+		g.RelicCollected = true
 		g.Logf("You claim the relic! Victory - seed %d.", g.Seed)
+		// Reset transition tracking so old floors feel new again.
+		g.VisitedFloors = make(map[int]bool)
+		g.TransitionFiredForLevel = make(map[int]bool)
+		// Keep current (final) floor marked visited so descending again doesn't re-fire? But we cleared; final stays visited.
+		g.VisitedFloors[g.Floor] = true
+		g.TransitionFiredForLevel[g.Floor] = true
+		// Repopulate old levels with new enemies.
+		if g.RNG != nil {
+			for i := range g.Tuning.Floors - 1 {
+				if g.Levels[i] != nil {
+					g.Levels[i].RegenerateEnemies(g.RNG, i)
+				}
+			}
+		}
+		g.Logf("The temple stirs: old floors repopulate.")
 		return ActionResult{Moved: true}
 	}
 	g.EndPlayerTurn("")
@@ -517,7 +543,21 @@ func (g *Game) TryStairsDown() {
 	g.Floor++
 	g.Party.Pos = g.CurLevel().StairsUp
 	g.Logf("You descend to floor %d.", g.Floor+1)
-	g.ApplyFloorTransition()
+	// On-transition talents fire exactly once per level per run.
+	if g.VisitedFloors == nil {
+		g.VisitedFloors = make(map[int]bool)
+	}
+	if g.TransitionFiredForLevel == nil {
+		g.TransitionFiredForLevel = make(map[int]bool)
+	}
+	if !g.VisitedFloors[g.Floor] && !g.TransitionFiredForLevel[g.Floor] {
+		g.ApplyFloorTransition()
+		g.VisitedFloors[g.Floor] = true
+		g.TransitionFiredForLevel[g.Floor] = true
+	} else {
+		// Ensure visited marked even if transition already fired (for tracking).
+		g.VisitedFloors[g.Floor] = true
+	}
 	g.UpdateFOV()
 	g.EnemyTurn() // enemies act after descent?
 }
@@ -538,20 +578,50 @@ func (g *Game) TryStairsUp() {
 	g.Floor--
 	g.Party.Pos = g.CurLevel().StairsDown
 	g.Logf("You ascend to floor %d.", g.Floor+1)
+	// Same visited/transition gating for upward travel (covers post-relic repopulation).
+	if g.VisitedFloors == nil {
+		g.VisitedFloors = make(map[int]bool)
+	}
+	if g.TransitionFiredForLevel == nil {
+		g.TransitionFiredForLevel = make(map[int]bool)
+	}
+	if !g.VisitedFloors[g.Floor] && !g.TransitionFiredForLevel[g.Floor] {
+		g.ApplyFloorTransition()
+		g.VisitedFloors[g.Floor] = true
+		g.TransitionFiredForLevel[g.Floor] = true
+	} else {
+		g.VisitedFloors[g.Floor] = true
+	}
 	g.UpdateFOV()
 }
 
 func (g *Game) ApplyFloorTransition() {
-	// DESIGN: cleric Restoration & druid Forage on floor transition (M3), but M1 food tick stub.
+	// On-transition talents: fire once per floor per run, reset on relic.
+	// Forage (druid): +100 food per bearer. Restoration (cleric): full heal all living members.
 	for _, m := range g.Party.Members {
 		if !m.IsAlive() {
 			continue
 		}
-		switch m.Class {
-		case "druid":
-			// Forage stub: would add food; food not yet tracked in M1
-		case "cleric":
-			// Restoration stub
+		if m.HasTalent("forage") {
+			g.Food += 100
+			g.FoodFloat += 100
+			g.Logf("%s forages +100 food (now %d).", m.Name, g.Food)
+		}
+		if m.HasTalent("restoration") {
+			healed := 0
+			for _, mm := range g.Party.Members {
+				if mm.IsAlive() && mm.HP < mm.MaxHP {
+					mm.HP = mm.MaxHP
+					healed++
+				}
+			}
+			if healed > 0 {
+				g.Logf("%s restores the party to full health.", m.Name)
+			} else {
+				g.Logf("%s channels restoration (party already healthy).", m.Name)
+			}
+			// Only one restoration proc per party per transition (avoid duplicate full-heal spam if multiple clerics).
+			break
 		}
 	}
 }

@@ -89,7 +89,11 @@ func (cs *CharSelectState) Done() bool { return len(cs.Picks) == 2 }
 
 func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
-	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1}
+	g := &Game{
+		Seed: seed, RNG: rng, Tuning: tuning,
+		Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1,
+		VisitedFloors: make(map[int]bool), TransitionFiredForLevel: make(map[int]bool),
+	}
 	g.XPToNext = g.xpForNext()
 	g.Levels = make([]*Level, tuning.Floors)
 	for i := range tuning.Floors {
@@ -103,6 +107,8 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 	start := g.Levels[0].StairsUp
 	g.Party.Pos = start
 	g.Floor = 0
+	g.VisitedFloors[0] = true
+	g.TransitionFiredForLevel[0] = true
 	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
 	names := ""
 	for i, m := range g.Party.Members {

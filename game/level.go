@@ -477,3 +477,128 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 		l.Enemies = append(l.Enemies, ep)
 	}
 }
+// RegenerateEnemies clears current enemies and spawns fresh parties for floor.
+// Used after relic pickup to repopulate old levels. Keeps map geometry intact.
+func (l *Level) RegenerateEnemies(rng *rand.Rand, floor int) {
+	l.Enemies = nil
+	// Collect walkable positions not on stairs.
+	var candidates []Pos
+	for y := range l.H {
+		for x := range l.W {
+			p := Pos{x, y}
+			if p == l.StairsUp || p == l.StairsDown {
+				continue
+			}
+			if !l.Walkable(p) {
+				continue
+			}
+			candidates = append(candidates, p)
+		}
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	partyCount := 3 + floor*2 + rng.IntN(3)
+	for range partyCount {
+		var p Pos
+		for range 100 {
+			p = candidates[rng.IntN(len(candidates))]
+			occupied := false
+			for _, e := range l.Enemies {
+				if e.Pos == p {
+					occupied = true
+					break
+				}
+			}
+			if !occupied {
+				break
+			}
+		}
+		partySize := 1
+		if floor >= 1 && rng.IntN(3) == 0 {
+			partySize++
+		}
+		if floor >= 3 && rng.IntN(2) == 0 {
+			partySize++
+		}
+		if floor >= 5 && rng.IntN(2) == 0 {
+			partySize++
+		}
+		if partySize > 4 {
+			partySize = 4
+		}
+		if floor >= 2 && rng.IntN(4) == 0 {
+			partySize = 1 + rng.IntN(2)
+		}
+		ep := &EnemyParty{Pos: p, Active: 0}
+		for range partySize {
+			entry := pickEnemyForFloor(rng, floor)
+			hp := 6 + floor*2 + rng.IntN(4)
+			if entry.Regen {
+				hp += 4
+			}
+			atkMin := 2 + floor
+			atkMax := atkMin + 2 + rng.IntN(2)
+			if entry.DamageType == "magic" && floor > 2 {
+				atkMin++
+				atkMax++
+			}
+			def := 0
+			mdef := 0
+			if floor >= 2 {
+				def = floor / 3
+				mdef = floor / 4
+			}
+			if entry.ID == "orc" {
+				def++
+			}
+			if entry.ID == "kobold" {
+				mdef++
+			}
+			if entry.ID == "troll" {
+				def++
+				mdef++
+			}
+			mem := &Member{
+				Name: entry.Name, Class: entry.ID,
+				HP: hp, MaxHP: hp,
+				ATK: [2]int{atkMin, atkMax},
+				DEF: def, MDEF: mdef,
+				Alive: true, DamageType: entry.DamageType,
+				Effect: entry.Effect, EffectChance: entry.EffectChance,
+				Regen: entry.Regen, XP: entry.XP, Color: entry.Color,
+			}
+			if mem.EffectChance < 0 {
+				mem.EffectChance = 0
+			}
+			if mem.EffectChance > 0.3 {
+				mem.EffectChance = 0.3
+			}
+			if floor >= 3 {
+				talentChance := entry.TalentChance
+				affixChance := entry.AffixChance
+				if floor >= 5 {
+					talentChance += 0.05
+					affixChance += 0.03
+				}
+				if talentChance > 0 && rng.Float64() < talentChance {
+					opts := GetTalentOptions(rng, mem.Class, 1)
+					if len(opts) > 0 {
+						chosen := opts[0]
+						mem.Talents = append(mem.Talents, chosen)
+					}
+				}
+				if affixChance > 0 && rng.Float64() < affixChance {
+					aff := GetRandomAffix(rng)
+					mem.Affixes = append(mem.Affixes, aff)
+				}
+			}
+			ep.Members = append(ep.Members, mem)
+		}
+		l.Enemies = append(l.Enemies, ep)
+	}
+}
+
+// SpawnNewEnemies is an alias for RegenerateEnemies (level respawn hook).
+func (l *Level) SpawnNewEnemies(rng *rand.Rand, floor int) { l.RegenerateEnemies(rng, floor) }
+

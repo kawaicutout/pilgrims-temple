@@ -121,34 +121,49 @@ func (p *Party) ApplyDamage(rng *rand.Rand, raw int) {
 			livingIdx = append(livingIdx, i)
 		}
 	}
-	// Roll
+	// Roll - 50% to active, 50% uniform among all living (including active)
 	r := rng.Float64()
-	// Threshold for active
-	threshold := 0.5 + 0.5/float64(n)
-	if r < threshold {
+	if r < 0.5 {
 		m := p.Members[activeIdx]
 		if !m.IsAlive() {
-			// fallback to random living
 			m = p.Members[livingIdx[rng.IntN(len(livingIdx))]]
 		}
 		apply(m)
 	} else {
-		// Distribute among all living uniformly for remaining 0.5
 		idx := livingIdx[rng.IntN(len(livingIdx))]
 		m := p.Members[idx]
 		apply(m)
 	}
 }
 
-// GenerateParty creates starting party (2 members per DESIGN 4.2, but M1 solo =1 for now; we support 1-2).
+// GenerateParty creates starting party (M1 solo 1, M2+ 2 per DESIGN 4.2).
 func GenerateParty(rng *rand.Rand, level int) *Party {
-	// For M1, solo: 1 fighter-like. For full, 2 random classes soon.
+	// For M2, generate 2 random distinct classes
 	classes := []string{"fighter", "cleric", "rogue", "wizard", "druid", "bard", "barbarian", "paladin"}
-	// M1: single member at level 1
-	m := generateMember(rng, classes[rng.IntN(len(classes))], level)
-	p := &Party{Members: []*Member{m}, Pos: Pos{0, 0}, Selected: 0, Active: 0}
-	m.Alive = true
-	return p
+	// Pick 2 distinct
+	a := classes[rng.IntN(len(classes))]
+	b := a
+	for b == a {
+		b = classes[rng.IntN(len(classes))]
+	}
+	return GeneratePartyWithClasses(rng, []string{a, b}, level)
+}
+
+// GeneratePartyWithClasses creates a party from explicit class list (for character select).
+func GeneratePartyWithClasses(rng *rand.Rand, classes []string, level int) *Party {
+	if len(classes) == 0 {
+		classes = []string{"fighter"}
+	}
+	if len(classes) > 4 {
+		classes = classes[:4]
+	}
+	var members []*Member
+	for _, c := range classes {
+		m := generateMember(rng, c, level)
+		m.Alive = true
+		members = append(members, m)
+	}
+	return &Party{Members: members, Pos: Pos{0, 0}, Selected: 0, Active: 0}
 }
 
 func generateMember(rng *rand.Rand, class string, level int) *Member {

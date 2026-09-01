@@ -3,7 +3,7 @@
 # Tries to auto-resize the current terminal in-place; only spawns a new
 # window when not in a TTY or when resize fails. Preserves numpad.
 set -e
-BIN="./pilgrims-temple"
+BIN="./bin/pilgrims-temple"
 COLS=110
 ROWS=34
 if [ ! -x "$BIN" ]; then

@@ -16,6 +16,7 @@ const (
 	KeyStairsUp    Key = "stairs_up"
 	KeyQuit        Key = "quit"
 	KeyHelp        Key = "help"
+	KeyEnter       Key = "enter"
 	KeySelect1     Key = "select1"
 	KeySelect2     Key = "select2"
 	KeySelect3     Key = "select3"
@@ -100,6 +101,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyWait
 	case "Escape":
 		return KeyQuit
+	case "Enter":
+		return KeyEnter
 	}
 	switch raw {
 	case "8", "k", "K", "ArrowUp":
@@ -124,6 +127,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyStairsDown
 	case "<":
 		return KeyStairsUp
+	case "Enter":
+		return KeyEnter
 	case "q":
 		return KeySelect1
 	case "Q":

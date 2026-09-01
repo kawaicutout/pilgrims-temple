@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"time"
 
@@ -14,9 +13,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	seed := time.Now().UnixNano()
-	g := game.NewGame(seed, tuning)
-
 	s, err := tcell.NewScreen()
 	if err != nil {
 		log.Fatal(err)
@@ -25,7 +21,6 @@ func main() {
 		log.Fatal(err)
 	}
 	defer s.Fini()
-	// Mouse not needed for roguelike
 
 	bg := tcell.NewRGBColor(20, 18, 16)
 	fg := tcell.NewRGBColor(230, 224, 216)
@@ -47,17 +42,17 @@ func main() {
 	styleGray2 := styleBG.Foreground(gray2)
 	_ = styleGold
 
-	draw := func() {
+	drawFrame := func(frame game.Frame) {
 		w, h := s.Size()
-		minW := g.Tuning.Layout.MinCols
-		minH := g.Tuning.Layout.MinRows
+		minW := frame.MinCols
+		minH := frame.MinRows
 		for y := range h {
 			for x := range w {
 				s.SetContent(x, y, ' ', nil, styleBG)
 			}
 		}
 		if w < minW || h < minH {
-			msg := fmt.Sprintf(" Pilgrim's Temple — resize to %dx%d (you have %dx%d) ", minW, minH, w, h)
+			msg := " Pilgrim's Temple - resize to " + itoa(minW) + "x" + itoa(minH) + " (you have " + itoa(w) + "x" + itoa(h) + ") "
 			for i, ch := range msg {
 				if i < w {
 					s.SetContent(i, 0, ch, nil, styleGoldBr)
@@ -72,7 +67,6 @@ func main() {
 			s.Show()
 			return
 		}
-		frame := g.Render()
 		for y := range frame.H {
 			for x := range frame.W {
 				if y >= h || x >= w {
@@ -91,10 +85,29 @@ func main() {
 					st = styleFloor
 				case "gold":
 					st = styleGold
-				case "gray-3":
+				case "gold-bright":
+					st = styleGoldBr
+				case "gray-3", "gray-2":
 					st = styleGray2
 				default:
-					st = styleBG
+					if cell.FG == "bg" {
+						st = styleBG
+					} else {
+						st = styleGray1
+						if len(frame.Cells[y][x].FG) > 0 && frame.Cells[y][x].FG == "gold-bright" {
+							st = styleGoldBr
+						}
+					}
+					// For menu, check FG string
+					if cell.FG == "gold-bright" {
+						st = styleGoldBr
+					} else if cell.FG == "gray-1" {
+						st = styleGray1
+					} else if cell.FG == "gray-2" {
+						st = styleGray2
+					} else if cell.FG == "gold" {
+						st = styleGold
+					}
 				}
 				s.SetContent(x, y, cell.Glyph, nil, st)
 			}
@@ -162,41 +175,154 @@ func main() {
 		s.Show()
 	}
 
-	draw()
+	// App states
+	type appState int
+	const (
+		stateMenu appState = iota
+		stateCharSelect
+		statePlaying
+	)
+
+	state := stateMenu
+	menu := &game.MainMenuState{Selected: 0}
+	var cs *game.CharSelectState
+	var g *game.Game
+
+	drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 	for {
 		ev := s.PollEvent()
 		switch e := ev.(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			draw()
+			switch state {
+			case stateMenu:
+				drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+			case stateCharSelect:
+				if cs != nil {
+					drawFrame(game.RenderCharSelect(tuning, cs))
+				}
+			case statePlaying:
+				if g != nil {
+					drawFrame(g.Render())
+				}
+			}
 		case *tcell.EventKey:
 			key, code := tcellKeyToRaw(e)
 			k := game.NormalizeKey(key, code)
-			g.HandleKey(k)
-			draw()
-			if g.Quit {
-				// Save and return to main menu - for now just exit (not a death)
-				// TODO: write save file at quit
-				return
-			}
-			if g.Over {
-				// Wait for Esc after game over
-				for {
-					ev2 := s.PollEvent()
-					if ke, ok := ev2.(*tcell.EventKey); ok {
-						key2, code2 := tcellKeyToRaw(ke)
-						k2 := game.NormalizeKey(key2, code2)
-						if k2 == game.KeyQuit {
-							return
+			switch state {
+			case stateMenu:
+				switch k {
+				case game.KeyUp:
+					menu.Move(-1)
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+				case game.KeyDown:
+					menu.Move(1)
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+				case game.KeyEnter:
+					switch menu.Selected {
+					case 0: // New Game
+						var err error
+						cs, err = game.NewCharSelect()
+						if err != nil {
+							cs = &game.CharSelectState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}, Picks: []string{}}
 						}
-					} else if _, ok := ev2.(*tcell.EventResize); ok {
-						s.Sync()
-						draw()
+						state = stateCharSelect
+						drawFrame(game.RenderCharSelect(tuning, cs))
+					case 1: // Scores placeholder
+						// Show scores as log in menu? For now just stay
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					case 2: // Exit
+						return
+					}
+				case game.KeyQuit:
+					return
+				}
+			case stateCharSelect:
+				if cs == nil {
+					state = stateMenu
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					break
+				}
+				switch k {
+				case game.KeyUp:
+					cs.Move(-1)
+					drawFrame(game.RenderCharSelect(tuning, cs))
+				case game.KeyDown:
+					cs.Move(1)
+					drawFrame(game.RenderCharSelect(tuning, cs))
+				case game.KeyEnter:
+					if cs.Done() {
+						seed := time.Now().UnixNano()
+						g = game.NewGameWithClasses(seed, tuning, cs.Picks)
+						state = statePlaying
+						drawFrame(g.Render())
+					} else {
+						cs.Select()
+						drawFrame(game.RenderCharSelect(tuning, cs))
+						if cs.Done() {
+							// Stay, waiting for Enter to begin
+							drawFrame(game.RenderCharSelect(tuning, cs))
+						}
+					}
+				case game.KeyQuit:
+					if cs.Back() {
+						state = stateMenu
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					} else {
+						drawFrame(game.RenderCharSelect(tuning, cs))
+					}
+				}
+			case statePlaying:
+				if g == nil {
+					state = stateMenu
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					break
+				}
+				g.HandleKey(k)
+				drawFrame(g.Render())
+				if g.Quit {
+					// Return to menu, not a death
+					state = stateMenu
+					g = nil
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+				} else if g.Over {
+					// Wait for Esc to return to menu
+					for {
+						ev2 := s.PollEvent()
+						if ke, ok := ev2.(*tcell.EventKey); ok {
+							key2, code2 := tcellKeyToRaw(ke)
+							k2 := game.NormalizeKey(key2, code2)
+							if k2 == game.KeyQuit || k2 == game.KeyEnter {
+								state = stateMenu
+								g = nil
+								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+								break
+							}
+						} else if _, ok := ev2.(*tcell.EventResize); ok {
+							s.Sync()
+							if g != nil {
+								drawFrame(g.Render())
+							} else {
+								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+							}
+						}
 					}
 				}
 			}
 		}
 	}
+}
+
+func itoa(v int) string {
+	if v == 0 {
+		return "0"
+	}
+	s := ""
+	for v > 0 {
+		s = string(rune('0'+v%10)) + s
+		v /= 10
+	}
+	return s
 }
 
 func tcellKeyToRaw(e *tcell.EventKey) (key string, code string) {

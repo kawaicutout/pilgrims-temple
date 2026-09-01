@@ -14,9 +14,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	seed := time.Now().UnixNano()
-	g := game.NewGame(seed, tuning)
-
 	doc := js.Global().Get("document")
 	gameDiv := doc.Call("getElementById", "game")
 	statusDiv := doc.Call("getElementById", "status")
@@ -30,20 +27,47 @@ func main() {
 		body.Call("appendChild", statusDiv)
 	}
 
-	render := func() {
+	type appState int
+	const (
+		stateMenu appState = iota
+		stateCharSelect
+		statePlaying
+	)
+	state := stateMenu
+	menu := &game.MainMenuState{Selected: 0}
+	var cs *game.CharSelectState
+	var g *game.Game
+
+	renderMenu := func() {
+		frame := game.RenderMainMenu(tuning, menu.Selected)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+	}
+	renderCharSelect := func() {
+		if cs == nil {
+			return
+		}
+		frame := game.RenderCharSelect(tuning, cs)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+	}
+	renderGame := func() {
+		if g == nil {
+			return
+		}
 		frame := g.Render()
-		html := buildHTML(frame, tuning)
-		gameDiv.Set("innerHTML", html)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		if g.Quit {
-			statusDiv.Set("textContent", "Quit to menu. Seed "+itoa(g.Seed)+" - refresh to play again.")
+			statusDiv.Set("textContent", "Quit to menu. Seed "+itoa(g.Seed)+" - refresh or Esc")
 		} else if g.Won {
 			statusDiv.Set("textContent", "VICTORY! Seed "+itoa(g.Seed)+" - refresh to play again.")
 		} else if g.Over {
 			statusDiv.Set("textContent", "YOU DIED. Seed "+itoa(g.Seed)+" - refresh to play again.")
 		}
 	}
-	render()
+
+	renderMenu()
 
 	var keyHandler js.Func
 	keyHandler = js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -55,8 +79,90 @@ func main() {
 		case game.KeyUp, game.KeyDown, game.KeyLeft, game.KeyRight, game.KeyUpLeft, game.KeyUpRight, game.KeyDownLeft, game.KeyDownRight, game.KeyWait:
 			e.Call("preventDefault")
 		}
-		g.HandleKey(k)
-		render()
+		switch state {
+		case stateMenu:
+			switch k {
+			case game.KeyUp:
+				menu.Move(-1)
+				renderMenu()
+			case game.KeyDown:
+				menu.Move(1)
+				renderMenu()
+			case game.KeyEnter:
+				switch menu.Selected {
+				case 0:
+					var err error
+					cs, err = game.NewCharSelect()
+					if err != nil {
+						cs = &game.CharSelectState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}}
+					}
+					state = stateCharSelect
+					renderCharSelect()
+				case 1:
+					// Scores placeholder
+					renderMenu()
+				case 2:
+					// Exit not applicable on web; just stay
+				}
+			case game.KeyQuit:
+				// No exit on web
+			}
+		case stateCharSelect:
+			if cs == nil {
+				state = stateMenu
+				renderMenu()
+				break
+			}
+			switch k {
+			case game.KeyUp:
+				cs.Move(-1)
+				renderCharSelect()
+			case game.KeyDown:
+				cs.Move(1)
+				renderCharSelect()
+			case game.KeyEnter:
+				if cs.Done() {
+					seed := time.Now().UnixNano()
+					g = game.NewGameWithClasses(seed, tuning, cs.Picks)
+					state = statePlaying
+					renderGame()
+				} else {
+					cs.Select()
+					renderCharSelect()
+				}
+			case game.KeyQuit:
+				if cs.Back() {
+					state = stateMenu
+					renderMenu()
+				} else {
+					renderCharSelect()
+				}
+			}
+		case statePlaying:
+			if g == nil {
+				state = stateMenu
+				renderMenu()
+				break
+			}
+			g.HandleKey(k)
+			renderGame()
+			if g.Quit {
+				state = stateMenu
+				g = nil
+				renderMenu()
+			} else if g.Over {
+				// Stay in playing state showing game over, next Esc will go to menu via next key
+				// We handle next Esc as quit to menu
+				// For web, next key after Over will be handled as menu return if quit
+				// So we keep statePlaying but next Esc will be caught as Quit and transition
+				// To allow immediate Esc to menu, check if k was Quit
+				if k == game.KeyQuit || k == game.KeyEnter {
+					state = stateMenu
+					g = nil
+					renderMenu()
+				}
+			}
+		}
 		return nil
 	})
 	js.Global().Get("document").Call("addEventListener", "keydown", keyHandler)

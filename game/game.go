@@ -22,6 +22,9 @@ type Game struct {
 	XP             int
 	XPToNext       int
 	LevelUpPending *LevelUpState
+	Gold           int
+	Kills          int
+	Escaped        bool
 	Over           bool
 	Won            bool
 	Quit           bool // ESC quit to main menu, not a death

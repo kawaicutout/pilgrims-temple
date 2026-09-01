@@ -1,0 +1,23 @@
+{
+  "notes": "Pilgrim's Temple — potion appearance pool. Run-random: appearances are shuffled onto potion types at generation (DESIGN 7.2/11.1). Appearance is \"{optional adjective} {color}\" — a color with an optional adjective prefix. 8 appearances, 8 types, bijection per run.",
+  "appearances": [
+    "Azure",
+    "Crimson",
+    "Mottled Jade",
+    "Vivid Yellow",
+    "Smoky Grey",
+    "Pale Violet",
+    "Deep Amber",
+    "Murky Brown"
+  ],
+  "types": [
+    { "id": "healing", "name": "Healing", "desc": "Restores 12 HP to one member" },
+    { "id": "poison", "name": "Poison", "desc": "Deals 6 poison damage" },
+    { "id": "strength", "name": "Strength", "desc": "+2 attack for 40 turns" },
+    { "id": "invisibility", "name": "Invisibility", "desc": "Become unseen for 20 turns" },
+    { "id": "fire_resist", "name": "Fire Resistance", "desc": "+30% fire resist for 60 turns" },
+    { "id": "paralysis", "name": "Paralysis", "desc": "Paralyzes for 3 turns (negative)" },
+    { "id": "levitation", "name": "Levitation", "desc": "Float over traps for 25 turns" },
+    { "id": "enlightenment", "name": "Enlightenment", "desc": "Reveals map for 15 turns" }
+  ]
+}

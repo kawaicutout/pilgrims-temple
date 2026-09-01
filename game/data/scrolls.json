@@ -1,0 +1,23 @@
+{
+  "notes": "Pilgrim's Temple — scroll appearance pool. Run-random: appearances are shuffled onto scroll types at generation (DESIGN 7.2/11.1). Appearance is a \"verb noun\" token of the form \"X of (the) Y\" such as \"Than of the Moth\". 8 appearances, 8 types, bijection per run.",
+  "appearances": [
+    "Than of the Moth",
+    "Kel of Shadows",
+    "Vor of Flames",
+    "Zin of Binding",
+    "Eld of Whispers",
+    "Mor of Unmaking",
+    "Ir of Light",
+    "Sha of Warding"
+  ],
+  "types": [
+    { "id": "identify", "name": "Identify", "desc": "Identifies one held appearance" },
+    { "id": "teleport", "name": "Teleport", "desc": "Teleports to a random floor tile" },
+    { "id": "fireball", "name": "Fireball", "desc": "Deals 10 fire damage to adjacent enemies" },
+    { "id": "enchant", "name": "Enchant", "desc": "Grants a random affix to one member" },
+    { "id": "mapping", "name": "Mapping", "desc": "Reveals the current floor map" },
+    { "id": "confusion", "name": "Confusion", "desc": "Confuses enemies for 8 turns (negative if misapplied)" },
+    { "id": "greater_healing", "name": "Greater Healing", "desc": "Restores 20 HP to all living members" },
+    { "id": "summon", "name": "Summon Aid", "desc": "Summons a temporary ally for 15 turns" }
+  ]
+}

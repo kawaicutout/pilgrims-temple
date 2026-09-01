@@ -24,5 +24,11 @@
   },
   "targeting": {
     "activeWeight": 0.5
+  },
+  "scoreWeights": {
+    "floor": 100,
+    "kill": 10,
+    "survivor": 50,
+    "escapeBonus": 500
   }
 }

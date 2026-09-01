@@ -1,0 +1,7 @@
+{
+  "wares": [
+    { "id": "ration", "price": 25, "name": "Ration" },
+    { "id": "potion_heal", "price": 40, "name": "Healing Draught" },
+    { "id": "scroll_upgrade", "price": 75, "name": "Scroll of Might" }
+  ]
+}

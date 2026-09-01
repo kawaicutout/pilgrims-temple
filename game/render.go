@@ -243,3 +243,47 @@ func (g *Game) RenderLevelUp() Frame {
 	}
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
 }
+func (g *Game) RenderWizardMenu(tuning Tuning, selected int) Frame {
+	w, h := tuning.Map.Width, tuning.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	title := "WIZARD MODE"
+	sub := "Cheats disable scoring"
+	drawCentered(cells, w, 2, title, "gold-bright")
+	drawCentered(cells, w, 3, sub, "gray-1")
+	startY := 5
+	for i, opt := range WizardOptions {
+		fg := "gray-1"
+		prefix := "  "
+		if i == selected {
+			prefix = "> "
+			fg = "gold-bright"
+		}
+		line := prefix + opt.Name
+		if len(line) > w-4 {
+			line = line[:w-7] + "..."
+		}
+		drawCentered(cells, w, startY+i*2, line, fg)
+		if i == selected {
+			desc := opt.Desc
+			if len(desc) > w-4 {
+				desc = desc[:w-7] + "..."
+			}
+			drawCentered(cells, w, startY+i*2+1, desc, "gray-2")
+		}
+	}
+	panel := []string{"", "Wizard Mode", "Scores disabled", "when active"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	status := "Wizard Mode"
+	hints := "Up/Down: move Enter: select Esc: back"
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}

@@ -38,8 +38,8 @@ type gameJSON struct {
 	Won            bool          `json:"won"`
 	Quit           bool          `json:"quit"`
 	Relic          Pos           `json:"relic"`
+	Wizard         bool          `json:"wizard"`
 }
-
 // MarshalJSON keeps unexported-equivalent fields (RNG) via Seed derivation.
 func (g *Game) MarshalJSON() ([]byte, error) {
 	if g == nil {
@@ -66,6 +66,7 @@ func (g *Game) MarshalJSON() ([]byte, error) {
 		Won:            g.Won,
 		Quit:           g.Quit,
 		Relic:          g.Relic,
+		Wizard:         g.Wizard,
 	}
 	return json.Marshal(aux)
 }
@@ -99,6 +100,7 @@ func (g *Game) UnmarshalJSON(data []byte) error {
 	g.Won = aux.Won
 	g.Quit = aux.Quit
 	g.Relic = aux.Relic
+	g.Wizard = aux.Wizard
 	// Recreate RNG deterministically from seed (same PCG as NewGame).
 	g.RNG = rand.New(rand.NewPCG(uint64(g.Seed), 0x9e3779b97f4a7c15))
 	return nil

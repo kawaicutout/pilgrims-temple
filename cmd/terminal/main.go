@@ -223,14 +223,18 @@ func main() {
 		stateMenu appState = iota
 		stateCharSelect
 		statePlaying
+		stateWizard
+		stateWizardAddMember
+		stateWizardRemoveMember
 	)
 
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
 	var g *game.Game
-
-	drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+	wizardState := &game.WizardState{Selected: 0}
+	var wizardAddCS *game.CharSelectState
+	wizardRemoveIdx := 0
 	for {
 		ev := s.PollEvent()
 		switch e := ev.(type) {
@@ -244,6 +248,22 @@ func main() {
 					drawFrame(game.RenderCharSelect(tuning, cs))
 				}
 			case statePlaying:
+				if g != nil {
+					if g.LevelUpPending != nil {
+						drawFrame(g.RenderLevelUp())
+					} else {
+						drawFrame(g.Render())
+					}
+				}
+			case stateWizard:
+				if g != nil {
+					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+				}
+			case stateWizardAddMember:
+				if wizardAddCS != nil {
+					drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
+				}
+			case stateWizardRemoveMember:
 				if g != nil {
 					drawFrame(g.Render())
 				}
@@ -375,6 +395,13 @@ func main() {
 					}
 					break
 				}
+				// Wizard key: open wizard menu (not when LevelUpPending or Look active)
+				if k == game.KeyWizard && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit {
+					wizardState.Selected = 0
+					state = stateWizard
+					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+					break
+				}
 				g.HandleKey(k)
 				drawFrame(g.Render())
 				if g.LevelUpPending != nil {
@@ -408,11 +435,171 @@ func main() {
 						}
 					}
 				}
+			case stateWizard:
+				switch k {
+				case game.KeyUp:
+					wizardState.Move(-1)
+					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+				case game.KeyDown:
+					wizardState.Move(1)
+					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+				case game.KeyQuit:
+					state = statePlaying
+					drawFrame(g.Render())
+					if g.LevelUpPending != nil {
+						drawFrame(g.RenderLevelUp())
+					}
+				case game.KeyEnter:
+					opt := game.WizardOptions[wizardState.Selected]
+					switch opt.ID {
+					case "add_member":
+						if len(g.Party.Members) >= 4 {
+							g.WizardAddMember()
+							state = statePlaying
+							drawFrame(g.Render())
+							break
+						}
+						var err error
+						wizardAddCS, err = game.NewCharSelect()
+						if err != nil {
+							// fallback: directly add random
+							g.WizardAddMember()
+							state = statePlaying
+							drawFrame(g.Render())
+							break
+						}
+						wizardAddCS.Picks = []string{}
+						state = stateWizardAddMember
+						drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
+					case "remove_member":
+						// Enter remove-member selection
+						wizardRemoveIdx = g.Party.Selected
+						// ensure valid living
+						found := -1
+						for i, m := range g.Party.Members {
+							if m.IsAlive() {
+								found = i
+								break
+							}
+						}
+						if found >= 0 {
+							wizardRemoveIdx = found
+						}
+						state = stateWizardRemoveMember
+						drawFrame(g.Render())
+					case "instant_level", "spawn_loot", "food_1000", "full_heal", "reveal_all":
+						g.WizardExecute(opt.ID)
+						state = statePlaying
+						drawFrame(g.Render())
+						if g.LevelUpPending != nil {
+							drawFrame(g.RenderLevelUp())
+						}
+					default:
+						g.WizardExecute(opt.ID)
+						state = statePlaying
+						drawFrame(g.Render())
+					}
+				}
+			case stateWizardAddMember:
+				if wizardAddCS == nil {
+					state = stateWizard
+					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+					break
+				}
+				switch k {
+				case game.KeyUp:
+					wizardAddCS.Move(-1)
+					drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
+				case game.KeyDown:
+					wizardAddCS.Move(1)
+					drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
+				case game.KeyEnter:
+					// pick one class then add
+					wizardAddCS.Select()
+					if len(wizardAddCS.Picks) > 0 {
+						classID := wizardAddCS.Picks[0]
+						g.SetWizard()
+						if len(g.Party.Members) < 4 {
+							tmp := game.GeneratePartyWithClasses(g.RNG, []string{classID}, 1)
+							if tmp != nil && len(tmp.Members) > 0 {
+								m := tmp.Members[0]
+								for lvl := 1; lvl < g.Level; lvl++ {
+									m.MaxHP += 1 + g.RNG.IntN(2)
+									if g.RNG.IntN(2) == 0 {
+										m.ATK[0]++
+										m.ATK[1]++
+									}
+									if g.RNG.IntN(4) == 0 {
+										m.DEF++
+									}
+								}
+								m.HP = m.MaxHP
+								m.Alive = true
+								g.Party.Members = append(g.Party.Members, m)
+								g.Party.EnsureSelection()
+								g.Logf("Wizard: Add Party Member -> %s the %s joined", m.Name, m.Class)
+							}
+						} else {
+							g.Logf("Wizard: Add Party Member - party full")
+						}
+						wizardAddCS = nil
+						state = statePlaying
+						drawFrame(g.Render())
+					} else {
+						drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
+					}
+				case game.KeyQuit:
+					if wizardAddCS.Back() {
+						// if backs out completely
+						wizardAddCS = nil
+						state = stateWizard
+						drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+					} else {
+						drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
+					}
+				}
+			case stateWizardRemoveMember:
+				switch k {
+				case game.KeyUp:
+					// move to previous living
+					for range g.Party.Members {
+						wizardRemoveIdx--
+						if wizardRemoveIdx < 0 {
+							wizardRemoveIdx = len(g.Party.Members) - 1
+						}
+						if g.Party.Members[wizardRemoveIdx].IsAlive() {
+							break
+						}
+					}
+					g.Party.Selected = wizardRemoveIdx
+					drawFrame(g.Render())
+				case game.KeyDown:
+					for range g.Party.Members {
+						wizardRemoveIdx++
+						if wizardRemoveIdx >= len(g.Party.Members) {
+							wizardRemoveIdx = 0
+						}
+						if g.Party.Members[wizardRemoveIdx].IsAlive() {
+							break
+						}
+					}
+					g.Party.Selected = wizardRemoveIdx
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					g.WizardRemoveMember(wizardRemoveIdx)
+					state = statePlaying
+					drawFrame(g.Render())
+					if g.Over {
+						// will handle in next playing loop
+					}
+				case game.KeyQuit:
+					state = stateWizard
+					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+				}
 			}
 		}
 	}
 }
-
 func parseHexColor(s string) (tcell.Color, bool) {
 	if len(s) != 7 || s[0] != '#' {
 		return 0, false

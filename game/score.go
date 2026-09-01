@@ -91,6 +91,9 @@ func scoreForPure(floors, kills, survivors int, escaped bool, w ScoreWeights) in
 // CalculateScore computes Score = floors*100 + kills*10 + survivors*50 + escapeBonus
 // with weights tunable via tuning.json scoreWeights.
 func (g *Game) CalculateScore() int {
+	if g.Wizard {
+		return 0
+	}
 	w := loadScoreWeights()
 	floors := g.Floor + 1
 	if floors < 0 {
@@ -112,9 +115,11 @@ func (g *Game) CalculateScore() int {
 	escaped := g.Won
 	return scoreForPure(floors, kills, survivors, escaped, w)
 }
-
 // CalculateScoreWithWeights computes with explicit weights (for tests).
 func (g *Game) CalculateScoreWithWeights(w ScoreWeights) int {
+	if g.Wizard {
+		return 0
+	}
 	floors := g.Floor + 1
 	kills := g.Kills
 	if v, ok := killStore[g]; ok {

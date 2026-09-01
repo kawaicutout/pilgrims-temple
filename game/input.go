@@ -22,6 +22,7 @@ const (
 	KeySelect2    Key = "select2"
 	KeySelect3    Key = "select3"
 	KeySelect4    Key = "select4"
+	KeyWizard     Key = "wizard"
 )
 
 func KeyToDir(k Key) (Dir, bool) {
@@ -133,6 +134,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyQuit
 	case "Enter":
 		return KeyEnter
+	case "BracketRight":
+		return KeyWizard
 	}
 	switch raw {
 	case "8", "k", "K", "ArrowUp":
@@ -173,6 +176,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyHelp
 	case "Escape":
 		return KeyQuit
+	case "]", "}":
+		return KeyWizard
 	}
 	return Key(raw)
 }

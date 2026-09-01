@@ -8,28 +8,29 @@ import (
 
 // Game holds run state.
 type Game struct {
-	Seed           int64
-	RNG            *rand.Rand
-	Tuning         Tuning
-	Levels         []*Level
-	Floor          int
-	Party          *Party
-	Log            []string // 8 lines, oldest dropped
-	Turn           int
-	Food           int
-	FoodFloat      float64
-	Level          int
-	XP             int
-	XPToNext       int
-	LevelUpPending *LevelUpState
-	Gold           int
-	Kills          int
-	Escaped        bool
-	Over           bool
-	Won            bool
-	Quit           bool // ESC quit to main menu, not a death
-	Look           *LookState
-	Relic          Pos // on final floor
+	Seed           int64 `json:"seed"`
+	RNG            *rand.Rand `json:"-"`
+	Tuning         Tuning `json:"tuning"`
+	Levels         []*Level `json:"levels"`
+	Floor          int `json:"floor"`
+	Party          *Party `json:"party"`
+	Log            []string `json:"log"`
+	Turn           int `json:"turn"`
+	Food           int `json:"food"`
+	FoodFloat      float64 `json:"foodFloat"`
+	Level          int `json:"level"`
+	XP             int `json:"xp"`
+	XPToNext       int `json:"xpToNext"`
+	LevelUpPending *LevelUpState `json:"levelUpPending"`
+	Gold           int `json:"gold"`
+	Kills          int `json:"kills"`
+	Escaped        bool `json:"escaped"`
+	Over           bool `json:"over"`
+	Won            bool `json:"won"`
+	Quit           bool `json:"quit"`
+	Look           *LookState `json:"look"`
+	Relic          Pos `json:"relic"`
+	Wizard         bool `json:"wizard"`
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {

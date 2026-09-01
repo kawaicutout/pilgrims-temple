@@ -48,11 +48,17 @@ func main() {
 		stateMenu appState = iota
 		stateCharSelect
 		statePlaying
+		stateWizard
+		stateWizardAddMember
+		stateWizardRemoveMember
 	)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
 	var g *game.Game
+	wizardState := &game.WizardState{Selected: 0}
+	var wizardAddCS *game.CharSelectState
+	wizardRemoveIdx := 0
 
 	renderMenu := func() {
 		frame := game.RenderMainMenu(tuning, menu.Selected)
@@ -95,6 +101,15 @@ func main() {
 			return
 		}
 		frame := g.RenderLevelUp()
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderWizard := func() {
+		if g == nil {
+			return
+		}
+		frame := g.RenderWizardMenu(tuning, wizardState.Selected)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -231,6 +246,12 @@ func main() {
 				}
 				break
 			}
+			if k == game.KeyWizard && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit {
+				wizardState.Selected = 0
+				state = stateWizard
+				renderWizard()
+				break
+			}
 			g.HandleKey(k)
 			renderGame()
 			if g.Quit {
@@ -243,6 +264,170 @@ func main() {
 					g = nil
 					renderMenu()
 				}
+			}
+		case stateWizard:
+			switch k {
+			case game.KeyUp:
+				wizardState.Move(-1)
+				renderWizard()
+			case game.KeyDown:
+				wizardState.Move(1)
+				renderWizard()
+			case game.KeyQuit:
+				state = statePlaying
+				renderGame()
+			case game.KeyEnter:
+				opt := game.WizardOptions[wizardState.Selected]
+				switch opt.ID {
+				case "add_member":
+					if len(g.Party.Members) >= 4 {
+						g.WizardAddMember()
+						state = statePlaying
+						renderGame()
+						break
+					}
+					var err error
+					wizardAddCS, err = game.NewCharSelect()
+					if err != nil {
+						g.WizardAddMember()
+						state = statePlaying
+						renderGame()
+						break
+					}
+					wizardAddCS.Picks = []string{}
+					state = stateWizardAddMember
+					frame := game.RenderCharSelect(tuning, wizardAddCS)
+					gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+					statusDiv.Set("textContent", frame.Status)
+					renderLogHints(frame)
+				case "remove_member":
+					wizardRemoveIdx = g.Party.Selected
+					found := -1
+					for i, m := range g.Party.Members {
+						if m.IsAlive() {
+							found = i
+							break
+						}
+					}
+					if found >= 0 {
+						wizardRemoveIdx = found
+					}
+					state = stateWizardRemoveMember
+					renderGame()
+				case "instant_level", "spawn_loot", "food_1000", "full_heal", "reveal_all":
+					g.WizardExecute(opt.ID)
+					state = statePlaying
+					renderGame()
+					if g.LevelUpPending != nil {
+						renderLevelUp()
+					}
+				default:
+					g.WizardExecute(opt.ID)
+					state = statePlaying
+					renderGame()
+				}
+			}
+		case stateWizardAddMember:
+			if wizardAddCS == nil {
+				state = stateWizard
+				renderWizard()
+				break
+			}
+			switch k {
+			case game.KeyUp:
+				wizardAddCS.Move(-1)
+				frame := game.RenderCharSelect(tuning, wizardAddCS)
+				gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+				statusDiv.Set("textContent", frame.Status)
+				renderLogHints(frame)
+			case game.KeyDown:
+				wizardAddCS.Move(1)
+				frame := game.RenderCharSelect(tuning, wizardAddCS)
+				gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+				statusDiv.Set("textContent", frame.Status)
+				renderLogHints(frame)
+			case game.KeyEnter:
+				wizardAddCS.Select()
+				if len(wizardAddCS.Picks) > 0 {
+					classID := wizardAddCS.Picks[0]
+					g.SetWizard()
+					if len(g.Party.Members) < 4 {
+						tmp := game.GeneratePartyWithClasses(g.RNG, []string{classID}, 1)
+						if tmp != nil && len(tmp.Members) > 0 {
+							m := tmp.Members[0]
+							for lvl := 1; lvl < g.Level; lvl++ {
+								m.MaxHP += 1 + g.RNG.IntN(2)
+								if g.RNG.IntN(2) == 0 {
+									m.ATK[0]++
+									m.ATK[1]++
+								}
+								if g.RNG.IntN(4) == 0 {
+									m.DEF++
+								}
+							}
+							m.HP = m.MaxHP
+							m.Alive = true
+							g.Party.Members = append(g.Party.Members, m)
+							g.Party.EnsureSelection()
+							g.Logf("Wizard: Add Party Member -> %s the %s joined", m.Name, m.Class)
+						}
+					} else {
+						g.Logf("Wizard: Add Party Member - party full")
+					}
+					wizardAddCS = nil
+					state = statePlaying
+					renderGame()
+				} else {
+					frame := game.RenderCharSelect(tuning, wizardAddCS)
+					gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+					statusDiv.Set("textContent", frame.Status)
+					renderLogHints(frame)
+				}
+			case game.KeyQuit:
+				if wizardAddCS.Back() {
+					wizardAddCS = nil
+					state = stateWizard
+					renderWizard()
+				} else {
+					frame := game.RenderCharSelect(tuning, wizardAddCS)
+					gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+					statusDiv.Set("textContent", frame.Status)
+					renderLogHints(frame)
+				}
+			}
+		case stateWizardRemoveMember:
+			switch k {
+			case game.KeyUp:
+				for range g.Party.Members {
+					wizardRemoveIdx--
+					if wizardRemoveIdx < 0 {
+						wizardRemoveIdx = len(g.Party.Members) - 1
+					}
+					if g.Party.Members[wizardRemoveIdx].IsAlive() {
+						break
+					}
+				}
+				g.Party.Selected = wizardRemoveIdx
+				renderGame()
+			case game.KeyDown:
+				for range g.Party.Members {
+					wizardRemoveIdx++
+					if wizardRemoveIdx >= len(g.Party.Members) {
+						wizardRemoveIdx = 0
+					}
+					if g.Party.Members[wizardRemoveIdx].IsAlive() {
+						break
+					}
+				}
+				g.Party.Selected = wizardRemoveIdx
+				renderGame()
+			case game.KeyEnter:
+				g.WizardRemoveMember(wizardRemoveIdx)
+				state = statePlaying
+				renderGame()
+			case game.KeyQuit:
+				state = stateWizard
+				renderWizard()
 			}
 		}
 		return nil

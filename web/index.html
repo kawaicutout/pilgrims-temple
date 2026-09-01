@@ -24,6 +24,7 @@
 </div>
 <script src="wasm_exec.js"></script>
 <script>
+(function() {
   const status = document.getElementById('status');
   function supportsBr() {
     if (!('DecompressionStream' in window)) return false;

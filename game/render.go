@@ -10,6 +10,7 @@ type Frame struct {
 	W, H      int
 	Cells     [][]Cell // H x W
 	Panel     []string // side panel lines (already truncated)
+	PanelFG   []string // per-line FG token parallel to Panel (gold-bright, gray-1, red-bright, slate)
 	Status    string
 	Log       []string // 8 lines
 	Hints     string
@@ -74,6 +75,7 @@ func (g *Game) Render() Frame {
 	}
 	// Panel
 	var panel []string
+	var panelFG []string
 	for i, m := range g.Party.Members {
 		sel := " "
 		if i == g.Party.Selected {
@@ -89,6 +91,20 @@ func (g *Game) Render() Frame {
 		}
 		if !m.IsAlive() {
 			nameLine = fmt.Sprintf("  %d %s (fallen)", i+1, m.Name)
+			if len(nameLine) > 30 {
+				nameLine = nameLine[:27] + "..."
+			}
+		}
+		// color decision after truncation
+		var fg string
+		if !m.IsAlive() {
+			fg = "slate"
+		} else if i == g.Party.Selected {
+			fg = "gold-bright"
+		} else if m.MaxHP > 0 && m.HP*4 <= m.MaxHP {
+			fg = "red-bright"
+		} else {
+			fg = "gray-1"
 		}
 		talentStr := ""
 		if len(m.Talents) > 0 {
@@ -98,23 +114,27 @@ func (g *Game) Render() Frame {
 			}
 		}
 		classLine := fmt.Sprintf("  %s %d/%d%s", strings.Title(m.Class), m.HP, m.MaxHP, talentStr)
+		var classFG string
+		if fg == "slate" || fg == "red-bright" {
+			classFG = fg
+		} else {
+			classFG = "gray-1"
+		}
 		panel = append(panel, nameLine, classLine, "")
+		panelFG = append(panelFG, fg, classFG, "gray-1")
 	}
-	// Pad to 4 slots
+	// Pad to 4 slots (each slot is 3 lines)
 	for len(panel) < 12 {
 		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
 	}
 	panel = append(panel, "Potions:", "  (none)", "Scrolls:", "  (none)")
-	// Status - FOOD + Level/XP + floor
+	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1")
+	// Status - Floor | FOOD | Level/XP | Turn (no HP, no Seed)
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
-	hpStr := ""
-	if len(g.Party.Members) > 0 {
-		m := g.Party.Members[0]
-		hpStr = fmt.Sprintf("HP %d/%d", m.HP, m.MaxHP)
-	}
 	foodStr := fmt.Sprintf("FOOD %d %s", g.Food, g.HungerState())
 	levelStr := fmt.Sprintf("Lvl %d XP %d/%d", g.Level, g.XP, g.XPToNext)
-	status := fmt.Sprintf("%s | %s | %s | %s | Turn %d", floorStr, hpStr, foodStr, levelStr, g.Turn)
+	status := fmt.Sprintf("%s | %s | %s | Turn %d", floorStr, foodStr, levelStr, g.Turn)
 
 	// Log padded to 8
 	logLines := make([]string, t.Layout.LogLines)
@@ -136,6 +156,7 @@ func (g *Game) Render() Frame {
 	return Frame{
 		W: w, H: h, Cells: cells,
 		Panel:   panel,
+		PanelFG: panelFG,
 		Status:  status,
 		Log:     logLines,
 		Hints:   hints,
@@ -159,7 +180,7 @@ func (g *Game) RenderLevelUp() Frame {
 	}
 	if g.LevelUpPending == nil || len(g.LevelUpPending.Picks) == 0 {
 		drawCentered(cells, w, h/2, "LEVEL UP!", "gold-bright")
-		return Frame{W: w, H: h, Cells: cells, Panel: []string{}, Status: fmt.Sprintf("Lvl %d", g.Level), Log: make([]string, t.Layout.LogLines), Hints: "No picks", MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
+		return Frame{W: w, H: h, Cells: cells, Panel: []string{}, PanelFG: []string{}, Status: fmt.Sprintf("Lvl %d", g.Level), Log: make([]string, t.Layout.LogLines), Hints: "No picks", MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
 	}
 	pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
 	title := fmt.Sprintf("LEVEL %d - %s CHOOSES", g.LevelUpPending.NewLevel, pick.MemberName)
@@ -185,14 +206,15 @@ func (g *Game) RenderLevelUp() Frame {
 		drawCentered(cells, w, 12, "Press 1/2/3 or Enter for first", "gray-2")
 	}
 	panel := []string{"", fmt.Sprintf("Lvl %d", g.Level), fmt.Sprintf("Pick %d/%d", g.LevelUpPending.Current+1, len(g.LevelUpPending.Picks))}
+	panelFG := []string{"gray-1", "gray-1", "gray-1"}
 	for len(panel) < 12 {
 		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
 	}
 	status := fmt.Sprintf("Level up! Choose for %s", pick.MemberName)
 	hints := "1/2/3 or Enter: choose  Esc: skip (not recommended)"
 	if pick.IsAffix {
 		hints = "Enter: accept affix"
 	}
-	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
 }
-

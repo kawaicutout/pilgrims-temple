@@ -16,6 +16,7 @@ type Game struct {
 	Log            []string // 8 lines, oldest dropped
 	Turn           int
 	Food           int
+	FoodFloat      float64
 	Level          int
 	XP             int
 	XPToNext       int
@@ -27,7 +28,7 @@ type Game struct {
 }
 func NewGame(seed int64, tuning Tuning) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
-	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock, Level: 1}
+	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1}
 	g.XPToNext = g.xpForNext()
 	g.Levels = make([]*Level, tuning.Floors)
 	for i := range tuning.Floors {
@@ -195,7 +196,11 @@ func (g *Game) HungerState() string {
 	if g.Tuning.Food.StartClock <= 0 {
 		return "Ok"
 	}
-	ratio := float64(g.Food) / float64(g.Tuning.Food.StartClock)
+	floatFood := g.FoodFloat
+	if floatFood == 0 && g.Food != 0 {
+		floatFood = float64(g.Food)
+	}
+	ratio := floatFood / float64(g.Tuning.Food.StartClock)
 	if ratio <= g.Tuning.Food.StarvingThreshold {
 		return "Starving"
 	}
@@ -203,6 +208,97 @@ func (g *Game) HungerState() string {
 		return "Hungry"
 	}
 	return "Ok"
+}
+
+func (g *Game) hasBardAlive() bool {
+	for _, m := range g.Party.Members {
+		if m.IsAlive() && m.Class == "bard" {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Game) frugalBonus() float64 {
+	hasBard := g.hasBardAlive()
+	bonus := 0.0
+	for _, m := range g.Party.Members {
+		if !m.IsAlive() || m.Class != "druid" {
+			continue
+		}
+		if hasBard {
+			bonus += 0.275
+		} else {
+			bonus += 0.25
+		}
+	}
+	return bonus
+}
+
+func (g *Game) tickFood() {
+	if g.Tuning.Food.PerMemberPerTurn <= 0 {
+		return
+	}
+	// Sync if Food was manually set to zero (tests) or diverges.
+	if g.Food == 0 && g.FoodFloat != 0 {
+		g.FoodFloat = 0
+	}
+	if g.FoodFloat == 0 && g.Food != 0 {
+		g.FoodFloat = float64(g.Food)
+	}
+	living := g.Party.LivingCount()
+	if living == 0 {
+		// No consumption if no living, but keep Food sync.
+		g.Food = int(g.FoodFloat)
+		if g.FoodFloat < 0 {
+			g.FoodFloat = 0
+			g.Food = 0
+		}
+		return
+	}
+	cost := float64(living)*float64(g.Tuning.Food.PerMemberPerTurn) - g.frugalBonus()
+	if cost < 0 {
+		cost = 0
+	}
+	g.FoodFloat -= cost
+	if g.FoodFloat < 0 {
+		g.FoodFloat = 0
+	}
+	g.Food = int(g.FoodFloat)
+	if g.Food < 0 {
+		g.Food = 0
+	}
+}
+
+func (g *Game) applyStarvation() {
+	if g.Food != 0 && g.FoodFloat > 0 {
+		return
+	}
+	// Also consider FoodFloat ==0 or Food==0 as starving.
+	// Apply -1 HP to every living member after regen/food.
+	any := false
+	for _, m := range g.Party.Members {
+		if !m.IsAlive() {
+			continue
+		}
+		any = true
+		m.HP--
+		if m.HP <= 0 {
+			m.HP = 0
+			m.Alive = false
+		}
+	}
+	if !any {
+		return
+	}
+	// Log starvation drain.
+	g.Logf("Starvation drains your party.")
+	g.Party.EnsureSelection()
+	if g.Party.LivingCount() == 0 {
+		g.Over = true
+		g.Won = false
+		g.Logf("You have succumbed to starvation. Seed %d.", g.Seed)
+	}
 }
 
 func (g *Game) Logf(fmtStr string, args ...any) {
@@ -256,12 +352,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			// If level up pending, pause before enemy turn (world pauses)
 			if g.LevelUpPending != nil {
 				g.Turn++
-				if g.Tuning.Food.PerMemberPerTurn > 0 {
-					g.Food -= g.Party.LivingCount() * g.Tuning.Food.PerMemberPerTurn
-					if g.Food < 0 {
-						g.Food = 0
-					}
-				}
+				g.tickFood()
 				if g.Turn%10 == 0 {
 					for _, m := range g.Party.Members {
 						if m.IsAlive() && m.HP < m.MaxHP {
@@ -269,13 +360,15 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 						}
 					}
 				}
+				g.applyStarvation()
 				g.UpdateFOV()
 				return ActionResult{Attacked: true}
 			}
 			g.EndPlayerTurn("")
-          }
-      }
-      // Move - silent (log reserved for combat/stairs/ambience)
+			return ActionResult{Attacked: true}
+		}
+	}
+	// Move - silent (log reserved for combat/stairs/ambience)
 	g.Party.Pos = next
 	g.Party.Active = g.Party.Selected
 	// Check relic on final floor
@@ -371,17 +464,7 @@ func (g *Game) EndPlayerTurn(msg string) {
 		g.Logf("%s", msg)
 	}
 	g.Turn++
-	// Food tick: per living member
-	if g.Tuning.Food.PerMemberPerTurn > 0 {
-		g.Food -= g.Party.LivingCount() * g.Tuning.Food.PerMemberPerTurn
-		if g.Food < 0 {
-			g.Food = 0
-		}
-		if g.Food == 0 {
-			g.Logf("You starve.")
-			// For now starving just warns; M4 can add damage.
-		}
-	}
+	g.tickFood()
 	// Natural regen: 1 HP every 10 ticks per living member
 	if g.Turn%10 == 0 {
 		for _, m := range g.Party.Members {
@@ -393,6 +476,7 @@ func (g *Game) EndPlayerTurn(msg string) {
 			}
 		}
 	}
+	g.applyStarvation()
 	g.EnemyTurn()
 	g.UpdateFOV()
 }

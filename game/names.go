@@ -1,12 +1,14 @@
 package game
 
 import (
+	"encoding/json"
 	"math/rand/v2"
 	"strings"
+	"sync"
 )
 
-// Real names: diverse, grounded.
-var realNames = []string{
+// fallback data — used if JSON load fails; kept for robustness.
+var fallbackRealNames = []string{
 	"Ari", "Bren", "Cael", "Dara", "Emri", "Fenn", "Garr", "Hale",
 	"Joren", "Kael", "Lira", "Mira", "Nara", "Oren", "Selene", "Thalia",
 	"Kaito", "Yuki", "Hana", "Rin", "Akira", "Sora", "Kenji", "Elena",
@@ -15,8 +17,7 @@ var realNames = []string{
 	"Priya", "Arjun", "Mei", "Chen", "Yara", "Samir", "Nadia", "Rafael",
 }
 
-// Fantasy names: slightly wilder, temple-appropriate.
-var fantasyNames = []string{
+var fallbackFantasyNames = []string{
 	"Eldrin", "Thalor", "Bryn", "Aelwen", "Cedric", "Lyra", "Orion", "Sable",
 	"Wren", "Ash", "Ember", "Vale", "Jasper", "Luna", "Silas", "Rowan",
 	"Aeris", "Zephyr", "Nyx", "Draven", "Seraph", "Kaelen", "Lyris", "Torin",
@@ -24,36 +25,139 @@ var fantasyNames = []string{
 	"Bramble", "Corin", "Edda", "Galen", "Hawke", "Ilyra", "Jorah", "Kestrel",
 }
 
-// Conlang syllables for backup generation.
-var conlangOnsets = []string{"k", "t", "s", "m", "n", "l", "r", "th", "sh", "kh", "br", "dr", "gr", "st", "ae", "io", "el", "or"}
-var conlangNuclei = []string{"a", "e", "i", "o", "u", "ae", "ei", "ou", "ia", "an", "en", "or"}
-var conlangCodas = []string{"", "", "", "n", "r", "l", "s", "th", "en", "ar", "is", "or"}
+var fallbackOnsets = []string{"k", "t", "s", "m", "n", "l", "r", "th", "sh", "kh", "br", "dr", "gr", "st", "ae", "io", "el", "or"}
+var fallbackNuclei = []string{"a", "e", "i", "o", "u", "ae", "ei", "ou", "ia", "an", "en", "or"}
+var fallbackCodas = []string{"", "", "", "n", "r", "l", "s", "th", "en", "ar", "is", "or"}
+
+// active slices populated from JSON on first use; fallback if load fails.
+var (
+	realNames     []string
+	fantasyNames  []string
+	conlangOnsets []string
+	conlangNuclei []string
+	conlangCodas  []string
+	onsetWeights  []float64
+	nucleiWeights []float64
+	codaWeights   []float64
+	namesOnce     sync.Once
+)
+
+type namesFile struct {
+	Real    []string `json:"real"`
+	Fantasy []string `json:"fantasy"`
+}
+
+type conlangFile struct {
+	Onsets        []string  `json:"onsets"`
+	Nuclei        []string  `json:"nuclei"`
+	Codas         []string  `json:"codas"`
+	OnsetWeights  []float64 `json:"onsetWeights"`
+	NucleiWeights []float64 `json:"nucleiWeights"`
+	CodaWeights   []float64 `json:"codaWeights"`
+}
+
+func ensureNamesLoaded() {
+	namesOnce.Do(func() {
+		// names.json
+		if b, err := RawJSON("names.json"); err == nil {
+			var nf namesFile
+			if json.Unmarshal(b, &nf) == nil && len(nf.Real) > 0 && len(nf.Fantasy) > 0 {
+				realNames = nf.Real
+				fantasyNames = nf.Fantasy
+			} else {
+				realNames = fallbackRealNames
+				fantasyNames = fallbackFantasyNames
+			}
+		} else {
+			realNames = fallbackRealNames
+			fantasyNames = fallbackFantasyNames
+		}
+		// conlang.json
+		if b, err := RawJSON("conlang.json"); err == nil {
+			var cf conlangFile
+			if json.Unmarshal(b, &cf) == nil && len(cf.Onsets) > 0 && len(cf.Nuclei) > 0 && len(cf.Codas) > 0 {
+				conlangOnsets = cf.Onsets
+				conlangNuclei = cf.Nuclei
+				conlangCodas = cf.Codas
+				onsetWeights = cf.OnsetWeights
+				nucleiWeights = cf.NucleiWeights
+				codaWeights = cf.CodaWeights
+			} else {
+				conlangOnsets = fallbackOnsets
+				conlangNuclei = fallbackNuclei
+				conlangCodas = fallbackCodas
+			}
+		} else {
+			conlangOnsets = fallbackOnsets
+			conlangNuclei = fallbackNuclei
+			conlangCodas = fallbackCodas
+		}
+		// normalize weights: must match length, else discard (uniform)
+		if len(onsetWeights) != len(conlangOnsets) {
+			onsetWeights = nil
+		}
+		if len(nucleiWeights) != len(conlangNuclei) {
+			nucleiWeights = nil
+		}
+		if len(codaWeights) != len(conlangCodas) {
+			codaWeights = nil
+		}
+	})
+}
+
+func pickWeighted(rng *rand.Rand, items []string, weights []float64) string {
+	if len(items) == 0 {
+		return ""
+	}
+	if len(weights) != len(items) {
+		return items[rng.IntN(len(items))]
+	}
+	var total float64
+	for _, w := range weights {
+		if w > 0 {
+			total += w
+		}
+	}
+	if total <= 0 {
+		return items[rng.IntN(len(items))]
+	}
+	r := rng.Float64() * total
+	var cum float64
+	for i, w := range weights {
+		if w <= 0 {
+			continue
+		}
+		cum += w
+		if r < cum {
+			return items[i]
+		}
+	}
+	return items[len(items)-1]
+}
 
 func conlangName(rng *rand.Rand) string {
+	ensureNamesLoaded()
 	syllables := 2 + rng.IntN(2) // 2 or 3
 	var b strings.Builder
 	for i := range syllables {
-		on := conlangOnsets[rng.IntN(len(conlangOnsets))]
-		nu := conlangNuclei[rng.IntN(len(conlangNuclei))]
-		co := conlangCodas[rng.IntN(len(conlangCodas))]
+		on := pickWeighted(rng, conlangOnsets, onsetWeights)
+		nu := pickWeighted(rng, conlangNuclei, nucleiWeights)
+		co := pickWeighted(rng, conlangCodas, codaWeights)
 		syl := on + nu + co
 		if i == 0 {
-			// Capitalize first syllable
 			if len(syl) > 0 {
 				syl = strings.ToUpper(syl[:1]) + syl[1:]
 			}
 		}
 		b.WriteString(syl)
-		// Avoid overly long
 		if b.Len() > 9 {
 			break
 		}
 	}
 	s := b.String()
 	if len(s) < 3 {
-		s += conlangNuclei[rng.IntN(len(conlangNuclei))]
+		s += pickWeighted(rng, conlangNuclei, nucleiWeights)
 	}
-	// Ensure not too long, truncate to 10
 	if len(s) > 10 {
 		s = s[:10]
 	}
@@ -62,7 +166,8 @@ func conlangName(rng *rand.Rand) string {
 
 // GenerateName picks a name from real (40%), fantasy (40%), conlang (20%), avoiding duplicates in party if provided.
 func GenerateName(rng *rand.Rand, used map[string]bool) string {
-	for tries := 0; tries < 20; tries++ {
+	ensureNamesLoaded()
+	for range 20 {
 		var name string
 		r := rng.Float64()
 		switch {
@@ -77,7 +182,6 @@ func GenerateName(rng *rand.Rand, used map[string]bool) string {
 			return name
 		}
 	}
-	// Fallback: conlang with suffix to ensure unique
 	base := conlangName(rng)
 	for i := 2; i < 100; i++ {
 		cand := base

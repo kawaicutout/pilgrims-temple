@@ -37,7 +37,6 @@ func main() {
 	var cs *game.CharSelectState
 	var g *game.Game
 
-
 	renderMenu := func() {
 		frame := game.RenderMainMenu(tuning, menu.Selected)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
@@ -202,11 +201,6 @@ func main() {
 				g = nil
 				renderMenu()
 			} else if g.Over {
-				// Stay in playing state showing game over, next Esc will go to menu via next key
-				// We handle next Esc as quit to menu
-				// For web, next key after Over will be handled as menu return if quit
-				// So we keep statePlaying but next Esc will be caught as Quit and transition
-				// To allow immediate Esc to menu, check if k was Quit
 				if k == game.KeyQuit || k == game.KeyEnter {
 					state = stateMenu
 					g = nil
@@ -281,11 +275,15 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 				}
 				line = string(runes)
 			}
-			if len(line) > 0 && line[0] == '>' {
-				html += `<span style="color:var(--gold-bright)"> ` + esc(line) + `</span>`
+			var col string
+			if y < len(frame.PanelFG) && frame.PanelFG[y] != "" {
+				col = colorForToken(frame.PanelFG[y])
+			} else if len(line) > 0 && line[0] == '>' {
+				col = "var(--gold-bright)"
 			} else {
-				html += `<span style="color:var(--gray-1)"> ` + esc(line) + `</span>`
+				col = "var(--gray-1)"
 			}
+			html += `<span style="color:` + col + `"> ` + esc(line) + `</span>`
 		}
 		html += "\n"
 	}
@@ -305,9 +303,9 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 
 func colorForToken(token string) string {
 	switch token {
-	case "player":
+	case "player", "gold-bright":
 		return "var(--gold-bright)"
-	case "enemy":
+	case "enemy", "red-bright":
 		return "var(--red-bright)"
 	case "wall":
 		return "var(--wall)"
@@ -315,8 +313,12 @@ func colorForToken(token string) string {
 		return "var(--floor)"
 	case "gold":
 		return "var(--gold)"
-	case "gray-3":
+	case "gray-1":
+		return "var(--gray-1)"
+	case "gray-2", "gray-3":
 		return "var(--gray-2)"
+	case "slate":
+		return "var(--slate)"
 	case "bg":
 		return "var(--fg)"
 	default:

@@ -31,6 +31,7 @@ func main() {
 	floorCol := tcell.NewRGBColor(74, 70, 66)
 	gray1 := tcell.NewRGBColor(181, 174, 165)
 	gray2 := tcell.NewRGBColor(138, 133, 126)
+	slateCol := tcell.NewRGBColor(110, 143, 181)
 
 	styleBG := tcell.StyleDefault.Foreground(fg).Background(bg)
 	styleGold := styleBG.Foreground(gold)
@@ -40,7 +41,9 @@ func main() {
 	styleFloor := styleBG.Foreground(floorCol)
 	styleGray1 := styleBG.Foreground(gray1)
 	styleGray2 := styleBG.Foreground(gray2)
+	styleSlate := styleBG.Foreground(slateCol)
 	_ = styleGold
+	_ = styleSlate
 
 	drawFrame := func(frame game.Frame) {
 		w, h := s.Size()
@@ -87,8 +90,14 @@ func main() {
 					st = styleGold
 				case "gold-bright":
 					st = styleGoldBr
+				case "red-bright":
+					st = styleRedBr
+				case "slate":
+					st = styleSlate
 				case "gray-3", "gray-2":
 					st = styleGray2
+				case "gray-1":
+					st = styleGray1
 				default:
 					if cell.FG == "bg" {
 						st = styleBG
@@ -107,6 +116,10 @@ func main() {
 						st = styleGray2
 					} else if cell.FG == "gold" {
 						st = styleGold
+					} else if cell.FG == "red-bright" {
+						st = styleRedBr
+					} else if cell.FG == "slate" {
+						st = styleSlate
 					}
 				}
 				s.SetContent(x, y, cell.Glyph, nil, st)
@@ -133,7 +146,24 @@ func main() {
 					}
 				}
 				style := styleGray1
-				if len(line) > 0 && line[0] == '>' {
+				if i < len(frame.PanelFG) && frame.PanelFG[i] != "" {
+					switch frame.PanelFG[i] {
+					case "gold-bright":
+						style = styleGoldBr
+					case "red-bright":
+						style = styleRedBr
+					case "slate":
+						style = styleSlate
+					case "gray-1":
+						style = styleGray1
+					case "gray-2", "gray-3":
+						style = styleGray2
+					case "gold":
+						style = styleGold
+					default:
+						style = styleGray1
+					}
+				} else if len(line) > 0 && line[0] == '>' {
 					style = styleGoldBr
 				}
 				for j, ch := range runes {

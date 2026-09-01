@@ -216,8 +216,20 @@ func litterGlyph(kind string) rune {
 		return '~'
 	case "moss":
 		return '"'
-	case "column", "altar", "sarcophagus", "bone_column", "fungal_column", "vine_wall", "cinder_column":
-		return '#'
+	case "column":
+		return 'H'
+	case "altar":
+		return 'A'
+	case "sarcophagus":
+		return 'S'
+	case "bone_column":
+		return 'I'
+	case "fungal_column":
+		return 'T'
+	case "vine_wall":
+		return 'V'
+	case "cinder_column":
+		return 'H'
 	case "pit", "lava_pit":
 		return '0'
 	case "thicket":

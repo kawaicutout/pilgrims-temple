@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"math/rand/v2"
+	"strings"
 	"unicode"
 )
 
@@ -607,7 +608,20 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		return ActionResult{Moved: false}
 	}
 	if !lvl.InBounds(next) || !lvl.Walkable(next) {
-		g.Logf("You bump the wall.")
+		if lit := lvl.LitterAt(next); lit != nil && lit.BlocksMovement {
+			switch lit.Category {
+			case "impassable":
+				g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
+			case "destructible":
+				g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
+				// Optionally destroy on bump: remove litter
+				// For now, just bump, don't destroy
+			default:
+				g.Logf("You bump the wall.")
+			}
+		} else {
+			g.Logf("You bump the wall.")
+		}
 		return ActionResult{}
 	}
 	// Check enemy at next

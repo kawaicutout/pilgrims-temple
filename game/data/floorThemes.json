@@ -1,0 +1,101 @@
+{
+  "notes": "Pilgrim's Temple — themed floors. 8 themes, one per depth (floor 0-7). Each theme carries wall/floor glyph variants (wall stays \"#\" family), a desaturated tint (muted, low saturation), and baseline enemy/item weights used with seed variation. Variation per seed is applied in code (glyph variant roll, weight jitter).",
+  "themes": [
+    {
+      "id": "crypt",
+      "name": "Crypt",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "▓"],
+      "floorGlyphVariants": [".", "·", "·"],
+      "color": "#6a7a7a",
+      "tint": "#6a7a7a",
+      "enemyWeights": { "goblin": 1.1, "orc": 0.8, "kobold": 0.6, "rat": 1.0, "troll": 0.15 },
+      "itemWeights": { "potion": 1.0, "scroll": 0.9, "ration": 1.2, "gold": 1.0 }
+    },
+    {
+      "id": "ossuary",
+      "name": "Ossuary",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "▒"],
+      "floorGlyphVariants": [".", "·", "⋅"],
+      "color": "#8a7a6a",
+      "tint": "#8a7a6a",
+      "enemyWeights": { "goblin": 0.9, "orc": 1.0, "kobold": 0.7, "rat": 0.9, "troll": 0.2 },
+      "itemWeights": { "potion": 1.1, "scroll": 1.0, "ration": 1.0, "gold": 1.1 }
+    },
+    {
+      "id": "fungal",
+      "name": "Fungal Grove",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "♣"],
+      "floorGlyphVariants": [".", "·", ","],
+      "color": "#5a7a5a",
+      "tint": "#5a7a5a",
+      "enemyWeights": { "goblin": 0.8, "orc": 0.7, "kobold": 1.2, "rat": 1.3, "troll": 0.4 },
+      "itemWeights": { "potion": 1.2, "scroll": 0.8, "ration": 1.1, "gold": 0.9 }
+    },
+    {
+      "id": "flooded",
+      "name": "Flooded Vault",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "≈"],
+      "floorGlyphVariants": [".", "·", "~"],
+      "color": "#5a6a7a",
+      "tint": "#5a6a7a",
+      "enemyWeights": { "goblin": 0.7, "orc": 0.9, "kobold": 1.1, "rat": 0.8, "troll": 0.5 },
+      "itemWeights": { "potion": 1.0, "scroll": 1.1, "ration": 0.9, "gold": 1.0 }
+    },
+    {
+      "id": "sanctum",
+      "name": "Sanctum",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "▓"],
+      "floorGlyphVariants": [".", "·", "⋅"],
+      "color": "#7a7a6a",
+      "tint": "#7a7a6a",
+      "enemyWeights": { "goblin": 0.8, "orc": 1.1, "kobold": 0.9, "rat": 0.6, "troll": 0.55 },
+      "itemWeights": { "potion": 0.9, "scroll": 1.2, "ration": 0.9, "gold": 1.2 }
+    },
+    {
+      "id": "cinder",
+      "name": "Cinder Chapel",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "▒"],
+      "floorGlyphVariants": [".", "·", "`"],
+      "color": "#7a6a5a",
+      "tint": "#7a6a5a",
+      "enemyWeights": { "goblin": 0.6, "orc": 1.2, "kobold": 1.0, "rat": 0.5, "troll": 0.7 },
+      "itemWeights": { "potion": 0.9, "scroll": 1.0, "ration": 0.8, "gold": 1.3 }
+    },
+    {
+      "id": "infernal",
+      "name": "Infernal Depths",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "▓"],
+      "floorGlyphVariants": [".", "·", "⋅"],
+      "color": "#7a5a5a",
+      "tint": "#7a5a5a",
+      "enemyWeights": { "goblin": 0.5, "orc": 1.0, "kobold": 1.1, "rat": 0.4, "troll": 0.85 },
+      "itemWeights": { "potion": 0.8, "scroll": 1.1, "ration": 0.7, "gold": 1.1 }
+    },
+    {
+      "id": "abyssal",
+      "name": "Abyssal Void",
+      "wallGlyph": "#",
+      "floorGlyph": ".",
+      "wallGlyphVariants": ["#", "#", "█"],
+      "floorGlyphVariants": [".", "·", " "],
+      "color": "#5a5a6a",
+      "tint": "#5a5a6a",
+      "enemyWeights": { "goblin": 0.4, "orc": 0.8, "kobold": 1.3, "rat": 0.3, "troll": 1.0 },
+      "itemWeights": { "potion": 0.8, "scroll": 1.3, "ration": 0.6, "gold": 1.0 }
+    }
+  ]
+}

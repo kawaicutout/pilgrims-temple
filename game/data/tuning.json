@@ -25,6 +25,10 @@
   "targeting": {
     "activeWeight": 0.5
   },
+  "worldGen": {
+    "recruitmentRate": 0.3,
+    "lightRadius": 6
+  },
   "scoreWeights": {
     "floor": 100,
     "kill": 10,

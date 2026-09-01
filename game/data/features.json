@@ -1,0 +1,5 @@
+{
+  "merchants": { "rate": 0.15, "scarce": true },
+  "fountains": { "rate": 0.2 },
+  "shrines": { "rate": 0.25 }
+}

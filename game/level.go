@@ -16,7 +16,8 @@ type Level struct {
 	StairsUp   Pos
 	StairsDown Pos
 
-	Enemies []*EnemyParty
+	Enemies  []*EnemyParty
+	Features []Feature
 }
 
 func NewLevel(w, h int) *Level {

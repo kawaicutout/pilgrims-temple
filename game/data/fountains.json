@@ -1,0 +1,8 @@
+{
+  "outcomes": [
+    { "id": "heal", "name": "Healing Waters", "deltaHP": 10, "delta": 10, "desc": "Refreshing waters restore 10 HP" },
+    { "id": "poison", "name": "Tainted Waters", "deltaHP": -5, "delta": -5, "desc": "Foul waters sicken you for 5 damage" },
+    { "id": "blessing", "name": "Blessed Spring", "deltaHP": 5, "delta": 5, "effect": "bless", "desc": "Blessed waters restore 5 HP and grant a brief boon" },
+    { "id": "curse", "name": "Cursed Pool", "deltaHP": -2, "delta": -2, "effect": "curse", "desc": "Cursed waters drain 2 HP and weaken you" }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "uses": [
+    { "id": "recruit", "name": "Recruitment", "goldCost": 0, "foodCost": 0, "desc": "Recruit a new member to your party" },
+    { "id": "resurrect", "name": "Resurrection", "goldCost": 75, "foodCost": 50, "desc": "Resurrect a fallen member at a cost of gold or food (sometimes both)" }
+  ]
+}

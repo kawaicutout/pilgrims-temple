@@ -44,6 +44,16 @@ type Tuning struct {
 	Targeting struct {
 		ActiveWeight float64 `json:"activeWeight"`
 	} `json:"targeting"`
+	WorldGen struct {
+		RecruitmentRate float64 `json:"recruitmentRate"`
+		LightRadius     int     `json:"lightRadius"`
+	} `json:"worldGen"`
+	ScoreWeights struct {
+		Floor       int `json:"floor"`
+		Kill        int `json:"kill"`
+		Survivor    int `json:"survivor"`
+		EscapeBonus int `json:"escapeBonus"`
+	} `json:"scoreWeights"`
 }
 
 func LoadTuning() (Tuning, error) {

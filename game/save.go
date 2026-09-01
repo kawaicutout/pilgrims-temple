@@ -17,31 +17,33 @@ type SaveSlot struct {
 }
 
 type gameJSON struct {
-	Seed                    int64          `json:"seed"`
-	Tuning                  Tuning         `json:"tuning"`
-	Levels                  []*Level       `json:"levels"`
-	Floor                   int            `json:"floor"`
-	Party                   *Party         `json:"party"`
-	Log                     []string       `json:"log"`
-	Turn                    int            `json:"turn"`
-	Food                    int            `json:"food"`
-	FoodFloat               float64        `json:"foodFloat"`
-	Level                   int            `json:"level"`
-	XP                      int            `json:"xp"`
-	XPToNext                int            `json:"xpToNext"`
-	LevelUpPending          *LevelUpState  `json:"levelUpPending"`
-	Gold                    int            `json:"gold"`
-	Kills                   int            `json:"kills"`
-	Escaped                 bool           `json:"escaped"`
-	Over                    bool           `json:"over"`
-	Won                     bool           `json:"won"`
-	Quit                    bool           `json:"quit"`
-	Relic                   Pos            `json:"relic"`
-	Wizard                  bool           `json:"wizard"`
-	VisitedFloors           map[int]bool   `json:"visitedFloors"`
-	TransitionFiredForLevel map[int]bool   `json:"transitionFiredForLevel"`
-	RelicCollected          bool           `json:"relicCollected"`
+	Seed                    int64         `json:"seed"`
+	Tuning                  Tuning        `json:"tuning"`
+	Levels                  []*Level      `json:"levels"`
+	Floor                   int           `json:"floor"`
+	Party                   *Party        `json:"party"`
+	Log                     []string      `json:"log"`
+	Turn                    int           `json:"turn"`
+	Food                    int           `json:"food"`
+	FoodFloat               float64       `json:"foodFloat"`
+	Level                   int           `json:"level"`
+	XP                      int           `json:"xp"`
+	XPToNext                int           `json:"xpToNext"`
+	LevelUpPending          *LevelUpState `json:"levelUpPending"`
+	Gold                    int           `json:"gold"`
+	Kills                   int           `json:"kills"`
+	Escaped                 bool          `json:"escaped"`
+	Over                    bool          `json:"over"`
+	Won                     bool          `json:"won"`
+	Quit                    bool          `json:"quit"`
+	Relic                   Pos           `json:"relic"`
+	Wizard                  bool          `json:"wizard"`
+	WizardReveal            bool          `json:"wizardReveal"`
+	VisitedFloors           map[int]bool  `json:"visitedFloors"`
+	TransitionFiredForLevel map[int]bool  `json:"transitionFiredForLevel"`
+	RelicCollected          bool          `json:"relicCollected"`
 }
+
 func (g *Game) MarshalJSON() ([]byte, error) {
 	if g == nil {
 		return []byte("null"), nil
@@ -68,6 +70,7 @@ func (g *Game) MarshalJSON() ([]byte, error) {
 		Quit:                    g.Quit,
 		Relic:                   g.Relic,
 		Wizard:                  g.Wizard,
+		WizardReveal:            g.WizardReveal,
 		VisitedFloors:           g.VisitedFloors,
 		TransitionFiredForLevel: g.TransitionFiredForLevel,
 		RelicCollected:          g.RelicCollected,
@@ -105,6 +108,7 @@ func (g *Game) UnmarshalJSON(data []byte) error {
 	g.Quit = aux.Quit
 	g.Relic = aux.Relic
 	g.Wizard = aux.Wizard
+	g.WizardReveal = aux.WizardReveal
 	g.VisitedFloors = aux.VisitedFloors
 	g.TransitionFiredForLevel = aux.TransitionFiredForLevel
 	g.RelicCollected = aux.RelicCollected

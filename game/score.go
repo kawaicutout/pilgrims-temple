@@ -115,6 +115,7 @@ func (g *Game) CalculateScore() int {
 	escaped := g.Won
 	return scoreForPure(floors, kills, survivors, escaped, w)
 }
+
 // CalculateScoreWithWeights computes with explicit weights (for tests).
 func (g *Game) CalculateScoreWithWeights(w ScoreWeights) int {
 	if g.Wizard {

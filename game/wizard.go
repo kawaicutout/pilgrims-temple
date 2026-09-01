@@ -49,9 +49,11 @@ func (ws *WizardState) Move(delta int) {
 	}
 }
 
-// RevealAllTiles marks every tile on every floor as seen.
+// RevealAllTiles marks every tile on every floor as seen and visible,
+// revealing all tile contents (enemies, features) for the next render.
 func (g *Game) RevealAllTiles() {
 	g.SetWizard()
+	g.WizardReveal = true
 	for _, lvl := range g.Levels {
 		if lvl == nil {
 			continue
@@ -59,10 +61,10 @@ func (g *Game) RevealAllTiles() {
 		for y := range lvl.H {
 			for x := range lvl.W {
 				lvl.Seen[y][x] = true
+				lvl.Visible[y][x] = true
 			}
 		}
 	}
-	g.UpdateFOV()
 	g.Logf("Wizard: Reveal All Tiles")
 }
 

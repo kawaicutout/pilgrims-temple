@@ -1,5 +1,17 @@
 {
   "merchants": { "rate": 0.15, "scarce": true },
   "fountains": { "rate": 0.2 },
-  "shrines": { "rate": 0.25 }
+  "shrines": { "rate": 0.25 },
+  "vaults": { "rate": 0.12, "locked": true, "treasureMin": 25, "treasureMax": 80, "trappedChance": 0.2 },
+  "forges": { "rate": 0.1, "costType": "gold", "goldCost": 25, "foodCost": 50 },
+  "dens": { "rate": 0.12, "monsterMin": 3, "monsterMax": 5 },
+  "pitfalls": { "rate": 0.1, "hiddenChance": 0.5, "damageMin": 2, "damageMax": 4 },
+  "perBiomeVariants": {
+    "_comment": "Placeholder for per-biome tuning (crypt, ossuary, fungal, jungle, cinder, etc.). Rates above are defaults; biome overrides deferred.",
+    "crypt": { "vaultRate": 0.15, "forgeRate": 0.08 },
+    "ossuary": { "vaultRate": 0.1, "denRate": 0.15 },
+    "fungal": { "pitfallRate": 0.12, "denRate": 0.14 },
+    "jungle": { "forgeRate": 0.12, "denRate": 0.13 },
+    "cinder": { "forgeRate": 0.15, "vaultRate": 0.08 }
+  }
 }

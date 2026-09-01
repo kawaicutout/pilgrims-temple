@@ -90,8 +90,36 @@ func (p *Party) BestLight() int {
 	return best
 }
 
-// CarryCapacity is sum of living members' carry (DESIGN 4.3/7.1). Mirrors BestLight
-// pattern but summed, not max. Base per member is 5; Burden-Bearer / Burdened add 3.
+// HasRogue reports whether party has a living rogue (for vault locks / pitfall detection).
+func (p *Party) HasRogue() bool {
+	for _, m := range p.Members {
+		if m.IsAlive() && m.Class == "rogue" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasWizard reports whether party has a living wizard (for pitfall detection / vault).
+func (p *Party) HasWizard() bool {
+	for _, m := range p.Members {
+		if m.IsAlive() && m.Class == "wizard" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasClass reports whether party has a living member of given class.
+func (p *Party) HasClass(class string) bool {
+	for _, m := range p.Members {
+		if m.IsAlive() && m.Class == class {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *Party) CarryCapacity() int {
 	sum := 0
 	for _, m := range p.Members {

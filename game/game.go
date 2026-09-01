@@ -8,33 +8,35 @@ import (
 
 // Game holds run state.
 type Game struct {
-	Seed           int64 `json:"seed"`
-	RNG            *rand.Rand `json:"-"`
-	Tuning         Tuning `json:"tuning"`
-	Levels         []*Level `json:"levels"`
-	Floor          int `json:"floor"`
-	Party          *Party `json:"party"`
-	Log            []string `json:"log"`
-	Turn           int `json:"turn"`
-	Food           int `json:"food"`
-	FoodFloat      float64 `json:"foodFloat"`
-	Level          int `json:"level"`
-	XP             int `json:"xp"`
-	XPToNext       int `json:"xpToNext"`
-	LevelUpPending *LevelUpState `json:"levelUpPending"`
-	Gold           int `json:"gold"`
-	Kills          int `json:"kills"`
-	Escaped        bool `json:"escaped"`
-	Over           bool `json:"over"`
-	Won            bool `json:"won"`
-	Quit           bool `json:"quit"`
-	Look           *LookState `json:"look"`
-	Relic          Pos `json:"relic"`
-	Wizard         bool `json:"wizard"`
-	HelpActive     bool `json:"helpActive"`
-	VisitedFloors          map[int]bool `json:"visitedFloors"`
-	TransitionFiredForLevel map[int]bool `json:"transitionFiredForLevel"`
-	RelicCollected         bool `json:"relicCollected"`
+	Seed                    int64         `json:"seed"`
+	RNG                     *rand.Rand    `json:"-"`
+	Tuning                  Tuning        `json:"tuning"`
+	Levels                  []*Level      `json:"levels"`
+	Floor                   int           `json:"floor"`
+	Party                   *Party        `json:"party"`
+	Log                     []string      `json:"log"`
+	Turn                    int           `json:"turn"`
+	Food                    int           `json:"food"`
+	FoodFloat               float64       `json:"foodFloat"`
+	Level                   int           `json:"level"`
+	XP                      int           `json:"xp"`
+	XPToNext                int           `json:"xpToNext"`
+	LevelUpPending          *LevelUpState `json:"levelUpPending"`
+	Gold                    int           `json:"gold"`
+	Kills                   int           `json:"kills"`
+	Escaped                 bool          `json:"escaped"`
+	Over                    bool          `json:"over"`
+	Won                     bool          `json:"won"`
+	Quit                    bool          `json:"quit"`
+	Look                    *LookState    `json:"look"`
+	Relic                   Pos           `json:"relic"`
+	Wizard                  bool          `json:"wizard"`
+	WizardReveal            bool          `json:"wizardReveal"`
+	HelpActive              bool          `json:"helpActive"`
+	VisitedFloors           map[int]bool  `json:"visitedFloors"`
+	TransitionFiredForLevel map[int]bool  `json:"transitionFiredForLevel"`
+	RelicCollected          bool          `json:"relicCollected"`
+	NextAmbienceTurn        int           `json:"nextAmbienceTurn"`
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {
@@ -51,6 +53,8 @@ func NewGame(seed int64, tuning Tuning) *Game {
 		lvl.Generate(rng, i)
 		g.Levels[i] = lvl
 	}
+	// Init ambience ticker: first ambience 30-60 turns from start.
+	g.NextAmbienceTurn = 30 + rng.IntN(31)
 	// Place relic on final floor down stairs
 	final := g.Levels[tuning.Floors-1]
 	g.Relic = final.StairsDown
@@ -268,6 +272,14 @@ func (g *Game) CurLevel() *Level { return g.Levels[g.Floor] }
 func (g *Game) UpdateFOV() {
 	lvl := g.CurLevel()
 	ComputeFOV(lvl, g.Party.Pos, g.Party.BestLight())
+	if g.WizardReveal {
+		for y := range lvl.H {
+			for x := range lvl.W {
+				lvl.Seen[y][x] = true
+				lvl.Visible[y][x] = true
+			}
+		}
+	}
 }
 
 func (g *Game) HungerState() string {
@@ -394,6 +406,186 @@ func (g *Game) Logf(fmtStr string, args ...any) {
 	}
 }
 
+// featureAt returns the feature at pos or nil.
+func (g *Game) featureAt(pos Pos) *Feature {
+	lvl := g.CurLevel()
+	for i := range lvl.Features {
+		if lvl.Features[i].Pos == pos {
+			return &lvl.Features[i]
+		}
+	}
+	return nil
+}
+
+func (g *Game) removeFeatureAt(pos Pos, typ FeatureType) {
+	lvl := g.CurLevel()
+	dst := lvl.Features[:0]
+	for _, f := range lvl.Features {
+		if f.Pos == pos && f.Type == typ {
+			continue
+		}
+		dst = append(dst, f)
+	}
+	lvl.Features = dst
+}
+
+// handleVault checks locked status via Party.HasRogue (and wizard). Returns true if blocked.
+func (g *Game) handleVault(f *Feature) bool {
+	if f == nil || !f.IsVault() {
+		return false
+	}
+	if f.Locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
+		g.Logf("Locked vault - need rogue.")
+		return true
+	}
+	// Allow loot: give treasure gold, handle trap.
+	treasure := f.Treasure
+	if treasure == 0 {
+		treasure = 30
+	}
+	g.Gold += treasure
+	if f.Trapped {
+		dmg := 2 + g.RNG.IntN(3) // 2-4
+		_, actual := g.Party.ApplyDamage(g.RNG, dmg)
+		g.Logf("Vault treasure +%d gold! Trap springs for %d damage!", treasure, actual)
+		if g.Party.LivingCount() == 0 {
+			g.Over = true
+			g.Logf("You have fallen. Seed %d.", g.Seed)
+		}
+	} else {
+		g.Logf("Vault opened +%d gold!", treasure)
+	}
+	g.removeFeatureAt(f.Pos, FeatureVault)
+	return false
+}
+
+func (g *Game) handleForge(f *Feature) {
+	if f == nil || !f.IsForge() {
+		return
+	}
+	ct := f.CostType
+	if ct == "" {
+		ct = "gold"
+	}
+	cost := f.Cost
+	if cost == 0 {
+		if ct == "food" {
+			cost = 50
+		} else {
+			cost = 25
+		}
+	}
+	if ct == "gold" {
+		if g.Gold < cost {
+			g.Logf("Forge needs %d gold to improve gear (you have %d).", cost, g.Gold)
+			return
+		}
+		g.Gold -= cost
+		// Improve random living member ATK or DEF.
+		members := g.Party.LivingMembers()
+		if len(members) == 0 {
+			return
+		}
+		m := members[g.RNG.IntN(len(members))]
+		if g.RNG.IntN(2) == 0 {
+			m.ATK[0]++
+			m.ATK[1]++
+			g.Logf("Forge hammers +%d gold: %s ATK %d-%d.", cost, m.Name, m.ATK[0], m.ATK[1])
+		} else {
+			m.DEF++
+			g.Logf("Forge tempers +%d gold: %s DEF %d.", cost, m.Name, m.DEF)
+		}
+	} else { // food
+		if g.Food < cost {
+			g.Logf("Forge needs %d food to stoke (you have %d).", cost, g.Food)
+			return
+		}
+		g.Food -= cost
+		g.FoodFloat -= float64(cost)
+		if g.Food < 0 {
+			g.Food = 0
+		}
+		members := g.Party.LivingMembers()
+		if len(members) == 0 {
+			return
+		}
+		m := members[g.RNG.IntN(len(members))]
+		if g.RNG.IntN(2) == 0 {
+			m.ATK[0]++
+			m.ATK[1]++
+			g.Logf("Forge stoked %d food: %s ATK %d-%d.", cost, m.Name, m.ATK[0], m.ATK[1])
+		} else {
+			m.MDEF++
+			g.Logf("Forge quenched %d food: %s MDEF %d.", cost, m.Name, m.MDEF)
+		}
+	}
+	g.removeFeatureAt(f.Pos, FeatureForge)
+}
+
+func (g *Game) handleDen(f *Feature) {
+	if f == nil || !f.IsDen() {
+		return
+	}
+	cnt := f.MonsterCount
+	if cnt == 0 {
+		cnt = 3
+	}
+	g.Logf("Den ahead -- %d monsters guard this lair!", cnt)
+	// Den remains as marker; not removed on warning (optional)
+}
+
+func (g *Game) handlePitfall(f *Feature) bool {
+	if f == nil || !f.IsPitfall() {
+		return false
+	}
+	// Detection: rogue/wizard or wizard mode reveal.
+	aware := !f.Hidden || g.Party.HasRogue() || g.Party.HasWizard() || g.Wizard
+	if f.Hidden && !aware {
+		dmg := f.Damage
+		if dmg == 0 {
+			dmg = 2 + g.RNG.IntN(3)
+		}
+		_, actual := g.Party.ApplyDamage(g.RNG, dmg)
+		g.Logf("Hidden pitfall! You fall -- %d damage!", actual)
+		if g.Party.LivingCount() == 0 {
+			g.Over = true
+			g.Logf("You have fallen. Seed %d.", g.Seed)
+			return true
+		}
+		// One-way fall to next level if possible.
+		if g.Floor+1 < g.Tuning.Floors {
+			g.Floor++
+			g.Party.Pos = g.CurLevel().StairsUp
+			g.Logf("Pitfall drops you to floor %d (one-way).", g.Floor+1)
+			g.UpdateFOV()
+		} else {
+			g.Logf("Pitfall has no lower level -- you climb back out.")
+		}
+		g.removeFeatureAt(f.Pos, FeaturePitfall)
+		return true
+	}
+	// Obvious or detected pitfall: still one-way trigger but no surprise damage.
+	if f.Hidden && aware {
+		g.Logf("You spot a hidden pitfall and step around its edge... but the floor gives way!")
+	}
+	if !f.Hidden {
+		g.Logf("Pitfall ahead -- one-way drop to the next level.")
+	}
+	// Trigger drop without damage (or minimal).
+	if g.Floor+1 < g.Tuning.Floors {
+		// Move onto pitfall tile first for position consistency, then drop.
+		g.Party.Pos = f.Pos
+		g.Floor++
+		g.Party.Pos = g.CurLevel().StairsUp
+		g.Logf("You drop through the pitfall to floor %d (one-way).", g.Floor+1)
+		g.UpdateFOV()
+	} else {
+		g.Logf("No lower level beneath the pitfall.")
+	}
+	g.removeFeatureAt(f.Pos, FeaturePitfall)
+	return true
+}
+
 // Action results
 type ActionResult struct {
 	Moved     bool
@@ -474,9 +666,68 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			return ActionResult{Attacked: true}
 		}
 	}
+	// Feature checks at target tile before normal move.
+	if f := g.featureAt(next); f != nil {
+		// Vault locked check — block entry if no rogue/wizard.
+		if f.IsVault() && f.Locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
+			g.Logf("Locked vault - need rogue.")
+			return ActionResult{}
+		}
+		// Pitfall trigger — one-way hidden/obvious, damage 2-4 if hidden & unaware.
+		if f.IsPitfall() {
+			wasHandled := g.handlePitfall(f)
+			if wasHandled {
+				// Pitfall already moved floor / applied damage; consume turn.
+				// If still alive and not game over, advance turn like EndPlayerTurn but without double FOV?
+				if !g.Over {
+					g.Turn++
+					g.tickFood()
+					if g.Turn%10 == 0 {
+						for _, m := range g.Party.Members {
+							if m.IsAlive() && m.HP < m.MaxHP {
+								m.HP++
+							}
+						}
+					}
+					if g.Turn%5 == 0 {
+						for _, m := range g.Party.Members {
+							if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
+								m.HP++
+								if m.HP > m.MaxHP {
+									m.HP = m.MaxHP
+								}
+							}
+						}
+					}
+					g.applyStarvation()
+					g.UpdateFOV()
+					if !g.Over {
+						g.EnemyTurn()
+						g.UpdateFOV()
+					}
+				}
+				return ActionResult{Moved: true, Descended: true}
+			}
+		}
+	}
 	// Move - silent (log reserved for combat/stairs/ambience)
 	g.Party.Pos = next
 	g.Party.Active = g.Party.Selected
+	// Post-move feature interactions: Vault loot, Forge cost, Den warning.
+	if f := g.featureAt(next); f != nil {
+		if f.IsVault() {
+			// Vault already passed locked check; claim treasure.
+			// Copy before removal.
+			vf := *f
+			// Clear blocking check duplicate — handleVault does treasure/trap + removal.
+			g.handleVault(&vf)
+		} else if f.IsForge() {
+			ff := *f
+			g.handleForge(&ff)
+		} else if f.IsDen() {
+			g.handleDen(f)
+		}
+	}
 	// Check relic on final floor
 	if g.Floor == g.Tuning.Floors-1 && next == g.Relic {
 		g.Over = true
@@ -654,6 +905,7 @@ func (g *Game) EndPlayerTurn(msg string) {
 		}
 	}
 	g.applyStarvation()
+	g.MaybeTickAmbience()
 	g.EnemyTurn()
 	g.UpdateFOV()
 }

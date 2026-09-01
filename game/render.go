@@ -7,18 +7,18 @@ import (
 
 // Frame is the view model both frontends render.
 type Frame struct {
-	W, H      int
-	Cells     [][]Cell // H x W
-	Panel     []string // side panel lines (already truncated)
-	PanelFG   []string // per-line FG token parallel to Panel (gold-bright, gray-1, red-bright, slate)
-	Status    string
-	Log       []string // 8 lines
-	Hints     string
-	Over      bool
-	Won       bool
-	Quit      bool
-	MinCols   int
-	MinRows   int
+	W, H    int
+	Cells   [][]Cell // H x W
+	Panel   []string // side panel lines (already truncated)
+	PanelFG []string // per-line FG token parallel to Panel (gold-bright, gray-1, red-bright, slate)
+	Status  string
+	Log     []string // 8 lines
+	Hints   string
+	Over    bool
+	Won     bool
+	Quit    bool
+	MinCols int
+	MinRows int
 }
 
 func (g *Game) Render() Frame {
@@ -54,6 +54,37 @@ func (g *Game) Render() Frame {
 							fg = "red-bright"
 						}
 						break
+					}
+				}
+				// Check feature at pos (if no enemy)
+				if fg == "" && p != g.Party.Pos {
+					for _, f := range lvl.Features {
+						if f.Pos == p {
+							// Hidden pitfalls stay hidden until wizard reveal (or triggered).
+							if f.Hidden && !g.WizardReveal {
+								break
+							}
+							glyph = f.Glyph()
+							fg = f.Color()
+							if fg == "" {
+								fg = "gold"
+							}
+							break
+						}
+					}
+				}
+				// Check litter at pos (if no enemy/feature)
+				if fg == "" && p != g.Party.Pos {
+					if lit := lvl.LitterAt(p); lit != nil {
+						glyph = lit.Glyph
+						switch lit.Category {
+						case "impassable":
+							fg = "wall"
+						case "destructible":
+							fg = "gray-2"
+						default:
+							fg = "floor"
+						}
 					}
 				}
 				if p == g.Party.Pos {

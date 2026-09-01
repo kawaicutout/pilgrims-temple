@@ -65,6 +65,32 @@
       "xp": 30,
       "talentChance": 0.18,
       "affixChance": 0.09
+    },
+    {
+      "id": "vine_horror",
+      "name": "Vine Horror",
+      "glyph": "v",
+      "color": "#4a6a4a",
+      "damageType": "physical",
+      "effect": "entangle",
+      "effectChance": 0.12,
+      "regen": false,
+      "xp": 20,
+      "talentChance": 0.10,
+      "affixChance": 0.05
+    },
+    {
+      "id": "spore_mother",
+      "name": "Spore Mother",
+      "glyph": "s",
+      "color": "#6a8a4a",
+      "damageType": "magic",
+      "effect": "spore",
+      "effectChance": 0.15,
+      "regen": true,
+      "xp": 22,
+      "talentChance": 0.12,
+      "affixChance": 0.06
     }
   ]
 }

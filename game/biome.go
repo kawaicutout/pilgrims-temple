@@ -422,6 +422,7 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 	l.Enemies = nil
 	l.Features = nil
 	l.Litter = nil
+	l.Items = nil
 	// Branch generation.
 	switch biome.GenerationMethod {
 	case "cavern":
@@ -491,6 +492,8 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 	// Spawn level features (vault/forge/den/pitfall + merchant/fountain/shrine) via features.go.
 	// Centralized here so both rooms and cavern paths populate features; Level.Generate delegates here.
 	l.Features = MaybeSpawnFeatures(l, floor, rng)
+	// Spawn floor loot using same weighted table as wizard debug spawns.
+	SpawnFloorLoot(l, rng, floor, biome)
 	// Debug helper
 	_ = fmt.Sprintf("biome %s floor %d", biome.ID, floor)
 }

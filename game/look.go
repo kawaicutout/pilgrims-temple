@@ -51,10 +51,63 @@ func Examine(g *Game, p Pos) string {
 			return describeEnemyParty(e)
 		}
 	}
-
 	// Check relic on final floor.
 	if g.Floor == len(g.Levels)-1 && p == g.Relic {
 		return "Relic — the pilgrim's goal."
+	}
+
+	// Feature at tile (shrine/fountain/etc).
+	for _, f := range lvl.Features {
+		if f.Pos == p {
+			if f.Hidden && !g.WizardReveal {
+				break
+			}
+			switch f.Type {
+			case FeatureShrine:
+				return "Shrine (+) — offers recruitment or resurrection."
+			case FeatureFountain:
+				return "Fountain (&) — drink for a random boon or bane."
+			case FeatureMerchant:
+				return "Merchant (M) — trades gold for goods."
+			case FeatureVault:
+				if f.Locked {
+					return fmt.Sprintf("Vault ($) — locked, treasure %d gold%s", f.Treasure, map[bool]string{true: " (trapped)", false: ""}[f.Trapped])
+				}
+				return fmt.Sprintf("Vault ($) — treasure %d gold%s", f.Treasure, map[bool]string{true: " (trapped)", false: ""}[f.Trapped])
+			case FeatureForge:
+				return fmt.Sprintf("Forge (F) — improve gear for %d %s", f.Cost, f.CostType)
+			case FeatureDen:
+				return fmt.Sprintf("Den (D) — %d monsters lurk nearby", f.MonsterCount)
+			case FeaturePitfall:
+				if f.Hidden {
+					return fmt.Sprintf("Pitfall (^) — hidden, %d damage, one-way drop", f.Damage)
+				}
+				return fmt.Sprintf("Pitfall (^) — obvious, one-way drop to next floor")
+			default:
+				return fmt.Sprintf("%s (%c)", f.Type, f.Glyph())
+			}
+		}
+	}
+	// Ground loot at tile (shows when highlighted with v -- all litter and loot should show).
+	if it := lvl.ItemAt(p); it != nil {
+		switch it.Kind {
+		case "gold":
+			return fmt.Sprintf("Gold pile ($) — %d gold", it.Amount)
+		case "ration":
+			return fmt.Sprintf("Ration (%%) — food")
+		case "potion":
+			return fmt.Sprintf("Potion (!) — %s", it.Name)
+		case "scroll":
+			return fmt.Sprintf("Scroll (?) — %s", it.Name)
+		default:
+			return fmt.Sprintf("%s (%c)", it.Name, it.Glyph())
+		}
+	}
+
+	// Litter at tile (all litter and loot should show when highlighted with v).
+	if lit := lvl.LitterAt(p); lit != nil {
+		kindName := strings.ReplaceAll(lit.Kind, "_", " ")
+		return fmt.Sprintf("%s (%c) — %s, %s", kindName, lit.Glyph, lit.Category, map[bool]string{true: "blocks movement", false: "passable"}[lit.BlocksMovement])
 	}
 
 	// Terrain.
@@ -72,7 +125,6 @@ func Examine(g *Game, p Pos) string {
 		return "Empty."
 	}
 }
-
 func describeParty(p *Party, label string) string {
 	if p == nil || len(p.Members) == 0 {
 		return label + ": empty."

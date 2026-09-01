@@ -536,6 +536,145 @@ func (g *Game) handleDen(f *Feature) {
 	// Den remains as marker; not removed on warning (optional)
 }
 
+func (g *Game) handleShrine(f *Feature) {
+	if f == nil || !f.IsShrine() {
+		return
+	}
+	// Try resurrection if any dead member, else recruitment if space.
+	hasDead := false
+	deadIdx := -1
+	for i, m := range g.Party.Members {
+		if !m.IsAlive() {
+			hasDead = true
+			deadIdx = i
+			break
+		}
+	}
+	canRecruit := len(g.Party.Members) < 4
+	// Load costs (first shrine use defines cost; fallback 75 gold/50 food)
+	costGold, costFood := 75, 50
+	if uses := GetShrineUses(); len(uses) > 0 {
+		for _, u := range uses {
+			if u.ID == "resurrect" {
+				if u.GoldCost > 0 {
+					costGold = u.GoldCost
+				}
+				if u.FoodCost > 0 {
+					costFood = u.FoodCost
+				}
+				break
+			}
+		}
+	}
+	if hasDead {
+		// Try to pay gold first, else food, else fail.
+		if g.Gold >= costGold {
+			g.Gold -= costGold
+			m := g.Party.Members[deadIdx]
+			m.Alive = true
+			m.HP = m.MaxHP
+			g.Party.EnsureSelection()
+			g.Logf("Shrine resurrects %s for %d gold! (+)", m.Name, costGold)
+			g.removeFeatureAt(f.Pos, FeatureShrine)
+			return
+		}
+		if g.Food >= costFood {
+			g.Food -= costFood
+			g.FoodFloat -= float64(costFood)
+			m := g.Party.Members[deadIdx]
+			m.Alive = true
+			m.HP = m.MaxHP
+			g.Party.EnsureSelection()
+			g.Logf("Shrine resurrects %s for %d food! (+)", m.Name, costFood)
+			g.removeFeatureAt(f.Pos, FeatureShrine)
+			return
+		}
+		g.Logf("Shrine resurrection needs %d gold or %d food (you have %d gold, %d food).", costGold, costFood, g.Gold, g.Food)
+		return
+	}
+	if canRecruit {
+		// Recruit costs nothing for now (shrine recruit free).
+		classes, err := LoadClasses()
+		pick := "fighter"
+		if err == nil && len(classes) > 0 && g.RNG != nil {
+			pick = classes[g.RNG.IntN(len(classes))].ID
+		}
+		tmp := GeneratePartyWithClasses(g.RNG, []string{pick}, 1)
+		if tmp != nil && len(tmp.Members) > 0 {
+			m := tmp.Members[0]
+			for lvl := 1; lvl < g.Level; lvl++ {
+				m.MaxHP += 1 + g.RNG.IntN(2)
+				if g.RNG.IntN(2) == 0 {
+					m.ATK[0]++
+					m.ATK[1]++
+				}
+				if g.RNG.IntN(4) == 0 {
+					m.DEF++
+				}
+			}
+			m.HP = m.MaxHP
+			m.Alive = true
+			g.Party.Members = append(g.Party.Members, m)
+			g.Party.EnsureSelection()
+			g.Logf("Shrine recruits %s the %s! (+)", m.Name, m.Class)
+			g.removeFeatureAt(f.Pos, FeatureShrine)
+			return
+		}
+		g.Logf("Shrine tries to recruit, but none answer.")
+		return
+	}
+	g.Logf("Shrine glows faintly -- your party is whole and needs no resurrection.")
+}
+
+func (g *Game) handleFountain(f *Feature) {
+	if f == nil || !f.IsFountain() {
+		return
+	}
+	outs := GetFountainOutcomes()
+	if len(outs) == 0 {
+		g.Logf("Fountain water is stale.")
+		g.removeFeatureAt(f.Pos, FeatureFountain)
+		return
+	}
+	idx := 0
+	if g.RNG != nil {
+		idx = g.RNG.IntN(len(outs))
+	}
+	o := outs[idx]
+	dh := o.DeltaHP
+	if dh == 0 {
+		dh = o.Delta
+	}
+	if dh > 0 {
+		for _, m := range g.Party.Members {
+			if m.IsAlive() {
+				m.HP += dh
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
+			}
+		}
+		g.Logf("Fountain %s: %s (+%d HP)", o.Name, o.Desc, dh)
+	} else if dh < 0 {
+		_, actual := g.Party.ApplyDamage(g.RNG, -dh)
+		g.Logf("Fountain %s: %s (%d damage)", o.Name, o.Desc, actual)
+		if g.Party.LivingCount() == 0 {
+			g.Over = true
+			g.Logf("You have fallen. Seed %d.", g.Seed)
+		}
+	} else {
+		g.Logf("Fountain %s: %s", o.Name, o.Desc)
+	}
+	g.removeFeatureAt(f.Pos, FeatureFountain)
+}
+
+func (g *Game) handleMerchant(f *Feature) {
+	if f == nil || !f.IsMerchant() {
+		return
+	}
+	g.Logf("Merchant (M) - browse wares (merchant shop not yet implemented).")
+}
+
 func (g *Game) handlePitfall(f *Feature) bool {
 	if f == nil || !f.IsPitfall() {
 		return false
@@ -728,7 +867,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	// Move - silent (log reserved for combat/stairs/ambience)
 	g.Party.Pos = next
 	g.Party.Active = g.Party.Selected
-	// Post-move feature interactions: Vault loot, Forge cost, Den warning.
+	// Post-move feature interactions: Vault loot, Forge cost, Den warning, Shrine, Fountain, Merchant.
 	if f := g.featureAt(next); f != nil {
 		if f.IsVault() {
 			// Vault already passed locked check; claim treasure.
@@ -741,6 +880,15 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			g.handleForge(&ff)
 		} else if f.IsDen() {
 			g.handleDen(f)
+		} else if f.IsShrine() {
+			sf := *f
+			g.handleShrine(&sf)
+		} else if f.IsFountain() {
+			ff := *f
+			g.handleFountain(&ff)
+		} else if f.IsMerchant() {
+			mf := *f
+			g.handleMerchant(&mf)
 		}
 	}
 	// Check relic on final floor

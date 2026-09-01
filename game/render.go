@@ -73,7 +73,14 @@ func (g *Game) Render() Frame {
 						}
 					}
 				}
-				// Check litter at pos (if no enemy/feature)
+				// Check ground item at pos (if no enemy/feature)
+				if fg == "" && p != g.Party.Pos {
+					if it := lvl.ItemAt(p); it != nil {
+						glyph = it.Glyph()
+						fg = it.Color()
+					}
+				}
+				// Check litter at pos (if no enemy/feature/item)
 				if fg == "" && p != g.Party.Pos {
 					if lit := lvl.LitterAt(p); lit != nil {
 						glyph = lit.Glyph
@@ -83,7 +90,7 @@ func (g *Game) Render() Frame {
 						case "destructible":
 							fg = "gray-2"
 						default:
-							fg = "floor"
+						fg = "floor"
 						}
 					}
 				}
@@ -91,7 +98,6 @@ func (g *Game) Render() Frame {
 					glyph = '@'
 					fg = "player"
 				} else if fg == "" {
-					// Terrain colors per design-guide
 					switch lvl.At(p) {
 					case TileWall:
 						fg = "wall"
@@ -170,7 +176,7 @@ func (g *Game) Render() Frame {
 	// Inventory placeholders — Carry is shown in status bar / panel below map, not side panel
 	panel = append(panel, "Potions:", "  (none)", "Scrolls:", "  (none)")
 	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1")
-	// Status - Floor | Food | Carry | Level/XP | Turn (no HP, no Seed)
+	// Status - Floor | Food | Carry | Level/XP | Gold (no Turn, no HP, no Seed)
 	// Panel below map (status bar) shows Carry as "Carry C/M" in gold; Food is capitalized as "Food" not "FOOD".
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
 	foodStr := fmt.Sprintf("Food %d %s", g.Food, g.HungerState())
@@ -178,7 +184,8 @@ func (g *Game) Render() Frame {
 	carryUsed := g.Party.CarryUsed()
 	carryStr := fmt.Sprintf("Carry %d/%d", carryUsed, carryMax)
 	levelStr := fmt.Sprintf("Level %d XP %d/%d", g.Level, g.XP, g.XPToNext)
-	status := fmt.Sprintf("%s | %s | %s | %s | Turn %d", floorStr, foodStr, carryStr, levelStr, g.Turn)
+	goldStr := fmt.Sprintf("Gold %d", g.Gold)
+	status := fmt.Sprintf("%s | %s | %s | %s | %s", floorStr, foodStr, carryStr, levelStr, goldStr)
 	// Log padded to 8
 	logLines := make([]string, t.Layout.LogLines)
 	for i := range logLines {

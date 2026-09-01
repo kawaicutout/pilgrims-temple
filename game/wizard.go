@@ -1,6 +1,6 @@
 package game
 
-// WizardOption is one entry in the wizard menu.
+import "fmt"
 type WizardOption struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -17,7 +17,7 @@ type WizardState struct {
 // without a file.
 var WizardOptions = []WizardOption{
 	{ID: "instant_level", Name: "Instant Level", Desc: "Gain one level immediately"},
-	{ID: "spawn_loot", Name: "Spawn Random Loot", Desc: "Add 50 gold"},
+	{ID: "spawn_loot", Name: "Spawn Random Loot", Desc: "Spawn randomized treasure nearby"},
 	{ID: "food_1000", Name: "+1000 Food", Desc: "Add 1000 food"},
 	{ID: "full_heal", Name: "Full Heal", Desc: "Restore all living members to max HP"},
 	{ID: "add_member", Name: "Add Party Member", Desc: "Add a new pilgrim (max 4)"},
@@ -86,14 +86,31 @@ func (g *Game) WizardInstantLevel() {
 	}
 }
 
-// WizardSpawnLoot gives gold.
+// WizardSpawnLoot spawns random ground loot using the same weighted table as floor generation.
+// Debug path: exercises the level loot generator near the party so the wizard command is a useful
+// debug for what the level would spawn at this depth/biome.
 func (g *Game) WizardSpawnLoot() {
-	g.SetWizard()
-	g.AddGold(50)
-	g.Logf("Wizard: Spawn Random Loot (+50 gold)")
+	g.WizardSpawnLootItems()
 }
 
-// WizardAddFood adds 1000 food.
+// WizardSpawnLootLegacy is kept for compatibility if needed (adds gold only).
+func (g *Game) WizardSpawnLootLegacy() {
+	g.SetWizard()
+	// Random treasure: 25-90 gold plus occasional food
+	n := 25 + g.RNG.IntN(66) // 25-90
+	if g.RNG.Float64() < 0.3 {
+		n += 20 + g.RNG.IntN(30)
+	}
+	g.AddGold(n)
+	extra := ""
+	if g.RNG.Float64() < 0.25 {
+		f := 50 + g.RNG.IntN(100)
+		g.Food += f
+		g.FoodFloat += float64(f)
+		extra = fmt.Sprintf(" and %d food", f)
+	}
+	g.Logf("Wizard: Spawn Random Loot (+%d gold%s)", n, extra)
+}
 func (g *Game) WizardAddFood() {
 	g.SetWizard()
 	g.Food += 1000

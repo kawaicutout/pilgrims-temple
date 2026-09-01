@@ -18,6 +18,7 @@ type Level struct {
 
 	Enemies  []*EnemyParty
 	Features []Feature
+	Items    []GroundItem `json:"items"`
 
 	// Biome integration
 	BiomeID string      `json:"biomeId"`
@@ -294,12 +295,15 @@ func GetEnemyData() []enemyEntry {
 	copy(out, src)
 	return out
 }
-
 func pickEnemyForFloor(rng *rand.Rand, floor int) enemyEntry {
 	entries := loadEnemies()
 	var pool []enemyEntry
 	for _, e := range entries {
 		if e.ID == "troll" && floor < 3 {
+			continue
+		}
+		if e.ID == "vine_horror" || e.ID == "spore_mother" {
+			// Special biome enemies only via biome special spawn, not generic pool
 			continue
 		}
 		pool = append(pool, e)

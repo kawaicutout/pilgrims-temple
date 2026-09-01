@@ -1,7 +1,6 @@
 package game
 
 type Key string
-
 const (
 	KeyUp         Key = "up"
 	KeyDown       Key = "down"
@@ -18,13 +17,13 @@ const (
 	KeyHelp       Key = "help"
 	KeyEnter      Key = "enter"
 	KeyLook       Key = "look"
+	KeyPickup     Key = "pickup"
 	KeySelect1    Key = "select1"
 	KeySelect2    Key = "select2"
 	KeySelect3    Key = "select3"
 	KeySelect4    Key = "select4"
 	KeyWizard     Key = "wizard"
 )
-
 func KeyToDir(k Key) (Dir, bool) {
 	switch k {
 	case KeyUp:
@@ -95,8 +94,11 @@ func (g *Game) HandleKey(k Key) bool {
 		desc := Examine(g, g.Look.Cursor)
 		g.Logf("%s", desc)
 		return false
+	case KeyPickup:
+		g.TryPickup()
+		g.EndPlayerTurn("")
+		return true
 	case KeyQuit:
-		g.Quit = true
 		g.Logf("Quit to menu. Seed %d saved.", g.Seed)
 		return false
 	case KeyStairsDown:
@@ -176,6 +178,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeySelect4
 	case "v", "V":
 		return KeyLook
+	case "g", "G":
+		return KeyPickup
 	case "?":
 		return KeyHelp
 	case "Escape":

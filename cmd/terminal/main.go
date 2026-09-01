@@ -226,6 +226,7 @@ func main() {
 		stateWizard
 		stateWizardAddMember
 		stateWizardRemoveMember
+		stateWizardResurrectMember
 	)
 
 	state := stateMenu
@@ -490,7 +491,6 @@ func main() {
 						}
 						wizardAddCS.Picks = []string{}
 						state = stateWizardAddMember
-						drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
 					case "remove_member":
 						// Enter remove-member selection
 						wizardRemoveIdx = g.Party.Selected
@@ -506,6 +506,25 @@ func main() {
 							wizardRemoveIdx = found
 						}
 						state = stateWizardRemoveMember
+						drawFrame(g.Render())
+					case "resurrect":
+						// Enter resurrect selection (dead members)
+						wizardResurrectIdx := -1
+						for i, m := range g.Party.Members {
+							if !m.IsAlive() {
+								wizardResurrectIdx = i
+								break
+							}
+						}
+						if wizardResurrectIdx < 0 {
+							g.Logf("Wizard: Resurrect - no fallen pilgrims")
+							state = statePlaying
+							drawFrame(g.Render())
+							break
+						}
+						// Use wizardRemoveIdx var to store resurrect idx to avoid new var
+						wizardRemoveIdx = wizardResurrectIdx
+						state = stateWizardResurrectMember
 						drawFrame(g.Render())
 					case "instant_level", "spawn_loot", "food_1000", "full_heal", "reveal_all":
 						g.WizardExecute(opt.ID)
@@ -616,9 +635,46 @@ func main() {
 					state = stateWizard
 					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
 				}
-			}
+			case stateWizardResurrectMember:
+				switch k {
+				case game.KeyUp:
+					for range g.Party.Members {
+						wizardRemoveIdx--
+						if wizardRemoveIdx < 0 {
+							wizardRemoveIdx = len(g.Party.Members) - 1
+						}
+						if !g.Party.Members[wizardRemoveIdx].IsAlive() {
+							break
+						}
+					}
+					g.Party.Selected = wizardRemoveIdx
+					drawFrame(g.Render())
+				case game.KeyDown:
+					for range g.Party.Members {
+						wizardRemoveIdx++
+						if wizardRemoveIdx >= len(g.Party.Members) {
+							wizardRemoveIdx = 0
+						}
+						if !g.Party.Members[wizardRemoveIdx].IsAlive() {
+							break
+						}
+					}
+					g.Party.Selected = wizardRemoveIdx
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					g.WizardResurrectMember(wizardRemoveIdx)
+					state = statePlaying
+					drawFrame(g.Render())
+					if g.LevelUpPending != nil {
+						drawFrame(g.RenderLevelUp())
+					}
+				case game.KeyQuit:
+					state = stateWizard
+					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
+				}
 		}
 	}
+}
 }
 func parseHexColor(s string) (tcell.Color, bool) {
 	if len(s) != 7 || s[0] != '#' {

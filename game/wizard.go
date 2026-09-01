@@ -22,6 +22,7 @@ var WizardOptions = []WizardOption{
 	{ID: "full_heal", Name: "Full Heal", Desc: "Restore all living members to max HP"},
 	{ID: "add_member", Name: "Add Party Member", Desc: "Add a new pilgrim (max 4)"},
 	{ID: "remove_member", Name: "Remove Party Member", Desc: "Remove a living member"},
+	{ID: "resurrect", Name: "Resurrect Member", Desc: "Restore a fallen pilgrim"},
 	{ID: "reveal_all", Name: "Reveal All Tiles", Desc: "Reveal entire dungeon"},
 }
 
@@ -178,6 +179,28 @@ func (g *Game) WizardRemoveMember(idx int) bool {
 	return true
 }
 
+// WizardResurrectMember restores dead member at idx.
+func (g *Game) WizardResurrectMember(idx int) bool {
+	g.SetWizard()
+	if idx < 0 || idx >= len(g.Party.Members) {
+		g.Logf("Wizard: Resurrect - invalid index")
+		return false
+	}
+	m := g.Party.Members[idx]
+	if m.IsAlive() {
+		g.Logf("Wizard: Resurrect - %s is not fallen", m.Name)
+		return false
+	}
+	// Restore as per shrine: re-scale to party level, no missed level-up awards
+	// For wizard, just restore to max HP and alive, keeping original talents/affixes
+	m.Alive = true
+	m.HP = m.MaxHP
+	// Ensure HP is at least 1 and scales with level if needed (simple: ensure max HP reflects level)
+	// If member was dead for several levels, we could rescale, but for wizard we just restore as is
+	g.Party.EnsureSelection()
+	g.Logf("Wizard: Resurrect -> %s the %s rises", m.Name, m.Class)
+	return true
+}
 // WizardExecute runs the effect for a wizard option id.
 // For add/remove the frontend may want special UI; this handles the simple cases.
 func (g *Game) WizardExecute(id string) {
@@ -195,6 +218,18 @@ func (g *Game) WizardExecute(id string) {
 	case "remove_member":
 		// Default: remove selected member
 		g.WizardRemoveMember(g.Party.Selected)
+	case "resurrect":
+		// Try selected if dead, else first dead
+		if g.Party.Selected < len(g.Party.Members) && !g.Party.Members[g.Party.Selected].IsAlive() {
+			g.WizardResurrectMember(g.Party.Selected)
+		} else {
+			for i, m := range g.Party.Members {
+				if !m.IsAlive() {
+					g.WizardResurrectMember(i)
+					break
+				}
+			}
+		}
 	case "reveal_all":
 		g.RevealAllTiles()
 	default:

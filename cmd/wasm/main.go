@@ -43,15 +43,16 @@ func main() {
 		logDiv.Set("innerHTML", buildLogHTML(frame.Log))
 		hintsDiv.Set("textContent", frame.Hints)
 	}
-	type appState int
-	const (
-		stateMenu appState = iota
-		stateCharSelect
-		statePlaying
-		stateWizard
-		stateWizardAddMember
-		stateWizardRemoveMember
-	)
+type appState int
+const (
+	stateMenu appState = iota
+	stateCharSelect
+	statePlaying
+	stateWizard
+	stateWizardAddMember
+	stateWizardRemoveMember
+	stateWizardResurrectMember
+)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
@@ -344,6 +345,22 @@ func main() {
 					}
 					state = stateWizardRemoveMember
 					renderGame()
+				case "resurrect":
+					wizardRemoveIdx = -1
+					for i, m := range g.Party.Members {
+						if !m.IsAlive() {
+							wizardRemoveIdx = i
+							break
+						}
+					}
+					if wizardRemoveIdx < 0 {
+						g.Logf("Wizard: Resurrect - no fallen pilgrims")
+						state = statePlaying
+						renderGame()
+						break
+					}
+					state = stateWizardResurrectMember
+					renderGame()
 				case "instant_level", "spawn_loot", "food_1000", "full_heal", "reveal_all":
 					g.WizardExecute(opt.ID)
 					state = statePlaying
@@ -453,6 +470,40 @@ func main() {
 				renderGame()
 			case game.KeyEnter:
 				g.WizardRemoveMember(wizardRemoveIdx)
+				state = statePlaying
+				renderGame()
+			case game.KeyQuit:
+				state = stateWizard
+				renderWizard()
+			}
+		case stateWizardResurrectMember:
+			switch k {
+			case game.KeyUp:
+				for range g.Party.Members {
+					wizardRemoveIdx--
+					if wizardRemoveIdx < 0 {
+						wizardRemoveIdx = len(g.Party.Members) - 1
+					}
+					if !g.Party.Members[wizardRemoveIdx].IsAlive() {
+						break
+					}
+				}
+				g.Party.Selected = wizardRemoveIdx
+				renderGame()
+			case game.KeyDown:
+				for range g.Party.Members {
+					wizardRemoveIdx++
+					if wizardRemoveIdx >= len(g.Party.Members) {
+						wizardRemoveIdx = 0
+					}
+					if !g.Party.Members[wizardRemoveIdx].IsAlive() {
+						break
+					}
+				}
+				g.Party.Selected = wizardRemoveIdx
+				renderGame()
+			case game.KeyEnter:
+				g.WizardResurrectMember(wizardRemoveIdx)
 				state = statePlaying
 				renderGame()
 			case game.KeyQuit:

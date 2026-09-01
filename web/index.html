@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pilgrim's Temple</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-monospace); }
+  #game { white-space: pre; line-height: var(--map-line-height); padding: 16px; }
+  .status { color: var(--gray-2); font-size: 14px; padding: 8px 16px; }
+</style>
+</head>
+<body>
+<div id="game">Loading Pilgrim's Temple…</div>
+<div class="status" id="status">Booting WASM…</div>
+<script src="wasm_exec.js"></script>
+<script>
+(function() {
+  const status = document.getElementById('status');
+  const go = new Go();
+  // DESIGN 13.3: fetch brotli-compressed wasm, decompress via DecompressionStream, instantiate from bytes.
+  async function loadWasm() {
+    const resp = await fetch('main.wasm.br');
+    if (!resp.ok) throw new Error('fetch main.wasm.br: ' + resp.status);
+    const brBytes = await resp.arrayBuffer();
+    // Decompress brotli in JS (itch.io serves without Content-Encoding: br).
+    let wasmBytes;
+    if ('DecompressionStream' in window) {
+      const ds = new DecompressionStream('br');
+      const stream = new Response(brBytes).body.pipeThrough(ds);
+      wasmBytes = await new Response(stream).arrayBuffer();
+    } else {
+      // Fallback: try uncompressed (for older browsers / local file://).
+      const r2 = await fetch('main.wasm');
+      if (!r2.ok) throw new Error('DecompressionStream missing and no main.wasm fallback');
+      wasmBytes = await r2.arrayBuffer();
+    }
+    const result = await WebAssembly.instantiate(wasmBytes, go.importObject);
+    go.run(result.instance);
+  }
+  loadWasm().catch(e => {
+    status.textContent = 'Load failed: ' + e;
+    console.error(e);
+    // Fallback to uncompressed.
+    fetch('main.wasm').then(r => r.arrayBuffer()).then(bytes =>
+      WebAssembly.instantiate(bytes, go.importObject).then(r => go.run(r.instance))
+    ).catch(e2 => console.error('fallback also failed', e2));
+  });
+})();
+</script>
+</body>
+</html>

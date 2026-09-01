@@ -1,0 +1,40 @@
+{
+  "notes": "Pilgrim's Temple — talent pools. Pools are rolled on level-up (DESIGN 5.3): each living member has 25% to receive a pick; pick chooses 1 from (class pool + tagged pools + generic). Occasionally replaced by affix gain (~10%). Talent cadence/content is jam-tunable.",
+  "generic": [
+    { "id": "tough",          "name": "Tough",          "desc": "+4 max HP" },
+    { "id": "keen",           "name": "Keen",           "desc": "+1 damage" },
+    { "id": "burden_bearer",  "name": "Burden-Bearer",  "desc": "+3 carry" },
+    { "id": "light_bearer",   "name": "Light-Bearer",   "desc": "+1 light radius" },
+    { "id": "iron_will",      "name": "Iron Will",      "desc": "+10% resist vs status application" },
+    { "id": "enduring_regen", "name": "Enduring",       "desc": "+1 HP regen/tick (natural regen)" },
+    { "id": "hoarder",        "name": "Hoarder",        "desc": "Rations refill +25" },
+    { "id": "steady_hands",   "name": "Steady Hands",   "desc": "+10% trap detection" }
+  ],
+  "tagged": {
+    "martial": [
+      { "id": "weapon_master", "name": "Weapon Master", "desc": "+2 damage" },
+      { "id": "second_wind",   "name": "Second Wind",   "desc": "Once per floor: heal 6 on kill" }
+    ],
+    "divine": [
+      { "id": "blessed_hands", "name": "Blessed Hands", "desc": "Healing received +1" },
+      { "id": "ward",          "name": "Ward",          "desc": "+5% party resist vs magic" },
+      { "id": "tithe",         "name": "Tithe",         "desc": "Kills grant +1 gold (small)" }
+    ],
+    "arcane": [
+      { "id": "lorekeeper",    "name": "Lorekeeper",    "desc": "Auto-identify 1 held appearance / 50 turns" },
+      { "id": "resonant",      "name": "Resonant",      "desc": "Scroll effects +20%" },
+      { "id": "attuned_tag",   "name": "Attuned",       "desc": "Traps spotted at +1 range" }
+    ]
+  },
+  "perClass": {
+    "notes": "Each class starts with Buff A (classes.json). Talent picks grant Buff B or Active. Pools below list what a level-up can offer for that class (Buff B + Active). Small pools 2-4 as requested; generic + tagged fill the rest of the choice set.",
+    "fighter":   [{ "id": "veterans_grip", "from": "classes.json fighter.buffB" }, { "id": "cleave", "from": "classes.json fighter.active" }],
+    "rogue":     [{ "id": "evasion",       "from": "classes.json rogue.buffB"   }, { "id": "ghost_step", "from": "classes.json rogue.active"   }],
+    "cleric":    [{ "id": "restful",       "from": "classes.json cleric.buffB"  }, { "id": "restoration","from": "classes.json cleric.active"  }],
+    "druid":     [{ "id": "verdant",       "from": "classes.json druid.buffB"   }, { "id": "forage",     "from": "classes.json druid.active"    }],
+    "bard":      [{ "id": "inspiring",     "from": "classes.json bard.buffB"    }, { "id": "refrain",    "from": "classes.json bard.active"     }],
+    "wizard":    [{ "id": "attuned",       "from": "classes.json wizard.buffB"  }, { "id": "counterspell","from": "classes.json wizard.active" }],
+    "barbarian": [{ "id": "enduring",      "from": "classes.json barbarian.buffB"}, { "id": "shrug",      "from": "classes.json barbarian.active"}],
+    "paladin":   [{ "id": "radiant",       "from": "classes.json paladin.buffB" }, { "id": "deitys_gift", "from": "classes.json paladin.active" }]
+  }
+}

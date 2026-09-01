@@ -1,0 +1,26 @@
+{
+  "title": "Pilgrim's Temple",
+  "floors": 8,
+  "map": { "width": 80, "height": 24 },
+  "layout": { "minCols": 110, "minRows": 34, "logLines": 8 },
+  "food": {
+    "perMemberPerTurn": 1,
+    "rationRefill": 250,
+    "startClock": 2000,
+    "hungryThreshold": 0.25,
+    "starvingThreshold": 0.05,
+    "states": ["Ok", "Hungry", "Starving"]
+  },
+  "rest": {
+    "batchTurns": 10,
+    "healPerBatch": 15,
+    "naturalRegenPerTurn": 1
+  },
+  "levelUp": {
+    "talentChance": 0.25,
+    "affixReplaceChance": 0.10
+  },
+  "targeting": {
+    "activeWeight": 0.5
+  }
+}

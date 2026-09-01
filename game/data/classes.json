@@ -1,0 +1,91 @@
+{
+  "notes": "Pilgrim's Temple — class roster. Each class starts with Buff A. Buff B and Active are talent picks (DESIGN 5.3, pool defined in talents.json). Bard's Chorus (+1 ATK/DEF) buffs every Buff A by ~10% while a bard lives; multiple bards do not stack.",
+  "bardRule": {
+    "chorus": "Bard passive: +1 to attack and defense attributes of every other living member. While any bard lives, each Buff A effect is 10% more effective (rounded favourably). Multiple bards do not stack.",
+    "appliesTo": "BuffA"
+  },
+  "classes": [
+    {
+      "id": "fighter",
+      "name": "Fighter",
+      "role": "Front-line durability",
+      "pressure": "Health",
+      "tags": ["martial"],
+      "buffA": { "id": "shining_armor", "name": "Shining Armor", "desc": "Chance to resist hits", "base": "10% resist", "bardBuffed": "11% resist" },
+      "buffB": { "id": "veterans_grip", "name": "Veteran's Grip", "desc": "+1 damage", "base": "+1 damage", "bardBuffed": null },
+      "active": { "id": "cleave", "name": "Cleave", "desc": "On kill (attack): overflow damage hits every member of the enemy party on that tile", "trigger": "on_attack_kill" }
+    },
+    {
+      "id": "rogue",
+      "name": "Rogue",
+      "role": "Utility, resources",
+      "pressure": "Food and dungeon resources",
+      "tags": ["martial"],
+      "canOpenLocks": true,
+      "buffA": { "id": "nimble_fingers", "name": "Nimble Fingers", "desc": "Open locks; find extra gold", "base": "opens locks, +10% gold", "bardBuffed": "+11% gold" },
+      "buffB": { "id": "evasion", "name": "Evasion", "desc": "+5% dodge", "base": "5% dodge", "bardBuffed": "5.5% dodge" },
+      "active": { "id": "ghost_step", "name": "Ghost Step", "desc": "On move: no wandering encounter roll; traps on destination have 50% to not trigger", "trigger": "on_move" }
+    },
+    {
+      "id": "cleric",
+      "name": "Cleric",
+      "role": "Healing throughput",
+      "pressure": "Health",
+      "tags": ["divine"],
+      "buffA": { "id": "healers_grace", "name": "Healer's Grace", "desc": "Passive HoT", "base": "+0.5 HP/tick", "bardBuffed": "+0.55 HP/tick" },
+      "buffB": { "id": "restful", "name": "Restful", "desc": "Rest heals more", "base": "+3 HP per 10-turn rest batch", "bardBuffed": null },
+      "active": { "id": "restoration", "name": "Restoration", "desc": "On floor transition: fully heals all living members and clears negative statuses", "trigger": "on_floor_transition" }
+    },
+    {
+      "id": "druid",
+      "name": "Druid",
+      "role": "Food economy",
+      "pressure": "Food",
+      "tags": ["divine", "arcane"],
+      "buffA": { "id": "frugal", "name": "Frugal", "desc": "Reduces food consumption", "base": "-0.25 food/tick", "bardBuffed": "-0.275 food/tick" },
+      "buffB": { "id": "verdant", "name": "Verdant", "desc": "Find extra rations", "base": "+1 ration per floor find chance", "bardBuffed": null },
+      "active": { "id": "forage", "name": "Forage", "desc": "On floor transition: +100 food", "trigger": "on_floor_transition" }
+    },
+    {
+      "id": "bard",
+      "name": "Bard",
+      "role": "Meta-class, force multiplier",
+      "pressure": "Neither directly",
+      "tags": ["arcane"],
+      "buffA": { "id": "chorus", "name": "Chorus", "desc": "+1 attack and +1 defense to every other living member; also buffs every Buff A by 10% (non-stacking)", "base": "+1 ATK/+1 DEF to allies", "bardBuffed": null },
+      "buffB": { "id": "inspiring", "name": "Inspiring", "desc": "+5% XP", "base": "+5% XP", "bardBuffed": null },
+      "active": { "id": "refrain", "name": "Refrain", "desc": "On wait: every other living member heals 1 HP (stacks with natural regen)", "trigger": "on_wait" }
+    },
+    {
+      "id": "wizard",
+      "name": "Wizard",
+      "role": "Item economy",
+      "pressure": "Food and dungeon resources",
+      "tags": ["arcane"],
+      "canOpenLocks": true,
+      "buffA": { "id": "potent_scrolls", "name": "Potent Scrolls", "desc": "Boosts scroll effects", "base": "+20% scroll effect", "bardBuffed": "+22% scroll effect" },
+      "buffB": { "id": "attuned", "name": "Attuned", "desc": "Auto-identifies held items over time", "base": "1 held appearance / 50 turns", "bardBuffed": "1 / 45 turns" },
+      "active": { "id": "counterspell", "name": "Counterspell", "desc": "While active: 20% to negate incoming magic damage and 20% to negate a negative potion/scroll just used", "trigger": "on_hit_or_use" }
+    },
+    {
+      "id": "barbarian",
+      "name": "Barbarian",
+      "role": "Misuse safety",
+      "pressure": "Health and item resources",
+      "tags": ["martial"],
+      "buffA": { "id": "thick_skin", "name": "Thick Skin", "desc": "Chance to shrug negative potion/scroll effects", "base": "30% negate negative", "bardBuffed": "33% negate negative" },
+      "buffB": { "id": "enduring", "name": "Enduring", "desc": "+4 max HP", "base": "+4 HP", "bardBuffed": null },
+      "active": { "id": "shrug", "name": "Shrug", "desc": "On attack: 20% to clear one negative status from self", "trigger": "on_attack" }
+    },
+    {
+      "id": "paladin",
+      "name": "Paladin",
+      "role": "Absolute front-line",
+      "pressure": "Health",
+      "tags": ["martial", "divine"],
+      "buffA": { "id": "vow_of_protection", "name": "Vow of Protection", "desc": "While active, absorbs all single-target damage (DESIGN 3.4/5.5); thorns 1 on absorb", "base": "absorb all single-target while active", "bardBuffed": null },
+      "buffB": { "id": "radiant", "name": "Radiant", "desc": "+50% damage vs undead", "base": "+50% vs undead", "bardBuffed": null },
+      "active": { "id": "deitys_gift", "name": "Deity's Gift", "desc": "On attack: heal self for 2 HP", "trigger": "on_attack" }
+    }
+  ]
+}

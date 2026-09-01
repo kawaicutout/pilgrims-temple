@@ -1,0 +1,21 @@
+{
+  "notes": "Pilgrim's Temple — affixes. Prefix = flat stat (common). Suffix = conditional behavior (rare, sometimes replaces a talent pick on level-up ~10%). Illustrative content; jam-tunable. Affixes belong to the member and are lost on death (DESIGN 5.2/7.3).",
+  "prefixes": [
+    { "id": "veteran",  "name": "Veteran",  "desc": "+2 STR (damage)",      "mod": { "attack": 2 } },
+    { "id": "hardy",    "name": "Hardy",    "desc": "+3 max HP",            "mod": { "maxHP": 3 } },
+    { "id": "keen",     "name": "Keen",     "desc": "+1 damage",            "mod": { "attack": 1 } },
+    { "id": "stout",    "name": "Stout",    "desc": "+1 defense",           "mod": { "defense": 1 } },
+    { "id": "nimble",   "name": "Nimble",   "desc": "+5% dodge",            "mod": { "dodge": 0.05 } },
+    { "id": "bright",   "name": "Bright",   "desc": "+1 light radius",      "mod": { "light": 1 } },
+    { "id": "burdened", "name": "Burdened", "desc": "+3 carry",             "mod": { "carry": 3 } }
+  ],
+  "suffixes": [
+    { "id": "of_wrath",    "name": "of Wrath",    "desc": "+2 damage when sole survivor (1 living member)", "trigger": "sole_survivor" },
+    { "id": "of_warding",  "name": "of Warding",  "desc": "5% to negate magic damage",                    "trigger": "on_magic_hit" },
+    { "id": "of_hollow",   "name": "of the Hollow","desc": "+5 HP but −1 light radius",                  "trigger": "passive_mixed" },
+    { "id": "of_thorns",   "name": "of Thorns",   "desc": "Return 1 damage on being hit",               "trigger": "on_hit" },
+    { "id": "of_plenty",   "name": "of Plenty",   "desc": "Food tick −0.25 while active",               "trigger": "while_active" },
+    { "id": "of_mending",  "name": "of Mending",  "desc": "+1 HP per rest batch",                        "trigger": "on_rest" },
+    { "id": "of_martyr",   "name": "of the Martyr","desc": "While active, blocked damage spills as 1 thorns (paladin-lite, rare)", "trigger": "while_active" }
+  ]
+}

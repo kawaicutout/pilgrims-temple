@@ -41,11 +41,22 @@ if command -v x-terminal-emulator >/dev/null 2>&1; then
   exec x-terminal-emulator -geometry "${COLS}x${ROWS}" -e "$BIN" "$@" 2>/dev/null || exec x-terminal-emulator -e "$BIN" "$@"
 fi
 case "${XDG_CURRENT_DESKTOP:-}" in
-  *KDE*|*Plasma*) command -v konsole >/dev/null 2>&1 && exec konsole -p TerminalColumns="$COLS" -p TerminalRows="$ROWS" -e "$BIN" "$@" ;;
+  *KDE*|*Plasma*)
+    # Respect KDE's configured default (kdeglobals TerminalApplication) before hardcoding konsole
+    if [ -f "$HOME/.config/kdeglobals" ]; then
+      kde_term=$(grep -E '^TerminalApplication=' "$HOME/.config/kdeglobals" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+      case "$kde_term" in
+        alacritty) command -v alacritty >/dev/null 2>&1 && exec alacritty -o window.dimensions.columns="$COLS" -o window.dimensions.lines="$ROWS" -e "$BIN" "$@" ;;
+        konsole) command -v konsole >/dev/null 2>&1 && exec konsole -p TerminalColumns="$COLS" -p TerminalRows="$ROWS" -e "$BIN" "$@" ;;
+        kitty) command -v kitty >/dev/null 2>&1 && exec kitty -o initial_window_width="${COLS}c" -o initial_window_height="${ROWS}c" "$BIN" "$@" ;;
+        foot) command -v foot >/dev/null 2>&1 && exec foot -W "${COLS}x${ROWS}" -e "$BIN" "$@" ;;
+        xterm) command -v xterm >/dev/null 2>&1 && exec xterm -geometry "${COLS}x${ROWS}" -e "$BIN" "$@" ;;
+      esac
+    fi
+    command -v konsole >/dev/null 2>&1 && exec konsole -p TerminalColumns="$COLS" -p TerminalRows="$ROWS" -e "$BIN" "$@" ;;
   *GNOME*) command -v gnome-terminal >/dev/null 2>&1 && exec gnome-terminal --geometry="${COLS}x${ROWS}" -- "$BIN" "$@" ;;
 esac
 for cand in konsole gnome-terminal alacritty kitty foot xterm; do
-  command -v "$cand" >/dev/null 2>&1 || continue
   case "$cand" in
     konsole) exec konsole -p TerminalColumns="$COLS" -p TerminalRows="$ROWS" -e "$BIN" "$@" ;;
     gnome-terminal) exec gnome-terminal --geometry="${COLS}x${ROWS}" -- "$BIN" "$@" ;;

@@ -335,6 +335,24 @@ func tcellKeyToRaw(e *tcell.EventKey) (key string, code string) {
 		return "ArrowLeft", "ArrowLeft"
 	case tcell.KeyRight:
 		return "ArrowRight", "ArrowRight"
+	case tcell.KeyUpLeft:
+		return "7", "Numpad7"
+	case tcell.KeyUpRight:
+		return "9", "Numpad9"
+	case tcell.KeyDownLeft:
+		return "1", "Numpad1"
+	case tcell.KeyDownRight:
+		return "3", "Numpad3"
+	case tcell.KeyHome:
+		return "7", "Numpad7"
+	case tcell.KeyPgUp:
+		return "9", "Numpad9"
+	case tcell.KeyEnd:
+		return "1", "Numpad1"
+	case tcell.KeyPgDn:
+		return "3", "Numpad3"
+	case tcell.KeyClear, tcell.KeyCenter:
+		return "5", "Numpad5"
 	case tcell.KeyEscape:
 		return "Escape", "Escape"
 	case tcell.KeyEnter:

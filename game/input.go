@@ -51,6 +51,11 @@ func KeyToDir(k Key) (Dir, bool) {
 }
 
 func (g *Game) HandleKey(k Key) bool {
+	// Help can be invoked even in look mode.
+	if k == KeyHelp {
+		g.HelpActive = true
+		return false
+	}
 	// Look mode has priority: when active, movement moves cursor, v/Enter/Esc exits and examines
 	if g.Look != nil && g.Look.Active {
 		switch k {
@@ -82,8 +87,7 @@ func (g *Game) HandleKey(k Key) bool {
 		}
 		return false
 	case KeyHelp:
-		g.Logf("Seed %d | Help: q/w/e/r select, move numpad/arrows/hjkl, 5/. wait, >/ < stairs, Esc quit.", g.Seed)
-		g.Logf("Food %d (%s) | Turn %d | Floor %d/%d", g.Food, g.HungerState(), g.Turn, g.Floor+1, g.Tuning.Floors)
+		g.HelpActive = true
 		return false
 	case KeyLook:
 		g.Look = &LookState{Cursor: g.Party.Pos, Active: true}

@@ -249,7 +249,9 @@ func main() {
 				}
 			case statePlaying:
 				if g != nil {
-					if g.LevelUpPending != nil {
+					if g.HelpActive {
+						drawFrame(g.RenderHelpOverlay())
+					} else if g.LevelUpPending != nil {
 						drawFrame(g.RenderLevelUp())
 					} else {
 						drawFrame(g.Render())
@@ -340,6 +342,20 @@ func main() {
 					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					break
 				}
+				// Help overlay has priority: Esc / Enter / ? exits without consuming turn.
+				if g.HelpActive {
+					switch k {
+					case game.KeyQuit, game.KeyEnter, game.KeyHelp:
+						g.HelpActive = false
+						drawFrame(g.Render())
+						if g.LevelUpPending != nil {
+							drawFrame(g.RenderLevelUp())
+						}
+					default:
+						drawFrame(g.RenderHelpOverlay())
+					}
+					break
+				}
 				// Level up pending: handle picks (pause world)
 				if g.LevelUpPending != nil {
 					pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
@@ -403,7 +419,11 @@ func main() {
 					break
 				}
 				g.HandleKey(k)
-				drawFrame(g.Render())
+				if g.HelpActive {
+					drawFrame(g.RenderHelpOverlay())
+				} else {
+					drawFrame(g.Render())
+				}
 				if g.LevelUpPending != nil {
 					drawFrame(g.RenderLevelUp())
 				}

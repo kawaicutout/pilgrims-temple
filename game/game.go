@@ -31,6 +31,7 @@ type Game struct {
 	Look           *LookState `json:"look"`
 	Relic          Pos `json:"relic"`
 	Wizard         bool `json:"wizard"`
+	HelpActive     bool `json:"helpActive"`
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {
@@ -185,6 +186,15 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 			m.HP += 3
 		case "keen":
 			m.ATK[0]++
+		case "stout":
+			m.DEF++
+		case "bright":
+			m.Light++
+		case "burdened":
+			if m.Carry == 0 {
+				m.Carry = 10
+			}
+			m.Carry += 3
 		}
 	} else {
 		if optionIdx < 0 || optionIdx >= len(pick.Options) {
@@ -204,9 +214,19 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 		case "weapon_master":
 			m.ATK[0] += 2
 			m.ATK[1] += 2
+		case "burden_bearer":
+			if m.Carry == 0 {
+				m.Carry = 10
+			}
+			m.Carry += 3
+		case "light_bearer":
+			m.Light++
+		case "enduring_regen":
+			// passive: handled in EndPlayerTurn/RestBatch per 5 ticks
+		case "hoarder":
+			// passive refill bonus handled on ration use; no instant stat
 		}
 	}
-	g.LevelUpPending.Current++
 	if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
 		g.LevelUpPending = nil
 		g.Logf("Level up complete.")
@@ -426,6 +446,16 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 						}
 					}
 				}
+				if g.Turn%5 == 0 {
+					for _, m := range g.Party.Members {
+						if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
+							m.HP++
+							if m.HP > m.MaxHP {
+								m.HP = m.MaxHP
+							}
+						}
+					}
+				}
 				g.applyStarvation()
 				g.UpdateFOV()
 				return ActionResult{Attacked: true}
@@ -535,6 +565,17 @@ func (g *Game) EndPlayerTurn(msg string) {
 	if g.Turn%10 == 0 {
 		for _, m := range g.Party.Members {
 			if m.IsAlive() && m.HP < m.MaxHP {
+				m.HP++
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
+			}
+		}
+	}
+	// Endurance talent: +1 HP per 5 ticks per bearer (tuned from 1/tick = ~0.2/tick)
+	if g.Turn%5 == 0 {
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
 				m.HP++
 				if m.HP > m.MaxHP {
 					m.HP = m.MaxHP

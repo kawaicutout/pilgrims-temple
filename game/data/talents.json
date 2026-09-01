@@ -3,10 +3,10 @@
   "generic": [
     { "id": "tough",          "name": "Tough",          "desc": "+4 max HP" },
     { "id": "keen",           "name": "Keen",           "desc": "+1 damage" },
-    { "id": "burden_bearer",  "name": "Burden-Bearer",  "desc": "+3 carry" },
+    { "id": "burden_bearer",  "name": "Burden-Bearer",  "desc": "+3 carry capacity (pack)" },
     { "id": "light_bearer",   "name": "Light-Bearer",   "desc": "+1 light radius" },
     { "id": "iron_will",      "name": "Iron Will",      "desc": "+10% resist vs status application" },
-    { "id": "enduring_regen", "name": "Enduring",       "desc": "+1 HP regen/tick (natural regen)" },
+    { "id": "enduring_regen", "name": "Enduring",       "desc": "+1 HP per 5 ticks (natural regen)" },
     { "id": "hoarder",        "name": "Hoarder",        "desc": "Rations refill +25" },
     { "id": "steady_hands",   "name": "Steady Hands",   "desc": "+10% trap detection" }
   ],

@@ -136,14 +136,18 @@ func (g *Game) Render() Frame {
 		panel = append(panel, "")
 		panelFG = append(panelFG, "gray-1")
 	}
+	// Carry capacity (sum of members) — visible so Burden-Bearer is meaningful
+	carry := g.Party.CarryCapacity()
+	panel = append(panel, fmt.Sprintf("Carry: %d", carry))
+	panelFG = append(panelFG, "gold")
 	panel = append(panel, "Potions:", "  (none)", "Scrolls:", "  (none)")
 	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1")
-	// Status - Floor | FOOD | Level/XP | Turn (no HP, no Seed)
+	// Status - Floor | FOOD | Carry | Level/XP | Turn (no HP, no Seed)
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
 	foodStr := fmt.Sprintf("FOOD %d %s", g.Food, g.HungerState())
+	carryStr := fmt.Sprintf("Carry %d", carry)
 	levelStr := fmt.Sprintf("Lvl %d XP %d/%d", g.Level, g.XP, g.XPToNext)
-	status := fmt.Sprintf("%s | %s | %s | Turn %d", floorStr, foodStr, levelStr, g.Turn)
-
+	status := fmt.Sprintf("%s | %s | %s | %s | Turn %d", floorStr, foodStr, carryStr, levelStr, g.Turn)
 	// Log padded to 8
 	logLines := make([]string, t.Layout.LogLines)
 	for i := range logLines {
@@ -286,4 +290,67 @@ func (g *Game) RenderWizardMenu(tuning Tuning, selected int) Frame {
 	status := "Wizard Mode"
 	hints := "Up/Down: move Enter: select Esc: back"
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+func (g *Game) RenderHelpOverlay() Frame {
+	t := g.Tuning
+	w, h := t.Map.Width, t.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	lines := []struct{ text, fg string }{
+		{"PILGRIM'S TEMPLE - HELP", "gold-bright"},
+		{"", "bg"},
+		{"q / w / e / r  - select member 1-4 (free)", "gray-1"},
+		{"Move: arrows, numpad 1-9, hjkl + y u b n", "gray-1"},
+		{"5 / . / Space  - wait 1 turn", "gray-1"},
+		{"R  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", "gray-1"},
+		{"v  - look: move cursor, v/Enter/Esc to examine", "gray-1"},
+		{"> / <  - stairs down / up", "gray-1"},
+		{"?  - help (this overlay)", "gold"},
+		{"Esc - quit to menu   ] - wizard menu", "gray-1"},
+		{"", "bg"},
+		{"Rest: R heals each living member 15 HP over 10 turns;", "gray-2"},
+		{"world advances; ends early if foe appears or hunger ticks.", "gray-2"},
+		{"", "bg"},
+		{fmt.Sprintf("Seed %d | FOOD %d (%s) | Lvl %d XP %d/%d | Floor %d/%d | Turn %d", g.Seed, g.Food, g.HungerState(), g.Level, g.XP, g.XPToNext, g.Floor+1, t.Floors, g.Turn), "gold"},
+	}
+	// Center vertically
+	startY := (h - len(lines)) / 2
+	if startY < 1 {
+		startY = 1
+	}
+	for i, ln := range lines {
+		if ln.text == "" {
+			continue
+		}
+		y := startY + i
+		if y >= h-1 {
+			break
+		}
+		drawCentered(cells, w, y, ln.text, ln.fg)
+	}
+	// Draw border box around lines (optional subtle frame)
+	status := fmt.Sprintf("Help | Seed %d | Floor %d/%d", g.Seed, g.Floor+1, t.Floors)
+	hints := "Esc / Enter / ? : close help  (no turn consumed)"
+	panel := []string{"", "Commands", "q/w/e/r select", "arrows/hjkl move", "5/. wait  R rest", "v look  >/< stairs", "? help  Esc quit", "] wizard"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
+}
+
+// RenderHelpOverlayTuning is a standalone variant used by frontends that hold only tuning (e.g. menu help).
+func RenderHelpOverlay(tuning Tuning) Frame {
+	// Build a minimal game stub so the overlay can still show tuning info.
+	g := &Game{Tuning: tuning, Seed: 0, Food: tuning.Food.StartClock, Level: 1, XPToNext: 100, Floor: 0}
+	if g.Food == 0 {
+		g.Food = 2000
+	}
+	return g.RenderHelpOverlay()
 }

@@ -52,6 +52,17 @@ func RestBatch(g *Game) int {
 				}
 			}
 		}
+		// Endurance talent during rest: +1 per 5 turn ticks (same as EndPlayerTurn)
+		if g.Turn%5 == 0 {
+			for _, m := range g.Party.Members {
+				if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
+					m.HP++
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+				}
+			}
+		}
 
 		g.applyStarvation()
 		if g.Over {

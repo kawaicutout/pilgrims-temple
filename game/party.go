@@ -16,6 +16,7 @@ type Member struct {
 	DEF          int
 	MDEF         int
 	Light        int
+	Carry        int
 	Alive        bool
 	Talents      []string
 	Affixes      []string
@@ -25,6 +26,24 @@ type Member struct {
 	Regen        bool
 	XP           int
 	Color        string
+}
+
+func (m *Member) HasTalent(id string) bool {
+	for _, t := range m.Talents {
+		if t == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Member) HasAffix(id string) bool {
+	for _, a := range m.Affixes {
+		if a == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Member) IsAlive() bool { return m.Alive && m.HP > 0 }
@@ -69,6 +88,22 @@ func (p *Party) BestLight() int {
 		return 6 // default for M1
 	}
 	return best
+}
+
+// CarryCapacity is sum of living members' carry (DESIGN 4.3/7.1). Mirrors BestLight
+// pattern but summed, not max. Base per member is 10; Burden-Bearer / Burdened add 3.
+func (p *Party) CarryCapacity() int {
+	sum := 0
+	for _, m := range p.Members {
+		if m.IsAlive() {
+			c := m.Carry
+			if c == 0 {
+				c = 10 // fixup for old saves / defaults
+			}
+			sum += c
+		}
+	}
+	return sum
 }
 
 func (p *Party) EnsureSelection() {
@@ -316,6 +351,7 @@ func generateMember(rng *rand.Rand, class string, level int, used map[string]boo
 		DEF:        baseDEF,
 		MDEF:       baseMDEF,
 		Light:      6 + rng.IntN(2),
+		Carry:      10,
 		Alive:      true,
 		DamageType: "physical",
 	}

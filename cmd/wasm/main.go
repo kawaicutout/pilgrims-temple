@@ -75,8 +75,21 @@ func main() {
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
 	}
+	renderHelp := func() {
+		if g == nil {
+			return
+		}
+		frame := g.RenderHelpOverlay()
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
 	renderGame := func() {
 		if g == nil {
+			return
+		}
+		if g.HelpActive {
+			renderHelp()
 			return
 		}
 		frame := g.Render()
@@ -192,6 +205,19 @@ func main() {
 				renderMenu()
 				break
 			}
+			if g.HelpActive {
+				switch k {
+				case game.KeyQuit, game.KeyEnter, game.KeyHelp:
+					g.HelpActive = false
+					renderGame()
+					if g.LevelUpPending != nil {
+						renderLevelUp()
+					}
+				default:
+					renderHelp()
+				}
+				break
+			}
 			if g.LevelUpPending != nil {
 				pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
 				handled := false
@@ -253,7 +279,11 @@ func main() {
 				break
 			}
 			g.HandleKey(k)
-			renderGame()
+			if g.HelpActive {
+				renderHelp()
+			} else {
+				renderGame()
+			}
 			if g.Quit {
 				state = stateMenu
 				g = nil

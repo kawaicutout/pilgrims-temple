@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pilgrim's Temple — launch at 110×34 (DESIGN 10.2).
-# Prefers the system default terminal, then falls back to known terminals,
-# finally runs inline. Tries to auto-resize via window escape sequence.
+# Tries to auto-resize the current terminal in-place; only spawns a new
+# window when not in a TTY or when resize fails. Preserves numpad.
 set -e
 BIN="./pilgrims-temple"
 COLS=110
@@ -15,33 +15,83 @@ if command -v jq >/dev/null 2>&1 && [ -f game/data/tuning.json ]; then
   ROWS=$(jq -r '.layout.minRows' game/data/tuning.json)
 fi
 
-# Try to resize the current terminal via xterm escape \e[8;rows;cols t
-# Works in xterm, konsole, alacritty, gnome-terminal, foot (when supported).
+# Try to resize the current terminal window via escape sequence.
+# Works in xterm, konsole, alacritty, gnome-terminal, foot when
+# window operations are enabled. Also try wmctrl/xdotool as fallback.
 try_resize_current() {
-  if [ -t 1 ] && [ -t 2 ]; then
-    printf '\033[8;%d;%dt' "$ROWS" "$COLS" 2>/dev/null || true
-    # Give compositor a moment to apply
-    sleep 0.15 2>/dev/null || true
+  if [ ! -t 1 ] || [ ! -t 2 ]; then
+    return 1
   fi
+  # 1) xterm escape \e[8;rows;cols t
+  printf '\033[8;%d;%dt' "$ROWS" "$COLS" > /dev/tty 2>/dev/null || true
+  # 2) konsole/gnome may need flush
+  sleep 0.12 2>/dev/null || true
+  # 3) fallback via wmctrl (pixel approximation: assume 9x19 cell)
+  if command -v wmctrl >/dev/null 2>&1; then
+    # wmctrl expects pixels; approximate
+    px_w=$(( COLS * 9 + 16 ))
+    px_h=$(( ROWS * 19 + 48 ))
+    wmctrl -r :ACTIVE: -e 0,-1,-1,"$px_w","$px_h" 2>/dev/null || true
+    sleep 0.12 2>/dev/null || true
+  fi
+  # 4) stty as last resort (sets pty, not window, but helps tcell Size)
+  stty rows "$ROWS" cols "$COLS" 2>/dev/null || true
 }
 
 run_inline() {
-  # First try to auto-resize the current window (fixes manual terminal case)
   try_resize_current
   cols=$(tput cols 2>/dev/null || echo 0)
   lines=$(tput lines 2>/dev/null || echo 0)
   if [ "$cols" -lt "$COLS" ] || [ "$lines" -lt "$ROWS" ]; then
-    echo "Warning: terminal is ${cols}x${lines}, game wants ${COLS}x${ROWS}."
-    echo "If auto-resize failed, resize manually or run via a GUI launcher."
-    echo "Tip: drag window larger or run: printf '\\033[8;${ROWS};${COLS}t'"
+    echo "Note: terminal is ${cols}x${lines}, game wants ${COLS}x${ROWS}."
+    echo "If auto-resize failed, drag the window larger or press F11/maximize."
+    echo "You can also set TERM size manually: printf '\033[8;${ROWS};${COLS}t'"
+  else
+    echo "Resized to ${cols}x${lines}."
   fi
   exec "$BIN" "$@"
 }
 
-# Build a shell snippet that resizes the new window then execs the game.
-# Keeps numpad intact by preserving TERM and not touching keypad mode.
+# If we're already in an interactive terminal, prefer to resize in-place
+# (preserves numpad, profile, and avoids spawning a second window).
+if [ -t 0 ] && [ -t 1 ]; then
+  # Check if current size already sufficient — if so, run inline directly
+  cur_cols=$(tput cols 2>/dev/null || echo 0)
+  cur_lines=$(tput lines 2>/dev/null || echo 0)
+  if [ "$cur_cols" -ge "$COLS" ] && [ "$cur_lines" -ge "$ROWS" ]; then
+    exec "$BIN" "$@"
+  fi
+  # Try to resize current window; if it succeeds, run inline
+  try_resize_current
+  cur_cols2=$(tput cols 2>/dev/null || echo 0)
+  cur_lines2=$(tput lines 2>/dev/null || echo 0)
+  if [ "$cur_cols2" -ge "$COLS" ] && [ "$cur_lines2" -ge "$ROWS" ]; then
+    exec "$BIN" "$@"
+  fi
+  # If resize didn't reach target but we're still in a TTY, run inline anyway
+  # with a warning — the game's own resize prompt will show. This preserves
+  # numpad (which breaks when spawning a new konsole with wrong flags).
+  # Only spawn a new window if explicitly requested via --new-window or if
+  # caller is not interactive (e.g., double-click from Dolphin).
+  case "${1:-}" in
+    --new-window|-n)
+      shift
+      ;;
+    *)
+      # No --new-window and we're in a TTY: stay inline (user said manual exec works)
+      # but still offer to spawn if size is way too small
+      if [ "$cur_cols2" -ge 80 ] && [ "$cur_lines2" -ge 24 ]; then
+        echo "Running in current terminal (${cur_cols2}x${cur_lines2}); use --new-window to force a new window."
+        exec "$BIN" "$@"
+      fi
+      ;;
+  esac
+fi
+
+# Not in a TTY or current window too small and user asked for new window:
+# spawn the system default terminal with correct geometry.
+
 resize_and_exec_snippet() {
-  # Use $BIN and pass through args; escape sequence is sent from inside the new terminal
   printf 'printf \033[8;%d;%dt 2>/dev/null; sleep 0.05 2>/dev/null; exec "%s" "$@"' "$ROWS" "$COLS" "$BIN"
 }
 
@@ -53,11 +103,11 @@ try_term() {
   inner=$(resize_and_exec_snippet)
   case "$base" in
     gnome-terminal|gnome-terminal.wrapper)
-      # --geometry is honored, but also send escape as fallback
       exec "$term" --geometry="${COLS}x${ROWS}" -- sh -c "$inner" sh "$BIN" "$@"
       ;;
     konsole)
-      exec "$term" --qwindowgeometry "${COLS}x${ROWS}" -e sh -c "$inner" sh "$BIN" "$@"
+      # Use profile properties for character size, plus escape fallback
+      exec "$term" -p TerminalColumns="$COLS" -p TerminalRows="$ROWS" --qwindowgeometry "${COLS}x${ROWS}" -e sh -c "$inner" sh "$BIN" "$@"
       ;;
     xfce4-terminal)
       exec "$term" --geometry="${COLS}x${ROWS}" -e sh -c "$inner" sh "$BIN" "$@"
@@ -89,13 +139,10 @@ try_term() {
   esac
 }
 
-# 1. Respect $TERMINAL
 if [ -n "${TERMINAL:-}" ] && command -v "${TERMINAL%% *}" >/dev/null 2>&1; then
   # shellcheck disable=SC2086
   try_term $TERMINAL
 fi
-
-# 2. Freedesktop / Debian defaults
 if command -v xdg-terminal-exec >/dev/null 2>&1; then
   inner=$(resize_and_exec_snippet)
   exec xdg-terminal-exec -e sh -c "$inner" sh "$BIN" "$@" 2>/dev/null || true
@@ -103,8 +150,6 @@ fi
 if command -v x-terminal-emulator >/dev/null 2>&1; then
   try_term x-terminal-emulator
 fi
-
-# 3. Desktop-specific
 case "${XDG_CURRENT_DESKTOP:-}" in
   *KDE*|*Plasma*)
     command -v konsole >/dev/null 2>&1 && try_term konsole
@@ -119,13 +164,11 @@ case "${XDG_CURRENT_DESKTOP:-}" in
     command -v mate-terminal >/dev/null 2>&1 && try_term mate-terminal
     ;;
 esac
-
-# 4. Ordered fallback
 for cand in konsole gnome-terminal xfce4-terminal mate-terminal alacritty kitty foot xterm uxterm; do
   if command -v "$cand" >/dev/null 2>&1; then
     try_term "$cand"
   fi
 done
 
-# 5. No GUI terminal — resize current and run inline (preserves numpad)
+# Last resort: try inline even if not a TTY (will show warning)
 run_inline "$@"

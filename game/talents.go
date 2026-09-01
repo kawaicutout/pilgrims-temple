@@ -90,7 +90,9 @@ func GetEligibleTalents(class string) []string {
 	if raw, ok := td.PerClass[class]; ok {
 		// Try to unmarshal as slice; if it's a string (notes), skip
 		if len(raw) > 0 && raw[0] == '[' {
-			var per []struct{ID string `json:"id"`}
+			var per []struct {
+				ID string `json:"id"`
+			}
 			if err := json.Unmarshal(raw, &per); err == nil {
 				for _, p := range per {
 					add(p.ID)

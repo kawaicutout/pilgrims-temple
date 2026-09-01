@@ -28,8 +28,10 @@ type Game struct {
 	Over           bool
 	Won            bool
 	Quit           bool // ESC quit to main menu, not a death
-	Relic          Pos  // on final floor
+	Look           *LookState
+	Relic          Pos // on final floor
 }
+
 func NewGame(seed int64, tuning Tuning) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
 	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1}
@@ -74,6 +76,7 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	g.UpdateFOV()
 	return g
 }
+
 type LevelUpState struct {
 	NewLevel int
 	Picks    []TalentPick
@@ -229,7 +232,6 @@ func (g *Game) MoveLevelUpCursor(delta int) {
 	}
 }
 
-
 func (g *Game) CurLevel() *Level { return g.Levels[g.Floor] }
 
 func (g *Game) UpdateFOV() {
@@ -363,10 +365,10 @@ func (g *Game) Logf(fmtStr string, args ...any) {
 
 // Action results
 type ActionResult struct {
-	Moved bool
-	Attacked bool
+	Moved     bool
+	Attacked  bool
 	Descended bool
-	Ascended bool
+	Ascended  bool
 }
 
 func (g *Game) TryMove(dir Dir) ActionResult {

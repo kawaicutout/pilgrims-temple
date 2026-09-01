@@ -23,7 +23,6 @@ var DefaultScoreWeights = ScoreWeights{
 // killStore tracks kills per Game until orchestrator adds Game.Kills field.
 var killStore = map[*Game]int{}
 
-
 // AddKill increments kill count.
 func (g *Game) AddKill() {
 	if v, ok := killStore[g]; ok {

@@ -19,7 +19,7 @@ type Member struct {
 	Alive        bool
 	Talents      []string
 	Affixes      []string
-	DamageType   string  // physical or magic; empty means physical
+	DamageType   string // physical or magic; empty means physical
 	Effect       string
 	EffectChance float64
 	Regen        bool

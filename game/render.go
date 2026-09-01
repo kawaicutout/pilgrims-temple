@@ -72,6 +72,10 @@ func (g *Game) Render() Frame {
 						fg = "fg"
 					}
 				}
+				// Look cursor highlight
+				if g.Look != nil && g.Look.Active && p == g.Look.Cursor {
+					fg = "gold-bright"
+				}
 			}
 			cells[y][x] = Cell{Glyph: glyph, FG: fg, BG: "bg"}
 		}

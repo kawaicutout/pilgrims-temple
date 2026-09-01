@@ -21,12 +21,12 @@ var typeToAppearance = map[string]string{}
 // ---------------------------------------------------------------------------
 
 type potionFile struct {
-	Appearances []string `json:"appearances"`
+	Appearances []string   `json:"appearances"`
 	Types       []itemType `json:"types"`
 }
 
 type scrollFile struct {
-	Appearances []string `json:"appearances"`
+	Appearances []string   `json:"appearances"`
 	Types       []itemType `json:"types"`
 }
 

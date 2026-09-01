@@ -23,16 +23,16 @@ type Tuning struct {
 		LogLines int `json:"logLines"`
 	} `json:"layout"`
 	Food struct {
-		PerMemberPerTurn int      `json:"perMemberPerTurn"`
-		RationRefill     int      `json:"rationRefill"`
-		StartClock       int      `json:"startClock"`
-		HungryThreshold  float64  `json:"hungryThreshold"`
-		StarvingThreshold float64 `json:"starvingThreshold"`
-		States           []string `json:"states"`
+		PerMemberPerTurn  int      `json:"perMemberPerTurn"`
+		RationRefill      int      `json:"rationRefill"`
+		StartClock        int      `json:"startClock"`
+		HungryThreshold   float64  `json:"hungryThreshold"`
+		StarvingThreshold float64  `json:"starvingThreshold"`
+		States            []string `json:"states"`
 	} `json:"food"`
 	Rest struct {
-		BatchTurns       int `json:"batchTurns"`
-		HealPerBatch     int `json:"healPerBatch"`
+		BatchTurns          int `json:"batchTurns"`
+		HealPerBatch        int `json:"healPerBatch"`
 		NaturalRegenPerTurn int `json:"naturalRegenPerTurn"`
 	} `json:"rest"`
 	LevelUp struct {

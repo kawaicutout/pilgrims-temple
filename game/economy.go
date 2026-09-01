@@ -11,7 +11,6 @@ import (
 // helpers will be migrated to use it; external store keeps compile green.
 var goldStore = map[*Game]int{}
 
-
 func (g *Game) SetGold(n int) {
 	if n < 0 {
 		n = 0

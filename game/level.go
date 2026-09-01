@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"math/rand/v2"
 )
+
 // Level holds one floor.
 type Level struct {
-	W, H   int
-	Tiles  [][]Tile
-	Seen   [][]bool // explored
+	W, H    int
+	Tiles   [][]Tile
+	Seen    [][]bool // explored
 	Visible [][]bool
 
 	StairsUp   Pos
@@ -45,7 +46,7 @@ func (l *Level) Set(p Pos, t Tile) {
 		l.Tiles[p.Y][p.X] = t
 	}
 }
-func (l *Level) Walkable(p Pos) bool { return l.At(p).Walkable() }
+func (l *Level) Walkable(p Pos) bool  { return l.At(p).Walkable() }
 func (l *Level) BlocksFOV(p Pos) bool { return l.At(p).BlocksFOV() }
 
 // EnemyParty is a party of 1-4 monsters sharing one tile (DESIGN 3.1).
@@ -280,8 +281,8 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 	var rooms []rect
 	attempts := 50
 	for range attempts {
-		w := 5 + rng.IntN(7)  // 5-11
-		h := 4 + rng.IntN(5)  // 4-8
+		w := 5 + rng.IntN(7) // 5-11
+		h := 4 + rng.IntN(5) // 4-8
 		x := 1 + rng.IntN(l.W-w-2)
 		y := 1 + rng.IntN(l.H-h-2)
 		r := rect{x, y, w, h}
@@ -429,9 +430,9 @@ func (l *Level) Generate(rng *rand.Rand, floor int) {
 				mdef++
 			}
 			mem := &Member{
-				Name:         entry.Name,
-				Class:        entry.ID,
-				HP:           hp, MaxHP: hp,
+				Name:  entry.Name,
+				Class: entry.ID,
+				HP:    hp, MaxHP: hp,
 				ATK:          [2]int{atkMin, atkMax},
 				DEF:          def,
 				MDEF:         mdef,

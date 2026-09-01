@@ -8,9 +8,9 @@ import (
 )
 
 type ClassInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Role string `json:"role"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
 	BuffA struct {
 		Name string `json:"name"`
 		Desc string `json:"desc"`

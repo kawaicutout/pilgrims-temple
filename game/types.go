@@ -9,14 +9,14 @@ func (p Pos) Add(d Dir) Pos { return Pos{p.X + d.DX, p.Y + d.DY} }
 type Dir struct{ DX, DY int }
 
 var (
-	DirN  = Dir{0, -1}
-	DirS  = Dir{0, 1}
-	DirW  = Dir{-1, 0}
-	DirE  = Dir{1, 0}
-	DirNW = Dir{-1, -1}
-	DirNE = Dir{1, -1}
-	DirSW = Dir{-1, 1}
-	DirSE = Dir{1, 1}
+	DirN    = Dir{0, -1}
+	DirS    = Dir{0, 1}
+	DirW    = Dir{-1, 0}
+	DirE    = Dir{1, 0}
+	DirNW   = Dir{-1, -1}
+	DirNE   = Dir{1, -1}
+	DirSW   = Dir{-1, 1}
+	DirSE   = Dir{1, 1}
 	DirNone = Dir{0, 0}
 )
 

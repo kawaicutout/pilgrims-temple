@@ -3,24 +3,25 @@ package game
 type Key string
 
 const (
-	KeyUp          Key = "up"
-	KeyDown        Key = "down"
-	KeyLeft        Key = "left"
-	KeyRight       Key = "right"
-	KeyUpLeft      Key = "upleft"
-	KeyUpRight     Key = "upright"
-	KeyDownLeft    Key = "downleft"
-	KeyDownRight   Key = "downright"
-	KeyWait        Key = "wait"
-	KeyStairsDown  Key = "stairs_down"
-	KeyStairsUp    Key = "stairs_up"
-	KeyQuit        Key = "quit"
-	KeyHelp        Key = "help"
-	KeyEnter       Key = "enter"
-	KeySelect1     Key = "select1"
-	KeySelect2     Key = "select2"
-	KeySelect3     Key = "select3"
-	KeySelect4     Key = "select4"
+	KeyUp         Key = "up"
+	KeyDown       Key = "down"
+	KeyLeft       Key = "left"
+	KeyRight      Key = "right"
+	KeyUpLeft     Key = "upleft"
+	KeyUpRight    Key = "upright"
+	KeyDownLeft   Key = "downleft"
+	KeyDownRight  Key = "downright"
+	KeyWait       Key = "wait"
+	KeyStairsDown Key = "stairs_down"
+	KeyStairsUp   Key = "stairs_up"
+	KeyQuit       Key = "quit"
+	KeyHelp       Key = "help"
+	KeyEnter      Key = "enter"
+	KeyLook       Key = "look"
+	KeySelect1    Key = "select1"
+	KeySelect2    Key = "select2"
+	KeySelect3    Key = "select3"
+	KeySelect4    Key = "select4"
 )
 
 func KeyToDir(k Key) (Dir, bool) {
@@ -49,6 +50,29 @@ func KeyToDir(k Key) (Dir, bool) {
 }
 
 func (g *Game) HandleKey(k Key) bool {
+	// Look mode has priority: when active, movement moves cursor, v/Enter/Esc exits and examines
+	if g.Look != nil && g.Look.Active {
+		switch k {
+		case KeyLook, KeyEnter, KeyQuit:
+			// Examine current cursor tile before exiting
+			desc := Examine(g, g.Look.Cursor)
+			g.Logf("%s", desc)
+			g.Look.Active = false
+			return false
+		default:
+			if dir, ok := KeyToDir(k); ok {
+				next := g.Look.Cursor.Add(dir)
+				if g.CurLevel().InBounds(next) {
+					g.Look.Cursor = next
+					desc := Examine(g, next)
+					g.Logf("%s", desc)
+				}
+				return false
+			}
+			// Other keys (help, select) still work in look mode? For now ignore
+			return false
+		}
+	}
 	switch k {
 	case KeySelect1, KeySelect2, KeySelect3, KeySelect4:
 		idx := int(k[len(k)-1] - '1')
@@ -59,6 +83,12 @@ func (g *Game) HandleKey(k Key) bool {
 	case KeyHelp:
 		g.Logf("Seed %d | Help: q/w/e/r select, move numpad/arrows/hjkl, 5/. wait, >/ < stairs, Esc quit.", g.Seed)
 		g.Logf("Food %d (%s) | Turn %d | Floor %d/%d", g.Food, g.HungerState(), g.Turn, g.Floor+1, g.Tuning.Floors)
+		return false
+	case KeyLook:
+		g.Look = &LookState{Cursor: g.Party.Pos, Active: true}
+		g.Logf("Look mode: use hjkl/arrows to move, v/Enter/Esc to examine and exit.")
+		desc := Examine(g, g.Look.Cursor)
+		g.Logf("%s", desc)
 		return false
 	case KeyQuit:
 		g.Quit = true
@@ -137,6 +167,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeySelect3
 	case "r", "R":
 		return KeySelect4
+	case "v", "V":
+		return KeyLook
 	case "?":
 		return KeyHelp
 	case "Escape":

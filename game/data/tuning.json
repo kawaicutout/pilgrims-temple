@@ -18,7 +18,9 @@
   },
   "levelUp": {
     "talentChance": 0.25,
-    "affixReplaceChance": 0.10
+    "affixReplaceChance": 0.10,
+    "xpBase": 100,
+    "xpFactor": 1.5
   },
   "targeting": {
     "activeWeight": 0.5

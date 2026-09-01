@@ -26,7 +26,6 @@ func main() {
 		statusDiv.Set("id", "status")
 		body.Call("appendChild", statusDiv)
 	}
-
 	type appState int
 	const (
 		stateMenu appState = iota
@@ -37,6 +36,7 @@ func main() {
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
 	var g *game.Game
+
 
 	renderMenu := func() {
 		frame := game.RenderMainMenu(tuning, menu.Selected)
@@ -64,7 +64,19 @@ func main() {
 			statusDiv.Set("textContent", "VICTORY! Seed "+itoa(g.Seed)+" - refresh to play again.")
 		} else if g.Over {
 			statusDiv.Set("textContent", "YOU DIED. Seed "+itoa(g.Seed)+" - refresh to play again.")
+		} else if g.LevelUpPending != nil {
+			frame2 := g.RenderLevelUp()
+			gameDiv.Set("innerHTML", buildHTML(frame2, tuning))
+			statusDiv.Set("textContent", frame2.Status)
 		}
+	}
+	renderLevelUp := func() {
+		if g == nil || g.LevelUpPending == nil {
+			return
+		}
+		frame := g.RenderLevelUp()
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
 	}
 
 	renderMenu()
@@ -142,6 +154,45 @@ func main() {
 			if g == nil {
 				state = stateMenu
 				renderMenu()
+				break
+			}
+			if g.LevelUpPending != nil {
+				pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
+				handled := false
+				switch k {
+				case game.KeyEnter:
+					g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+					handled = true
+				case game.KeyQuit:
+					g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+					handled = true
+				}
+				if !handled && !pick.IsAffix {
+					switch key {
+					case "1":
+						g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+						handled = true
+					case "2":
+						if len(pick.Options) > 1 {
+							g.ApplyTalentPick(g.LevelUpPending.Current, 1)
+							handled = true
+						}
+					case "3":
+						if len(pick.Options) > 2 {
+							g.ApplyTalentPick(g.LevelUpPending.Current, 2)
+							handled = true
+						}
+					}
+				}
+				if handled {
+					if g.LevelUpPending == nil {
+						renderGame()
+					} else {
+						renderLevelUp()
+					}
+				} else {
+					renderLevelUp()
+				}
 				break
 			}
 			g.HandleKey(k)

@@ -7,23 +7,28 @@ import (
 
 // Game holds run state.
 type Game struct {
-	Seed    int64
-	RNG     *rand.Rand
-	Tuning  Tuning
-	Levels  []*Level
-	Floor   int
-	Party   *Party
-	Log     []string // 8 lines, oldest dropped
-	Turn    int
-	Food    int
-	Over    bool
-	Won     bool
-	Quit    bool // ESC quit to main menu, not a death
-	Relic   Pos // on final floor
+	Seed           int64
+	RNG            *rand.Rand
+	Tuning         Tuning
+	Levels         []*Level
+	Floor          int
+	Party          *Party
+	Log            []string // 8 lines, oldest dropped
+	Turn           int
+	Food           int
+	Level          int
+	XP             int
+	XPToNext       int
+	LevelUpPending *LevelUpState
+	Over           bool
+	Won            bool
+	Quit           bool // ESC quit to main menu, not a death
+	Relic          Pos  // on final floor
 }
 func NewGame(seed int64, tuning Tuning) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
-	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock}
+	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock, Level: 1}
+	g.XPToNext = g.xpForNext()
 	g.Levels = make([]*Level, tuning.Floors)
 	for i := range tuning.Floors {
 		lvl := NewLevel(tuning.Map.Width, tuning.Map.Height)
@@ -44,6 +49,140 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	g.UpdateFOV()
 	return g
 }
+type LevelUpState struct {
+	NewLevel int
+	Picks    []TalentPick
+	Current  int
+}
+
+type TalentPick struct {
+	MemberIdx  int
+	MemberName string
+	Class      string
+	IsAffix    bool
+	Options    []string
+}
+
+func (g *Game) xpForNext() int {
+	base := g.Tuning.LevelUp.XPBase
+	if base == 0 {
+		base = 100
+	}
+	factor := g.Tuning.LevelUp.XPFactor
+	if factor == 0 {
+		factor = 1.5
+	}
+	xp := float64(base)
+	for i := 1; i < g.Level; i++ {
+		xp *= factor
+	}
+	return int(xp + 0.5)
+}
+
+func (g *Game) GainXP(amount int) {
+	if g.Over || g.LevelUpPending != nil {
+		return
+	}
+	g.XP += amount
+	g.Logf("Gained %d XP (total %d/%d).", amount, g.XP, g.XPToNext)
+	for g.XP >= g.XPToNext {
+		g.LevelUp()
+	}
+}
+
+func (g *Game) LevelUp() {
+	g.XP -= g.XPToNext
+	g.Level++
+	g.XPToNext = g.xpForNext()
+	g.Logf("Level up! Party is now level %d.", g.Level)
+	for _, m := range g.Party.Members {
+		if !m.IsAlive() {
+			continue
+		}
+		hpGain := 1 + g.RNG.IntN(2)
+		m.MaxHP += hpGain
+		m.HP += hpGain
+		if g.RNG.IntN(2) == 0 {
+			m.ATK[0]++
+			m.ATK[1]++
+		}
+		if g.RNG.IntN(4) == 0 {
+			m.DEF++
+		}
+		g.Logf("%s gains +%d HP.", m.Name, hpGain)
+	}
+	var picks []TalentPick
+	for i, m := range g.Party.Members {
+		if !m.IsAlive() {
+			continue
+		}
+		if g.RNG.Float64() < g.Tuning.LevelUp.TalentChance {
+			pick := TalentPick{MemberIdx: i, MemberName: m.Name, Class: m.Class}
+			if g.RNG.Float64() < g.Tuning.LevelUp.AffixReplaceChance {
+				pick.IsAffix = true
+				pick.Options = []string{GetRandomAffix(g.RNG)}
+				g.Logf("%s will gain an affix: %s", m.Name, pick.Options[0])
+			} else {
+				pick.IsAffix = false
+				pick.Options = GetTalentOptions(g.RNG, m.Class, 3)
+				g.Logf("%s may choose a talent.", m.Name)
+			}
+			picks = append(picks, pick)
+		}
+	}
+	if len(picks) > 0 {
+		g.LevelUpPending = &LevelUpState{NewLevel: g.Level, Picks: picks, Current: 0}
+		g.Logf("Level up pending: %d talent picks. Press Tab to choose.", len(picks))
+	}
+}
+
+func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
+	if g.LevelUpPending == nil || pickIdx < 0 || pickIdx >= len(g.LevelUpPending.Picks) {
+		return
+	}
+	pick := g.LevelUpPending.Picks[pickIdx]
+	if pick.IsAffix {
+		m := g.Party.Members[pick.MemberIdx]
+		affixID := pick.Options[0]
+		m.Affixes = append(m.Affixes, affixID)
+		g.Logf("%s gains affix %s.", m.Name, affixID)
+		switch affixID {
+		case "veteran":
+			m.ATK[0]++
+			m.ATK[1]++
+		case "hardy":
+			m.MaxHP += 3
+			m.HP += 3
+		case "keen":
+			m.ATK[0]++
+		}
+	} else {
+		if optionIdx < 0 || optionIdx >= len(pick.Options) {
+			return
+		}
+		talentID := pick.Options[optionIdx]
+		m := g.Party.Members[pick.MemberIdx]
+		m.Talents = append(m.Talents, talentID)
+		g.Logf("%s learns talent %s.", m.Name, talentID)
+		switch talentID {
+		case "tough":
+			m.MaxHP += 4
+			m.HP += 4
+		case "keen":
+			m.ATK[0]++
+			m.ATK[1]++
+		case "weapon_master":
+			m.ATK[0] += 2
+			m.ATK[1] += 2
+		}
+	}
+	g.LevelUpPending.Current++
+	if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
+		g.LevelUpPending = nil
+		g.Logf("Level up complete.")
+	}
+}
+
 
 func (g *Game) CurLevel() *Level { return g.Levels[g.Floor] }
 
@@ -99,7 +238,6 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		return ActionResult{}
 	}
 	// Check enemy at next
-	// Check enemy at next
 	for _, e := range lvl.Enemies {
 		if e.IsAlive() && e.Pos == next {
 			g.Party.Active = g.Party.Selected
@@ -108,16 +246,36 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			memberName := e.MemberDisplayName(hitIdx)
 			if !e.IsAlive() {
 				g.Logf("%s hits %s for %d -- party slain!", attacker, e.DisplayName(), dmg)
+				g.GainXP(20 + g.Floor*10)
 			} else if killed {
 				g.Logf("%s hits %s for %d -- slain!", attacker, memberName, dmg)
+				g.GainXP(10 + g.Floor*5)
 			} else {
 				g.Logf("%s hits %s for %d.", attacker, memberName, dmg)
 			}
+			// If level up pending, pause before enemy turn (world pauses)
+			if g.LevelUpPending != nil {
+				g.Turn++
+				if g.Tuning.Food.PerMemberPerTurn > 0 {
+					g.Food -= g.Party.LivingCount() * g.Tuning.Food.PerMemberPerTurn
+					if g.Food < 0 {
+						g.Food = 0
+					}
+				}
+				if g.Turn%10 == 0 {
+					for _, m := range g.Party.Members {
+						if m.IsAlive() && m.HP < m.MaxHP {
+							m.HP++
+						}
+					}
+				}
+				g.UpdateFOV()
+				return ActionResult{Attacked: true}
+			}
 			g.EndPlayerTurn("")
-			return ActionResult{Attacked: true}
-		}
-	}
-	// Move - silent (log reserved for combat/stairs/ambience)
+          }
+      }
+      // Move - silent (log reserved for combat/stairs/ambience)
 	g.Party.Pos = next
 	g.Party.Active = g.Party.Selected
 	// Check relic on final floor

@@ -278,8 +278,51 @@ func main() {
 					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					break
 				}
+				// Level up pending: handle picks (pause world)
+				if g.LevelUpPending != nil {
+					pick := g.LevelUpPending.Picks[g.LevelUpPending.Current]
+					handled := false
+					switch k {
+					case game.KeyEnter:
+						g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+						handled = true
+					case game.KeyQuit:
+						g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+						handled = true
+					}
+					if !handled && !pick.IsAffix {
+						switch key {
+						case "1":
+							g.ApplyTalentPick(g.LevelUpPending.Current, 0)
+							handled = true
+						case "2":
+							if len(pick.Options) > 1 {
+								g.ApplyTalentPick(g.LevelUpPending.Current, 1)
+								handled = true
+							}
+						case "3":
+							if len(pick.Options) > 2 {
+								g.ApplyTalentPick(g.LevelUpPending.Current, 2)
+								handled = true
+							}
+						}
+					}
+					if handled {
+						if g.LevelUpPending == nil {
+							drawFrame(g.Render())
+						} else {
+							drawFrame(g.RenderLevelUp())
+						}
+					} else {
+						drawFrame(g.RenderLevelUp())
+					}
+					break
+				}
 				g.HandleKey(k)
 				drawFrame(g.Render())
+				if g.LevelUpPending != nil {
+					drawFrame(g.RenderLevelUp())
+				}
 				if g.Quit {
 					// Return to menu, not a death
 					state = stateMenu

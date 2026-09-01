@@ -1,20 +1,21 @@
 package game
 
 import (
-	"fmt"
 	"math/rand/v2"
 )
 
 // Member is one character in the party.
 type Member struct {
-	Name   string
-	Class  string
-	HP     int
-	MaxHP  int
-	ATK    [2]int // min,max
-	DEF    int
-	Light  int
-	Alive  bool
+	Name    string
+	Class   string
+	HP      int
+	MaxHP   int
+	ATK     [2]int // min,max
+	DEF     int
+	Light   int
+	Alive   bool
+	Talents []string
+	Affixes []string
 }
 
 func (m *Member) IsAlive() bool { return m.Alive && m.HP > 0 }
@@ -156,25 +157,25 @@ func GeneratePartyWithClasses(rng *rand.Rand, classes []string, level int) *Part
 	if len(classes) > 4 {
 		classes = classes[:4]
 	}
+	used := map[string]bool{}
 	var members []*Member
 	for _, c := range classes {
-		m := generateMember(rng, c, level)
+		m := generateMember(rng, c, level, used)
 		m.Alive = true
+		used[m.Name] = true
 		members = append(members, m)
 	}
 	return &Party{Members: members, Pos: Pos{0, 0}, Selected: 0, Active: 0}
 }
 
-func generateMember(rng *rand.Rand, class string, level int) *Member {
-	// Base stats per class (M1 placeholder)
+func generateMember(rng *rand.Rand, class string, level int, used map[string]bool) *Member {
 	hp := 20 + rng.IntN(6) + (level-1)*4
 	atkMin := 3 + (level-1)
 	atkMax := atkMin + 2 + rng.IntN(2)
-	names := []string{"Ari", "Bren", "Cael", "Dara", "Emri", "Fenn", "Garr", "Hale"}
-	name := names[rng.IntN(len(names))]
-	if rng.IntN(3) == 0 {
-		name += fmt.Sprintf("-%d", rng.IntN(100))
+	if used == nil {
+		used = map[string]bool{}
 	}
+	name := GenerateName(rng, used)
 	return &Member{
 		Name:  name,
 		Class: class,

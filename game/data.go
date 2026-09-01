@@ -36,8 +36,10 @@ type Tuning struct {
 		NaturalRegenPerTurn int `json:"naturalRegenPerTurn"`
 	} `json:"rest"`
 	LevelUp struct {
-		TalentChance     float64 `json:"talentChance"`
+		TalentChance       float64 `json:"talentChance"`
 		AffixReplaceChance float64 `json:"affixReplaceChance"`
+		XPBase             int     `json:"xpBase"`
+		XPFactor           float64 `json:"xpFactor"`
 	} `json:"levelUp"`
 	Targeting struct {
 		ActiveWeight float64 `json:"activeWeight"`

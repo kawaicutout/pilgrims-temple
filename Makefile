@@ -56,7 +56,7 @@ deploy-pages: web
 	git worktree add --detach "$$worktree" gh-pages 2>/dev/null || git worktree add "$$worktree" gh-pages; \
 	rm -rf "$$worktree"/*; \
 	cp web/index.html web/tokens.css web/wasm_exec.js web/main.wasm web/main.wasm.br "$$worktree"/; \
-	cd "$$worktree" && git add index.html tokens.css wasm_exec.js main.wasm main.wasm.br && git commit -m "Deploy web $$(date -u +%Y-%m-%dT%H:%M:%SZ)" && git push origin HEAD:gh-pages; \
+	cd "$$worktree" && git add index.html tokens.css wasm_exec.js main.wasm main.wasm.br && git commit -m "Deploy web $$(date -u +%Y-%m-%dT%H:%M:%SZ)" && git push origin HEAD:gh-pages --force; \
 	git worktree remove --force "$$worktree"; \
 	rmdir "$$worktree" 2>/dev/null || true
 	@echo "Deployed to https://kawaicutout.github.io/pilgrims-temple/"

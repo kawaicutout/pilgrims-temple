@@ -15,14 +15,15 @@ type Game struct {
 	Party   *Party
 	Log     []string // 8 lines, oldest dropped
 	Turn    int
+	Food    int
 	Over    bool
 	Won     bool
+	Quit    bool // ESC quit to main menu, not a death
 	Relic   Pos // on final floor
 }
-
 func NewGame(seed int64, tuning Tuning) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
-	g := &Game{Seed: seed, RNG: rng, Tuning: tuning}
+	g := &Game{Seed: seed, RNG: rng, Tuning: tuning, Food: tuning.Food.StartClock}
 	g.Levels = make([]*Level, tuning.Floors)
 	for i := range tuning.Floors {
 		lvl := NewLevel(tuning.Map.Width, tuning.Map.Height)
@@ -38,7 +39,7 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	// Find nearby free tile if stairs blocked by enemy (rare)
 	g.Party.Pos = start
 	g.Floor = 0
-	g.Logf("Seed %d — Pilgrim's Temple, %d floors.", seed, tuning.Floors)
+	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
 	g.Logf("You stand at the temple threshold.")
 	g.UpdateFOV()
 	return g
@@ -49,6 +50,20 @@ func (g *Game) CurLevel() *Level { return g.Levels[g.Floor] }
 func (g *Game) UpdateFOV() {
 	lvl := g.CurLevel()
 	ComputeFOV(lvl, g.Party.Pos, g.Party.BestLight())
+}
+
+func (g *Game) HungerState() string {
+	if g.Tuning.Food.StartClock <= 0 {
+		return "Ok"
+	}
+	ratio := float64(g.Food) / float64(g.Tuning.Food.StartClock)
+	if ratio <= g.Tuning.Food.StarvingThreshold {
+		return "Starving"
+	}
+	if ratio <= g.Tuning.Food.HungryThreshold {
+		return "Hungry"
+	}
+	return "Ok"
 }
 
 func (g *Game) Logf(fmtStr string, args ...any) {
@@ -196,20 +211,30 @@ func (g *Game) ApplyFloorTransition() {
 		}
 	}
 }
-
 func (g *Game) EndPlayerTurn(msg string) {
 	if msg != "" {
 		g.Logf("%s", msg)
 	}
 	g.Turn++
-	// Natural regen? M1: 1 HP per turn for living members? But DESIGN says 1/turn.
-	// For solo, regen quickly would trivialize. Keep but cap.
-	// Apply regen after player action
-	for _, m := range g.Party.Members {
-		if m.IsAlive() && m.HP < m.MaxHP {
-			m.HP++
-			if m.HP > m.MaxHP {
-				m.HP = m.MaxHP
+	// Food tick: per living member
+	if g.Tuning.Food.PerMemberPerTurn > 0 {
+		g.Food -= g.Party.LivingCount() * g.Tuning.Food.PerMemberPerTurn
+		if g.Food < 0 {
+			g.Food = 0
+		}
+		if g.Food == 0 {
+			g.Logf("You starve.")
+			// For now starving just warns; M4 can add damage.
+		}
+	}
+	// Natural regen: 1 HP every 10 ticks per living member
+	if g.Turn%10 == 0 {
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && m.HP < m.MaxHP {
+				m.HP++
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
 			}
 		}
 	}

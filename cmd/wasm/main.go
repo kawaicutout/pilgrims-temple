@@ -34,23 +34,19 @@ func main() {
 		frame := g.Render()
 		html := buildHTML(frame, tuning)
 		gameDiv.Set("innerHTML", html)
-		// Status bar is separate element for parity with terminal's y=H line
 		statusDiv.Set("textContent", frame.Status)
-		if g.Over {
-			if g.Won {
-				statusDiv.Set("textContent", "VICTORY! Seed "+itoa(g.Seed)+" - refresh to play again.")
-			} else {
-				statusDiv.Set("textContent", "YOU DIED. Seed "+itoa(g.Seed)+" - refresh to play again.")
-			}
+		if g.Quit {
+			statusDiv.Set("textContent", "Quit to menu. Seed "+itoa(g.Seed)+" - refresh to play again.")
+		} else if g.Won {
+			statusDiv.Set("textContent", "VICTORY! Seed "+itoa(g.Seed)+" - refresh to play again.")
+		} else if g.Over {
+			statusDiv.Set("textContent", "YOU DIED. Seed "+itoa(g.Seed)+" - refresh to play again.")
 		}
 	}
 	render()
 
 	var keyHandler js.Func
 	keyHandler = js.FuncOf(func(this js.Value, args []js.Value) any {
-		if g.Over {
-			return nil
-		}
 		e := args[0]
 		key := e.Get("key").String()
 		code := e.Get("code").String()
@@ -68,7 +64,6 @@ func main() {
 }
 
 func itoa(v int64) string {
-	// avoid fmt import for tiny wasm
 	s := ""
 	if v == 0 {
 		return "0"
@@ -105,7 +100,6 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 		}
 		return out
 	}
-	// Panel width for parity with terminal: MinCols - MapWidth - 1 gap
 	panelMax := tuning.Layout.MinCols - tuning.Map.Width - 1
 	if panelMax < 10 {
 		panelMax = 29
@@ -120,7 +114,6 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 		}
 		if y < len(frame.Panel) {
 			line := frame.Panel[y]
-			// Truncate to panelMax with ellipsis, same as terminal's w - panelX logic
 			runes := []rune(line)
 			if len(runes) > panelMax {
 				if panelMax > 1 {
@@ -140,7 +133,6 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 		html += "\n"
 	}
 	html += `</div></div>`
-	// Log (8 lines) - parity with terminal's log at y=H+1
 	html += `<div style="color:var(--gray-1);margin-top:4px;font-family:var(--font-monospace);white-space:pre">`
 	for _, line := range frame.Log {
 		if line == "" {
@@ -150,7 +142,6 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 		}
 	}
 	html += `</div>`
-	// Hints - parity with terminal's bottom row
 	html += `<div style="color:var(--gray-2);margin-top:8px;font-family:var(--font-monospace)">` + esc(frame.Hints) + `</div>`
 	return html
 }

@@ -172,13 +172,15 @@ func main() {
 		case *tcell.EventKey:
 			key, code := tcellKeyToRaw(e)
 			k := game.NormalizeKey(key, code)
-			if k == game.KeyQuit {
-				return
-			}
 			g.HandleKey(k)
 			draw()
+			if g.Quit {
+				// Save and return to main menu - for now just exit (not a death)
+				// TODO: write save file at quit
+				return
+			}
 			if g.Over {
-				// Wait for quit after game over
+				// Wait for Esc after game over
 				for {
 					ev2 := s.PollEvent()
 					if ke, ok := ev2.(*tcell.EventKey); ok {

@@ -15,6 +15,7 @@ type Frame struct {
 	Hints     string
 	Over      bool
 	Won       bool
+	Quit      bool
 	MinCols   int
 	MinRows   int
 }
@@ -92,14 +93,15 @@ func (g *Game) Render() Frame {
 	}
 	panel = append(panel, "Potions:", "  (none)", "Scrolls:", "  (none)")
 
-	// Status
+	// Status - FOOD is primary, seed is on ? help (per UI feedback)
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
 	hpStr := ""
 	if len(g.Party.Members) > 0 {
 		m := g.Party.Members[0]
 		hpStr = fmt.Sprintf("HP %d/%d", m.HP, m.MaxHP)
 	}
-	status := fmt.Sprintf("Seed %d | %s | %s | Turn %d", g.Seed, floorStr, hpStr, g.Turn)
+	foodStr := fmt.Sprintf("FOOD %d %s", g.Food, g.HungerState())
+	status := fmt.Sprintf("%s | %s | %s | Turn %d", floorStr, hpStr, foodStr, g.Turn)
 
 	// Log padded to 8
 	logLines := make([]string, t.Layout.LogLines)
@@ -108,15 +110,16 @@ func (g *Game) Render() Frame {
 	}
 	copy(logLines[max(0, len(logLines)-len(g.Log)):], g.Log)
 
-	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Stairs:>/ <  Quit:q  Help:?"
-	if g.Over {
+	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Stairs:>/ <  Quit:Esc  Help:?"
+	if g.Quit {
+		hints = "Quit to menu. Seed " + fmt.Sprint(g.Seed) + " - Esc again or close window"
+	} else if g.Over {
 		if g.Won {
-			hints = "VICTORY! Press q to quit. Seed " + fmt.Sprint(g.Seed)
+			hints = "VICTORY! Press Esc to quit. Seed " + fmt.Sprint(g.Seed)
 		} else {
-			hints = "YOU DIED. Press q to quit. Seed " + fmt.Sprint(g.Seed)
+			hints = "YOU DIED. Press Esc to quit. Seed " + fmt.Sprint(g.Seed)
 		}
 	}
-
 	return Frame{
 		W: w, H: h, Cells: cells,
 		Panel:   panel,
@@ -125,6 +128,7 @@ func (g *Game) Render() Frame {
 		Hints:   hints,
 		Over:    g.Over,
 		Won:     g.Won,
+		Quit:    g.Quit,
 		MinCols: t.Layout.MinCols,
 		MinRows: t.Layout.MinRows,
 	}

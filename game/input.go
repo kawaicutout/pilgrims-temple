@@ -56,11 +56,12 @@ func (g *Game) HandleKey(k Key) bool {
 		}
 		return false
 	case KeyHelp:
-		g.Logf("Help: move (numpad/arrows/hjkl), wait (5/.), stairs >/<, Esc to quit.")
+		g.Logf("Seed %d | Help: q/w/e/r select, move numpad/arrows/hjkl, 5/. wait, >/ < stairs, Esc quit.", g.Seed)
+		g.Logf("Food %d (%s) | Turn %d | Floor %d/%d", g.Food, g.HungerState(), g.Turn, g.Floor+1, g.Tuning.Floors)
 		return false
 	case KeyQuit:
-		g.Over = true
-		g.Logf("Quit. Seed %d.", g.Seed)
+		g.Quit = true
+		g.Logf("Quit to menu. Seed %d saved.", g.Seed)
 		return false
 	case KeyStairsDown:
 		g.TryStairsDown()
@@ -123,9 +124,9 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyStairsDown
 	case "<":
 		return KeyStairsUp
-	case "Q":
-		return KeyQuit
 	case "q":
+		return KeySelect1
+	case "Q":
 		return KeyQuit
 	case "w", "W":
 		return KeySelect2

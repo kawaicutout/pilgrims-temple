@@ -49,7 +49,10 @@ func (g *Game) Render() Frame {
 				for _, e := range lvl.Enemies {
 					if e.IsAlive() && e.Pos == p {
 						glyph = e.Glyph()
-						fg = "enemy"
+						fg = e.Color()
+						if fg == "" {
+							fg = "red-bright"
+						}
 						break
 					}
 				}
@@ -189,8 +192,21 @@ func (g *Game) RenderLevelUp() Frame {
 	if pick.IsAffix {
 		drawCentered(cells, w, 4, "Gain affix:", "gray-1")
 		opt := pick.Options[0]
-		fg := "gold"
-		drawCentered(cells, w, 6, fmt.Sprintf("> %s", opt), fg)
+		desc := GetAffixDesc(opt)
+		if desc == opt {
+			if alt := GetTalentDesc(opt); alt != opt {
+				desc = alt
+			}
+		}
+		text := opt
+		if desc != opt {
+			text = desc
+		}
+		line := fmt.Sprintf("> %s", text)
+		if len([]rune(line)) > w-2 {
+			line = string([]rune(line)[:w-2])
+		}
+		drawCentered(cells, w, 6, line, "gold")
 	} else {
 		drawCentered(cells, w, 4, fmt.Sprintf("%s (%s) choose talent:", pick.MemberName, pick.Class), "gray-1")
 		cursor := g.LevelUpPending.Cursor
@@ -201,8 +217,12 @@ func (g *Game) RenderLevelUp() Frame {
 				prefix = "> "
 				fg = "gold-bright"
 			}
-			line := fmt.Sprintf("%s%d: %s", prefix, i+1, opt)
-			drawCentered(cells, w, 6+i*2, line, fg)
+			desc := GetTalentDesc(opt)
+			line := fmt.Sprintf("%s%d: %s", prefix, i+1, desc)
+			if len([]rune(line)) > w-2 {
+				line = string([]rune(line)[:w-2])
+			}
+			drawString(cells, 2, 6+i*2, line, fg)
 		}
 		drawCentered(cells, w, 12, "Up/Down + Enter: choose  1/2/3: quick pick", "gray-2")
 	}

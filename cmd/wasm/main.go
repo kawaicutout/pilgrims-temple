@@ -3,6 +3,7 @@
 package main
 
 import (
+	"strings"
 	"syscall/js"
 	"time"
 
@@ -356,6 +357,23 @@ func buildLogHTML(lines []string) string {
 }
 
 func colorForToken(token string) string {
+	if strings.HasPrefix(token, "#") && len(token) == 7 {
+		// Validate hex digits; fallback to red-bright if invalid.
+		valid := true
+		for _, c := range token[1:] {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			return token
+		}
+		return "var(--red-bright)"
+	}
+	if strings.HasPrefix(token, "enemy-#") {
+		return token[len("enemy-"):]
+	}
 	switch token {
 	case "player", "gold-bright":
 		return "var(--gold-bright)"

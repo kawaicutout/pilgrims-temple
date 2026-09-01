@@ -6,6 +6,7 @@ package main
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -81,49 +82,56 @@ func main() {
 				}
 				cell := frame.Cells[y][x]
 				var st tcell.Style
-				switch cell.FG {
-				case "player":
-					st = styleGoldBr
-				case "enemy":
-					st = styleRedBr
-				case "wall":
-					st = styleWall
-				case "floor":
-					st = styleFloor
-				case "gold":
-					st = styleGold
-				case "gold-bright":
-					st = styleGoldBr
-				case "red-bright":
-					st = styleRedBr
-				case "slate":
-					st = styleSlate
-				case "gray-3", "gray-2":
-					st = styleGray2
-				case "gray-1":
-					st = styleGray1
-				default:
-					if cell.FG == "bg" {
-						st = styleBG
+				if strings.HasPrefix(cell.FG, "#") {
+					if c, ok := parseHexColor(cell.FG); ok {
+						st = styleBG.Foreground(c)
 					} else {
-						st = styleGray1
-						if len(frame.Cells[y][x].FG) > 0 && frame.Cells[y][x].FG == "gold-bright" {
-							st = styleGoldBr
-						}
-					}
-					// For menu, check FG string
-					if cell.FG == "gold-bright" {
-						st = styleGoldBr
-					} else if cell.FG == "gray-1" {
-						st = styleGray1
-					} else if cell.FG == "gray-2" {
-						st = styleGray2
-					} else if cell.FG == "gold" {
-						st = styleGold
-					} else if cell.FG == "red-bright" {
 						st = styleRedBr
-					} else if cell.FG == "slate" {
+					}
+				} else {
+					switch cell.FG {
+					case "player":
+						st = styleGoldBr
+					case "enemy":
+						st = styleRedBr
+					case "wall":
+						st = styleWall
+					case "floor":
+						st = styleFloor
+					case "gold":
+						st = styleGold
+					case "gold-bright":
+						st = styleGoldBr
+					case "red-bright":
+						st = styleRedBr
+					case "slate":
 						st = styleSlate
+					case "gray-3", "gray-2":
+						st = styleGray2
+					case "gray-1":
+						st = styleGray1
+					default:
+						if cell.FG == "bg" {
+							st = styleBG
+						} else {
+							st = styleGray1
+							if len(frame.Cells[y][x].FG) > 0 && frame.Cells[y][x].FG == "gold-bright" {
+								st = styleGoldBr
+							}
+						}
+						if cell.FG == "gold-bright" {
+							st = styleGoldBr
+						} else if cell.FG == "gray-1" {
+							st = styleGray1
+						} else if cell.FG == "gray-2" {
+							st = styleGray2
+						} else if cell.FG == "gold" {
+							st = styleGold
+						} else if cell.FG == "red-bright" {
+							st = styleRedBr
+						} else if cell.FG == "slate" {
+							st = styleSlate
+						}
 					}
 				}
 				s.SetContent(x, y, cell.Glyph, nil, st)
@@ -403,6 +411,42 @@ func main() {
 			}
 		}
 	}
+}
+
+func parseHexColor(s string) (tcell.Color, bool) {
+	if len(s) != 7 || s[0] != '#' {
+		return 0, false
+	}
+	var r, g, b int
+	for i := range 3 {
+		hi := hexVal(s[1+i*2])
+		lo := hexVal(s[2+i*2])
+		if hi < 0 || lo < 0 {
+			return 0, false
+		}
+		v := hi*16 + lo
+		switch i {
+		case 0:
+			r = v
+		case 1:
+			g = v
+		case 2:
+			b = v
+		}
+	}
+	return tcell.NewRGBColor(int32(r), int32(g), int32(b)), true
+}
+
+func hexVal(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c - 'a' + 10)
+	case c >= 'A' && c <= 'F':
+		return int(c - 'A' + 10)
+	}
+	return -1
 }
 
 func itoa(v int) string {

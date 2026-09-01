@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 )
 
@@ -157,4 +158,142 @@ func GetTalentOptions(rng *rand.Rand, class string, count int) []string {
 		count = len(eligible)
 	}
 	return eligible[:count]
+}
+
+// --- Talent / affix description helpers ---
+
+type descEntry struct {
+	Name string
+	Desc string
+}
+
+var talentDescMap map[string]descEntry
+var affixDescMap map[string]descEntry
+
+func ensureTalentDescCache() {
+	if talentDescMap != nil {
+		return
+	}
+	talentDescMap = make(map[string]descEntry)
+	if b, err := RawJSON("talents.json"); err == nil {
+		var raw struct {
+			Generic []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Desc string `json:"desc"`
+			} `json:"generic"`
+			Tagged map[string][]struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Desc string `json:"desc"`
+			} `json:"tagged"`
+		}
+		if err := json.Unmarshal(b, &raw); err == nil {
+			for _, g := range raw.Generic {
+				talentDescMap[g.ID] = descEntry{Name: g.Name, Desc: g.Desc}
+			}
+			for _, lst := range raw.Tagged {
+				for _, e := range lst {
+					talentDescMap[e.ID] = descEntry{Name: e.Name, Desc: e.Desc}
+				}
+			}
+		}
+	}
+	if b, err := RawJSON("classes.json"); err == nil {
+		var raw struct {
+			Classes []struct {
+				BuffA struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+					Desc string `json:"desc"`
+				} `json:"buffA"`
+				BuffB struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+					Desc string `json:"desc"`
+				} `json:"buffB"`
+				Active struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+					Desc string `json:"desc"`
+				} `json:"active"`
+			} `json:"classes"`
+		}
+		if err := json.Unmarshal(b, &raw); err == nil {
+			for _, c := range raw.Classes {
+				if c.BuffA.ID != "" {
+					if _, ok := talentDescMap[c.BuffA.ID]; !ok {
+						talentDescMap[c.BuffA.ID] = descEntry{Name: c.BuffA.Name, Desc: c.BuffA.Desc}
+					}
+				}
+				if c.BuffB.ID != "" {
+					talentDescMap[c.BuffB.ID] = descEntry{Name: c.BuffB.Name, Desc: c.BuffB.Desc}
+				}
+				if c.Active.ID != "" {
+					talentDescMap[c.Active.ID] = descEntry{Name: c.Active.Name, Desc: c.Active.Desc}
+				}
+			}
+		}
+	}
+}
+
+func ensureAffixDescCache() {
+	if affixDescMap != nil {
+		return
+	}
+	affixDescMap = make(map[string]descEntry)
+	if b, err := RawJSON("affixes.json"); err == nil {
+		var raw struct {
+			Prefixes []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Desc string `json:"desc"`
+			} `json:"prefixes"`
+			Suffixes []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Desc string `json:"desc"`
+			} `json:"suffixes"`
+		}
+		if err := json.Unmarshal(b, &raw); err == nil {
+			for _, p := range raw.Prefixes {
+				affixDescMap[p.ID] = descEntry{Name: p.Name, Desc: p.Desc}
+			}
+			for _, s := range raw.Suffixes {
+				affixDescMap[s.ID] = descEntry{Name: s.Name, Desc: s.Desc}
+			}
+		}
+	}
+}
+
+// GetTalentDesc returns "Name - Desc" for a talent id, falling back to id.
+func GetTalentDesc(id string) string {
+	ensureTalentDescCache()
+	if e, ok := talentDescMap[id]; ok {
+		switch {
+		case e.Name != "" && e.Desc != "":
+			return fmt.Sprintf("%s - %s", e.Name, e.Desc)
+		case e.Name != "":
+			return e.Name
+		case e.Desc != "":
+			return fmt.Sprintf("%s - %s", id, e.Desc)
+		}
+	}
+	return id
+}
+
+// GetAffixDesc returns "Name - Desc" for an affix id, falling back to id.
+func GetAffixDesc(id string) string {
+	ensureAffixDescCache()
+	if e, ok := affixDescMap[id]; ok {
+		switch {
+		case e.Name != "" && e.Desc != "":
+			return fmt.Sprintf("%s - %s", e.Name, e.Desc)
+		case e.Name != "":
+			return e.Name
+		case e.Desc != "":
+			return fmt.Sprintf("%s - %s", id, e.Desc)
+		}
+	}
+	return id
 }

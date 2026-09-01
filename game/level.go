@@ -75,6 +75,27 @@ func (e *EnemyParty) LivingCount() int {
 	return n
 }
 
+func (e *EnemyParty) Color() string {
+	for _, m := range e.Members {
+		if m.IsAlive() && m.Color != "" {
+			return m.Color
+		}
+	}
+	for _, m := range e.Members {
+		if m.Color != "" {
+			return m.Color
+		}
+	}
+	return "#c96a5a"
+}
+
+func (e *EnemyParty) MemberColor(idx int) string {
+	if idx >= 0 && idx < len(e.Members) && e.Members[idx].Color != "" {
+		return e.Members[idx].Color
+	}
+	return e.Color()
+}
+
 func (e *EnemyParty) Glyph() rune {
 	for _, m := range e.Members {
 		if m.IsAlive() {

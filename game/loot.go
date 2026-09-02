@@ -113,6 +113,7 @@ func (g *Game) TryPickup() bool {
 	}
 	p := g.Party.Pos
 	picked := false
+	inventoryFull := false
 	remaining := lvl.Items[:0]
 	for _, it := range lvl.Items {
 		if it.Pos != p {
@@ -151,6 +152,8 @@ func (g *Game) TryPickup() bool {
 		case "potion":
 			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
 				remaining = append(remaining, it)
+				inventoryFull = true
+				g.Logf("Inventory full — cannot pick up %s.", it.Name)
 				continue
 			}
 			g.Party.Inventory = append(g.Party.Inventory, it)
@@ -180,6 +183,8 @@ func (g *Game) TryPickup() bool {
 		case "scroll":
 			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
 				remaining = append(remaining, it)
+				inventoryFull = true
+				g.Logf("Inventory full — cannot pick up %s.", it.Name)
 				continue
 			}
 			g.Party.Inventory = append(g.Party.Inventory, it)
@@ -209,10 +214,12 @@ func (g *Game) TryPickup() bool {
 		default:
 			g.Logf("Picked up %s.", it.Name)
 		}
-		picked = true
+	picked = true
 	}
 	lvl.Items = remaining
-	if !picked {
+	if inventoryFull {
+		// already logged per-item, don't also say nothing to pick up
+	} else if !picked {
 		g.Logf("Nothing to pick up.")
 	}
 	return picked

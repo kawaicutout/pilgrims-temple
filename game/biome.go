@@ -39,6 +39,19 @@ type Biome struct {
 	FloorGlyphVariants []string `json:"floorGlyphVariants,omitempty"`
 }
 
+// LitterDefData defines a single litter kind data-driven (game/data/litter.json).
+// Glyph is a single-character string (e.g. "]", "|", "=") decoded to rune.
+// Color is hex or empty for neutral floor. Category is destructible|passable|impassable.
+// HP is for destructibles (0 for others). AltBump is custom bump message or empty.
+type LitterDefData struct {
+	Kind     string `json:"kind"`
+	Glyph    string `json:"glyph"`
+	Color    string `json:"color"`
+	Category string `json:"category"`
+	HP       int    `json:"hp"`
+	AltBump  string `json:"altBump"`
+}
+
 // LitterObj is a placed litter instance on a level.
 type LitterObj struct {
 	Pos            Pos    `json:"pos"`
@@ -61,6 +74,69 @@ var (
 	biomesOnce  sync.Once
 	biomesCache []Biome
 )
+
+var (
+	litterOnce  sync.Once
+	litterCache map[string]LitterDefData
+)
+
+func fallbackLitterDefs() map[string]LitterDefData {
+	return map[string]LitterDefData{
+		"barrel":        {Kind: "barrel", Glyph: "]", Color: "", Category: "destructible", HP: 8, AltBump: ""},
+		"ash_barrel":    {Kind: "ash_barrel", Glyph: "]", Color: "#8a5a3a", Category: "destructible", HP: 8, AltBump: ""},
+		"crate":         {Kind: "crate", Glyph: "=", Color: "", Category: "destructible", HP: 10, AltBump: ""},
+		"cinder_block":  {Kind: "cinder_block", Glyph: "=", Color: "#8a5a3a", Category: "destructible", HP: 14, AltBump: ""},
+		"urn":           {Kind: "urn", Glyph: ")", Color: "#6a7a7a", Category: "destructible", HP: 5, AltBump: ""},
+		"bone_pile":     {Kind: "bone_pile", Glyph: ":", Color: "#9a7a5a", Category: "destructible", HP: 10, AltBump: ""},
+		"mushroom_cap":  {Kind: "mushroom_cap", Glyph: "o", Color: "#5a9a5a", Category: "destructible", HP: 6, AltBump: ""},
+		"spore_pod":     {Kind: "spore_pod", Glyph: "*", Color: "#5a9a5a", Category: "destructible", HP: 5, AltBump: ""},
+		"vine_cluster":  {Kind: "vine_cluster", Glyph: "\"", Color: "#4a8a3a", Category: "destructible", HP: 10, AltBump: ""},
+		"rubble":        {Kind: "rubble", Glyph: ",", Color: "", Category: "passable", HP: 0, AltBump: ""},
+		"rubble_wall":   {Kind: "rubble_wall", Glyph: ",", Color: "#9a7a5a", Category: "impassable", HP: 0, AltBump: "The rubble wall is too unstable to cross."},
+		"bone_dust":     {Kind: "bone_dust", Glyph: ",", Color: "#9a7a5a", Category: "passable", HP: 0, AltBump: ""},
+		"dust":          {Kind: "dust", Glyph: ".", Color: "", Category: "passable", HP: 0, AltBump: ""},
+		"ash":           {Kind: "ash", Glyph: ".", Color: "#8a5a3a", Category: "passable", HP: 0, AltBump: ""},
+		"puddle":        {Kind: "puddle", Glyph: "~", Color: "#5a6a7a", Category: "passable", HP: 0, AltBump: ""},
+		"slime":         {Kind: "slime", Glyph: "~", Color: "#4a9a4a", Category: "passable", HP: 0, AltBump: ""},
+		"moss":          {Kind: "moss", Glyph: "\"", Color: "#4a7a3a", Category: "passable", HP: 0, AltBump: ""},
+		"column":        {Kind: "column", Glyph: "|", Color: "#6a7a7a", Category: "impassable", HP: 0, AltBump: "The column is unyielding stone."},
+		"altar":         {Kind: "altar", Glyph: "=", Color: "#6a7a7a", Category: "impassable", HP: 0, AltBump: "The altar is immovable, humming faintly."},
+		"sarcophagus":   {Kind: "sarcophagus", Glyph: "=", Color: "#6a7a7a", Category: "impassable", HP: 0, AltBump: "The sarcophagus is sealed shut."},
+		"bone_column":   {Kind: "bone_column", Glyph: "|", Color: "#9a7a5a", Category: "impassable", HP: 0, AltBump: "The column is unyielding stone."},
+		"fungal_column": {Kind: "fungal_column", Glyph: "|", Color: "#5a9a5a", Category: "impassable", HP: 0, AltBump: "The fungal column is rooted deep."},
+		"vine_wall":     {Kind: "vine_wall", Glyph: "|", Color: "#4a8a3a", Category: "impassable", HP: 0, AltBump: "Vines block the way, pulsing faintly."},
+		"cinder_column": {Kind: "cinder_column", Glyph: "|", Color: "#8a5a3a", Category: "impassable", HP: 0, AltBump: "The column is unyielding stone."},
+		"pit":           {Kind: "pit", Glyph: "0", Color: "", Category: "impassable", HP: 0, AltBump: "The darkness extends deep below — you cannot pass."},
+		"lava_pit":      {Kind: "lava_pit", Glyph: "0", Color: "#9a4a2a", Category: "impassable", HP: 0, AltBump: "Heat shimmers over the lava pit — the edge holds."},
+		"thicket":       {Kind: "thicket", Glyph: "#", Color: "#4a8a3a", Category: "impassable", HP: 0, AltBump: "The thicket is too dense to push through."},
+	}
+}
+
+func loadLitterData() {
+	litterOnce.Do(func() {
+		b, err := dataFS.ReadFile("data/litter.json")
+		if err != nil {
+			litterCache = fallbackLitterDefs()
+			return
+		}
+		var arr []LitterDefData
+		if err := json.Unmarshal(b, &arr); err != nil || len(arr) == 0 {
+			litterCache = fallbackLitterDefs()
+			return
+		}
+		m := make(map[string]LitterDefData, len(arr))
+		for _, d := range arr {
+			m[d.Kind] = d
+		}
+		// Fill any missing kinds from fallback so old saves and partial files still work.
+		for k, v := range fallbackLitterDefs() {
+			if _, ok := m[k]; !ok {
+				m[k] = v
+			}
+		}
+		litterCache = m
+	})
+}
 
 func fallbackBiomes() []Biome {
 	return []Biome{
@@ -253,13 +329,21 @@ func WallColorForLevel(lvl *Level) string {
 }
 
 func litterGlyph(kind string) rune {
+	loadLitterData()
+	if d, ok := litterCache[kind]; ok && d.Glyph != "" {
+		for _, r := range d.Glyph {
+			return r
+		}
+	}
 	switch kind {
 	case "barrel", "ash_barrel":
 		return ']'
 	case "crate", "cinder_block":
 		return '='
-	case "urn", "bone_pile":
-		return 'U'
+	case "urn":
+		return ')'
+	case "bone_pile":
+		return ':'
 	case "mushroom_cap":
 		return 'o'
 	case "spore_pod":
@@ -274,20 +358,10 @@ func litterGlyph(kind string) rune {
 		return '~'
 	case "moss":
 		return '"'
-	case "column":
-		return 'H'
-	case "altar":
-		return 'A'
-	case "sarcophagus":
-		return 'S'
-	case "bone_column":
-		return 'I'
-	case "fungal_column":
-		return 'T'
-	case "vine_wall":
-		return 'V'
-	case "cinder_column":
-		return 'H'
+	case "column", "cinder_column", "bone_column", "fungal_column", "vine_wall":
+		return '|'
+	case "altar", "sarcophagus":
+		return '='
 	case "pit", "lava_pit":
 		return '0'
 	case "thicket":
@@ -298,7 +372,12 @@ func litterGlyph(kind string) rune {
 }
 
 func litterBlocks(kind, category string) (blocksMove, blocksFOV bool) {
-	switch category {
+	loadLitterData()
+	cat := category
+	if d, ok := litterCache[kind]; ok && d.Category != "" {
+		cat = d.Category
+	}
+	switch cat {
 	case "passable":
 		return false, false
 	case "destructible":
@@ -314,7 +393,6 @@ func litterBlocks(kind, category string) (blocksMove, blocksFOV bool) {
 		return false, false
 	}
 }
-
 func newLitterObj(pos Pos, kind, category string) LitterObj {
 	bm, bf := litterBlocks(kind, category)
 	obj := LitterObj{Pos: pos, Kind: kind, Category: category, Glyph: litterGlyph(kind), BlocksMovement: bm, BlocksFOV: bf}
@@ -332,6 +410,13 @@ func newLitterObj(pos Pos, kind, category string) LitterObj {
 }
 
 func litterHP(kind string) int {
+	loadLitterData()
+	if d, ok := litterCache[kind]; ok {
+		// If kind exists in data, use its HP even if 0 (passable/impassable have 0).
+		// Fallback default for unknown kinds is handled by switch below, but cache covers all known kinds.
+		// Only return directly if the kind is known; HP 0 is valid for non-destructibles.
+		return d.HP
+	}
 	switch kind {
 	case "urn", "spore_pod":
 		return 5
@@ -349,6 +434,10 @@ func litterHP(kind string) int {
 }
 
 func litterColor(kind string) string {
+	loadLitterData()
+	if d, ok := litterCache[kind]; ok {
+		return d.Color
+	}
 	switch kind {
 	case "mushroom_cap", "spore_pod", "fungal_column":
 		return "#5a9a5a" // fungal green — more saturated to match #4a6a4a walls
@@ -376,6 +465,13 @@ func litterColor(kind string) string {
 }
 
 func litterAltBump(kind string) (string, bool) {
+	loadLitterData()
+	if d, ok := litterCache[kind]; ok {
+		if d.AltBump != "" {
+			return d.AltBump, true
+		}
+		return "", false
+	}
 	switch kind {
 	case "pit":
 		return "The darkness extends deep below — you cannot pass.", true

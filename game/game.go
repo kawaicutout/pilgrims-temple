@@ -8,6 +8,13 @@ import (
 )
 
 // Game holds run state.
+type MerchantState struct {
+	Active   bool   `json:"active"`
+	Pos      Pos    `json:"pos"`
+	Wares    []Ware `json:"wares"`
+	Selected int    `json:"selected"`
+}
+
 type Game struct {
 	Seed                    int64         `json:"seed"`
 	RNG                     *rand.Rand    `json:"-"`
@@ -39,6 +46,7 @@ type Game struct {
 	TransitionFiredForLevel map[int]bool  `json:"transitionFiredForLevel"`
 	RelicCollected          bool          `json:"relicCollected"`
 	NextAmbienceTurn        int           `json:"nextAmbienceTurn"`
+	Merchant                MerchantState `json:"merchant"`
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {
@@ -715,6 +723,136 @@ func (g *Game) TryUseForge() bool {
 	return used
 }
 
+// TryUseFountain attempts deliberate use of a fountain at the party's current position.
+// Returns true if a fountain was present and handled (even if stale).
+func (g *Game) TryUseFountain() bool {
+	f := g.featureAt(g.Party.Pos)
+	if f == nil || !f.IsFountain() {
+		return false
+	}
+	ff := *f
+	g.handleFountain(&ff)
+	return true
+}
+
+// StartMerchant opens merchant wares at pos into g.Merchant state.
+func (g *Game) StartMerchant(pos Pos) bool {
+	f := g.featureAt(pos)
+	if f == nil || !f.IsMerchant() {
+		return false
+	}
+	lvl := g.CurLevel()
+	m := SpawnMerchant(g.RNG, lvl, pos)
+	if m == nil || len(m.Wares) == 0 {
+		g.Logf("Merchant has nothing to sell right now.")
+		g.removeFeatureAt(pos, FeatureMerchant)
+		return false
+	}
+	g.Merchant = MerchantState{Active: true, Pos: pos, Wares: m.Wares, Selected: 0}
+	var offerStr string
+	for i, w := range m.Wares {
+		if i > 0 {
+			offerStr += ", "
+		}
+		offerStr += fmt.Sprintf("%s (%dg)", w.Name, w.Price)
+	}
+	g.Logf("Merchant wares: %s -- press Enter to buy, Esc to leave.", offerStr)
+	return true
+}
+
+// CancelMerchant closes merchant menu without purchase.
+func (g *Game) CancelMerchant() {
+	if g.Merchant.Active {
+		g.Logf("You step away from the merchant.")
+	}
+	g.Merchant = MerchantState{}
+}
+
+// BuySelectedMerchant purchases ware at index, applies effect, removes merchant feature and advances turn.
+// Returns true if purchase succeeded.
+func (g *Game) BuySelectedMerchant(index int) bool {
+	if !g.Merchant.Active {
+		return false
+	}
+	if index < 0 || index >= len(g.Merchant.Wares) {
+		return false
+	}
+	w := g.Merchant.Wares[index]
+	// Build temporary merchant for BuyWare validation
+	m := &Merchant{Pos: g.Merchant.Pos, Wares: g.Merchant.Wares, Scarce: true}
+	if err := g.BuyWare(m, w.ID); err != nil {
+		g.Logf("Merchant: %v (you have %dg).", err, g.Gold)
+		return false
+	}
+	// Apply ware effect
+	switch w.ID {
+	case "ration":
+		g.Food += 50
+		g.FoodFloat += 50
+		g.Logf("Merchant sells %s for %dg (+50 food).", w.Name, w.Price)
+	case "potion_heal":
+		healed := 0
+		for _, mem := range g.Party.Members {
+			if mem.IsAlive() && mem.HP < mem.MaxHP {
+				mem.HP += 10
+				if mem.HP > mem.MaxHP {
+					mem.HP = mem.MaxHP
+				}
+				healed++
+			}
+		}
+		if healed > 0 {
+			g.Logf("Merchant sells %s for %dg (healed %d members +10 HP).", w.Name, w.Price, healed)
+		} else {
+			g.Logf("Merchant sells %s for %dg (already at full health).", w.Name, w.Price)
+		}
+	case "scroll_upgrade":
+		members := g.Party.LivingMembers()
+		if len(members) > 0 {
+			picked := members[g.RNG.IntN(len(members))]
+			if g.RNG.IntN(2) == 0 {
+				picked.ATK[0]++
+				picked.ATK[1]++
+				g.Logf("Merchant sells %s for %dg (%s ATK %d-%d).", w.Name, w.Price, picked.Name, picked.ATK[0], picked.ATK[1])
+			} else {
+				picked.DEF++
+				g.Logf("Merchant sells %s for %dg (%s DEF %d).", w.Name, w.Price, picked.Name, picked.DEF)
+			}
+		} else {
+			g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
+		}
+	default:
+		g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
+	}
+	g.removeFeatureAt(g.Merchant.Pos, FeatureMerchant)
+	g.Merchant = MerchantState{}
+	return true
+}
+
+// TryUseMerchant attempts deliberate use of a merchant at the party's current position.
+// Opens the merchant menu (StartMerchant) and returns true if a merchant was present.
+func (g *Game) TryUseMerchant() bool {
+	if g.Party == nil {
+		return false
+	}
+	return g.StartMerchant(g.Party.Pos)
+}
+
+// TryUseFeature checks current tile for deliberate features in priority Fountain -> Merchant -> Forge.
+// Returns true if any feature was handled/opened.
+func (g *Game) TryUseFeature() bool {
+	if g.TryUseFountain() {
+		return true
+	}
+	if g.TryUseMerchant() {
+		return true
+	}
+	if g.TryUseForge() {
+		return true
+	}
+	return false
+}
+
 func (g *Game) handleDen(f *Feature) {
 	if f == nil || !f.IsDen() {
 		return
@@ -1288,8 +1426,8 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			}
 		}
 	}
-	// Post-move feature interactions: Vault loot, Den warning, Shrine, Fountain, Merchant.
-	// Forge is deliberate-use only (press g/u on forge tile to trigger).
+	// Post-move feature interactions: Vault loot, Den warning, Shrine are auto.
+	// Forge, Fountain, Merchant are deliberate-use only (press g on tile to trigger).
 	if f := g.featureAt(next); f != nil {
 		if f.IsVault() {
 			// Vault already passed locked check; claim treasure.
@@ -1303,11 +1441,23 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			sf := *f
 			g.handleShrine(&sf)
 		} else if f.IsFountain() {
-			ff := *f
-			g.handleFountain(&ff)
+			g.Logf("A fountain bubbles here (press g to drink).")
 		} else if f.IsMerchant() {
-			mf := *f
-			g.handleMerchant(&mf)
+			g.Logf("A merchant beckons (press g to browse).")
+		} else if f.IsForge() {
+			costStr := "gold"
+			costVal := f.Cost
+			if f.CostType != "" {
+				costStr = f.CostType
+			}
+			if costVal == 0 {
+				if costStr == "food" {
+					costVal = 50
+				} else {
+					costVal = 25
+				}
+			}
+			g.Logf("A forge glows here (%d %s to use, press g).", costVal, costStr)
 		}
 	}
 	// Check relic on final floor

@@ -230,6 +230,7 @@ func main() {
 		stateUseInventory
 		stateThrowMenu
 		stateThrowCursor
+		stateMerchant
 	)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -285,6 +286,10 @@ func main() {
 			case stateThrowCursor:
 				if g != nil {
 					drawFrame(g.Render())
+				}
+			case stateMerchant:
+				if g != nil {
+					drawFrame(g.RenderMerchantMenu())
 				}
 			}
 		case *tcell.EventKey:
@@ -471,6 +476,11 @@ func main() {
 					break
 				}
 				g.HandleKey(k)
+				if g.Merchant.Active {
+					state = stateMerchant
+					drawFrame(g.RenderMerchantMenu())
+					break
+				}
 				if g.HelpActive {
 					drawFrame(g.RenderHelpOverlay())
 				} else {
@@ -698,6 +708,79 @@ func main() {
 							state = statePlaying
 						}
 					}
+				}
+			case stateMerchant:
+				if g == nil {
+					state = statePlaying
+					drawFrame(g.Render())
+					break
+				}
+				switch k {
+				case game.KeyUp:
+					if g.Merchant.Active && len(g.Merchant.Wares) > 0 {
+						g.Merchant.Selected--
+						if g.Merchant.Selected < 0 {
+							g.Merchant.Selected = len(g.Merchant.Wares) - 1
+						}
+					}
+					drawFrame(g.RenderMerchantMenu())
+				case game.KeyDown:
+					if g.Merchant.Active && len(g.Merchant.Wares) > 0 {
+						g.Merchant.Selected++
+						if g.Merchant.Selected >= len(g.Merchant.Wares) {
+							g.Merchant.Selected = 0
+						}
+					}
+					drawFrame(g.RenderMerchantMenu())
+				case game.KeyQuit:
+					g.CancelMerchant()
+					state = statePlaying
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					if g.Merchant.Active {
+						sel := g.Merchant.Selected
+						if g.BuySelectedMerchant(sel) {
+							g.EndPlayerTurn("")
+							state = statePlaying
+							drawFrame(g.Render())
+							if g.LevelUpPending != nil {
+								drawFrame(g.RenderLevelUp())
+							}
+							if g.Quit {
+								state = stateMenu
+								g = nil
+								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+							} else if g.Over {
+								for {
+									ev2 := s.PollEvent()
+									if ke, ok := ev2.(*tcell.EventKey); ok {
+										key2, code2 := tcellKeyToRaw(ke)
+										k2 := game.NormalizeKey(key2, code2)
+										if k2 == game.KeyQuit || k2 == game.KeyEnter {
+											state = stateMenu
+											g = nil
+											drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+											break
+										}
+									} else if _, ok := ev2.(*tcell.EventResize); ok {
+										s.Sync()
+										if g != nil {
+											drawFrame(g.Render())
+										} else {
+											drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+										}
+									}
+								}
+							}
+						} else {
+							drawFrame(g.RenderMerchantMenu())
+						}
+					} else {
+						state = statePlaying
+						drawFrame(g.Render())
+					}
+				default:
+					drawFrame(g.RenderMerchantMenu())
 				}
 			case stateWizard:
 				switch k {

@@ -55,6 +55,7 @@ const (
 	stateUseInventory
 	stateThrowMenu
 	stateThrowCursor
+	stateMerchant
 )
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -146,6 +147,15 @@ const (
 			return
 		}
 		frame := g.RenderThrowMenu(throwSelected)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderMerchant := func() {
+		if g == nil {
+			return
+		}
+		frame := g.RenderMerchantMenu()
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -333,6 +343,11 @@ const (
 				break
 			}
 			g.HandleKey(k)
+			if g.Merchant.Active {
+				state = stateMerchant
+				renderMerchant()
+				break
+			}
 			if g.HelpActive {
 				renderHelp()
 			} else {
@@ -492,6 +507,64 @@ const (
 						}
 					}
 				}
+			}
+		case stateMerchant:
+			if g == nil {
+				state = statePlaying
+				renderGame()
+				break
+			}
+			switch k {
+			case game.KeyUp:
+				if g.Merchant.Active && len(g.Merchant.Wares) > 0 {
+					g.Merchant.Selected--
+					if g.Merchant.Selected < 0 {
+						g.Merchant.Selected = len(g.Merchant.Wares) - 1
+					}
+				}
+				renderMerchant()
+			case game.KeyDown:
+				if g.Merchant.Active && len(g.Merchant.Wares) > 0 {
+					g.Merchant.Selected++
+					if g.Merchant.Selected >= len(g.Merchant.Wares) {
+						g.Merchant.Selected = 0
+					}
+				}
+				renderMerchant()
+			case game.KeyQuit:
+				g.CancelMerchant()
+				state = statePlaying
+				renderGame()
+			case game.KeyEnter:
+				if g.Merchant.Active {
+					sel := g.Merchant.Selected
+					if g.BuySelectedMerchant(sel) {
+						g.EndPlayerTurn("")
+						state = statePlaying
+						renderGame()
+						if g.LevelUpPending != nil {
+							renderLevelUp()
+						}
+						if g.Quit {
+							state = stateMenu
+							g = nil
+							renderMenu()
+						} else if g.Over {
+							if k == game.KeyQuit || k == game.KeyEnter {
+								state = stateMenu
+								g = nil
+								renderMenu()
+							}
+						}
+					} else {
+						renderMerchant()
+					}
+				} else {
+					state = statePlaying
+					renderGame()
+				}
+			default:
+				renderMerchant()
 			}
 		case stateWizard:
 			switch k {

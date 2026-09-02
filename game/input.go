@@ -151,6 +151,13 @@ func (g *Game) HandleKey(k Key) bool {
 		RestBatch(g)
 		return true
 	case KeyPickup:
+		if g.TryUseFountain() {
+			g.EndPlayerTurn("")
+			return true
+		}
+		if g.TryUseMerchant() {
+			return false
+		}
 		if g.TryUseForge() {
 			g.EndPlayerTurn("")
 			return true
@@ -169,9 +176,6 @@ func (g *Game) HandleKey(k Key) bool {
 		}
 		// Do not auto-consume; frontend opens usage menu (select via InventoryUseEntries + TryUseAppearance).
 		// Keep TryUseItem as fallback but not auto-called on u/U.
-		return false
-	case KeyQuit:
-		g.Logf("Quit to menu. Seed %d saved.", g.Seed)
 		return false
 	case KeyThrow:
 		hasPotion := false

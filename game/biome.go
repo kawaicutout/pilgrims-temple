@@ -69,35 +69,35 @@ func fallbackBiomes() []Biome {
 			ColorPalette: ColorPalette{Primary: "#6a7a7a", Secondary: "#5a6a6a", Accent: "#8a7a7a"}, Color: "#6a7a7a", Tint: "#6a7a7a",
 			Litter:           LitterDef{Destructible: []string{"barrel", "crate", "urn"}, Passable: []string{"rubble", "dust", "puddle"}, Impassable: []string{"column", "altar", "sarcophagus"}},
 			GenerationMethod: "rooms", SpecialEnemies: []string{"rat", "kobold"},
-			Ambience: []string{"Cold drafts curl through the crypt aisles.", "Distant stone lids grind against their sarcophagi.", "A faint incense of old myrrh hangs in the air.", "Footsteps echo too long in the vaulted dark."},
+			Ambience: []string{"Cold drafts curl through the crypt aisles.", "Distant stone lids grind against their sarcophagi.", "A faint incense of old myrrh hangs in the air.", "Footsteps echo too long in the vaulted dark.", "Candle smoke ghosts along the low arches.", "Water drips somewhere beyond the pillars, patient and cold.", "An unlit censer sways faintly, though no hand touched it.", "Mortar dust sifts from the vault above, catching dim light."},
 		},
 		{
 			ID: "ossuary", Name: "Ossuary", EligibleLevelRange: [2]int{2, 4},
-			ColorPalette: ColorPalette{Primary: "#8a7a6a", Secondary: "#7a6a5a", Accent: "#9a8a7a"}, Color: "#8a7a6a", Tint: "#8a7a6a",
+			ColorPalette: ColorPalette{Primary: "#7a5a3a", Secondary: "#6a4a32", Accent: "#9a7a5a"}, Color: "#7a5a3a", Tint: "#7a5a3a",
 			Litter:           LitterDef{Destructible: []string{"bone_pile", "crate", "barrel"}, Passable: []string{"rubble", "bone_dust", "puddle"}, Impassable: []string{"bone_column", "pit", "rubble_wall"}},
 			GenerationMethod: "rooms", SpecialEnemies: []string{"kobold", "orc"},
-			Ambience: []string{"Bones whisper as dust shifts across the ossuary.", "A hollow clatter rolls from stacked skulls.", "Chalky air catches in your throat.", "Shadows pool between leaning bone-columns."},
+			Ambience: []string{"Bones whisper as dust shifts across the ossuary.", "A hollow clatter rolls from stacked skulls.", "Chalky air catches in your throat.", "Shadows pool between leaning bone-columns.", "Something small scuttles among the remains.", "A femur settles with a soft, tired crack.", "Dry air tastes of chalk and old marrow.", "Pale skulls watch with empty, patient sockets."},
 		},
 		{
 			ID: "fungal", Name: "Fungal Grove", EligibleLevelRange: [2]int{3, 5},
-			ColorPalette: ColorPalette{Primary: "#5a7a5a", Secondary: "#4a6a4a", Accent: "#6a8a6a"}, Color: "#5a7a5a", Tint: "#5a7a5a",
+			ColorPalette: ColorPalette{Primary: "#4a6a4a", Secondary: "#2e4a35", Accent: "#5a8a5a"}, Color: "#4a6a4a", Tint: "#4a6a4a",
 			Litter:           LitterDef{Destructible: []string{"mushroom_cap", "spore_pod", "crate"}, Passable: []string{"moss", "slime", "rubble"}, Impassable: []string{"fungal_column", "pit", "thicket"}},
 			GenerationMethod: "cavern", SpecialEnemies: []string{"spore_mother", "rat"},
-			Ambience: []string{"Spores drift like pale snow through fungal gloom.", "Mushroom caps pulse with faint light.", "The air is thick, sweet, and slightly sour.", "Soft caps sigh as you brush past."},
+			Ambience: []string{"Spores drift like pale snow through fungal gloom.", "Mushroom caps pulse with faint light.", "The air is thick, sweet, and slightly sour.", "Soft caps sigh as you brush past.", "Mycelial threads hum beneath the floor.", "A damp, earthy perfume clings to every breath.", "Distant caps release a soft puff of glowing dust.", "The floor gives slightly, spongy with hidden growth."},
 		},
 		{
 			ID: "jungle", Name: "Jungle Overgrowth", EligibleLevelRange: [2]int{4, 6},
-			ColorPalette: ColorPalette{Primary: "#5a6a4a", Secondary: "#4a5a4a", Accent: "#6a7a4a"}, Color: "#5a6a4a", Tint: "#5a6a4a",
+			ColorPalette: ColorPalette{Primary: "#3d5a3a", Secondary: "#2a3d2f", Accent: "#4a7a4a"}, Color: "#3d5a3a", Tint: "#3d5a3a",
 			Litter:           LitterDef{Destructible: []string{"vine_cluster", "crate", "barrel"}, Passable: []string{"moss", "rubble", "puddle"}, Impassable: []string{"vine_wall", "pit", "column"}},
 			GenerationMethod: "cavern", SpecialEnemies: []string{"vine_horror", "kobold"},
-			Ambience: []string{"Vines tighten overhead with a soft creak.", "Humid air beads on cold stone.", "Leaves rustle where no wind should reach.", "A distant vine snaps taut, then stills."},
+			Ambience: []string{"Vines tighten overhead with a soft creak.", "Humid air beads on cold stone.", "Leaves rustle where no wind should reach.", "A distant vine snaps taut, then stills.", "Roots have cracked the temple walls below.", "Warm rot and green perfume hang heavy in the air.", "Something unseen pushes through tangled fronds.", "Moss muffles your steps like a living carpet."},
 		},
 		{
 			ID: "cinder", Name: "Cinder Chapel", EligibleLevelRange: [2]int{5, 8},
-			ColorPalette: ColorPalette{Primary: "#7a6a5a", Secondary: "#6a5a4a", Accent: "#8a7a5a"}, Color: "#7a6a5a", Tint: "#7a6a5a",
+			ColorPalette: ColorPalette{Primary: "#6a3d2f", Secondary: "#4a2e2a", Accent: "#8a5a45"}, Color: "#6a3d2f", Tint: "#6a3d2f",
 			Litter:           LitterDef{Destructible: []string{"ash_barrel", "crate", "cinder_block"}, Passable: []string{"ash", "rubble", "puddle"}, Impassable: []string{"cinder_column", "lava_pit", "rubble_wall"}},
 			GenerationMethod: "cavern", SpecialEnemies: []string{"troll", "orc"},
-			Ambience: []string{"Ash drifts on heat that has no source.", "Cinder clicks underfoot, cooling and cracking.", "A low draft carries the tang of soot.", "Embers blink in the dark like tired eyes."},
+			Ambience: []string{"Ash drifts on heat that has no source.", "Cinder clicks underfoot, cooling and cracking.", "A low draft carries the tang of soot.", "Embers blink in the dark like tired eyes.", "Stone sweats with old, trapped heat.", "Cracked tiles tick as they cool in the dark.", "A faint, acrid haze stings the eyes.", "Distant stone sighs as heat shifts through old flues."},
 		},
 	}
 }
@@ -196,15 +196,15 @@ func (b Biome) PrimaryColor() string { return b.TintColor() }
 func (b Biome) FloorColor() string {
 	switch b.ID {
 	case "crypt":
-		return "#4a4642" // desaturated base
+		return "#4a4642" // neutral stone (base)
 	case "ossuary":
-		return "#4f453f" // warmer bone
+		return "#4f3d32" // warm tan bone
 	case "fungal":
-		return "#3e4a3e" // greenish damp
+		return "#2e4a35" // greenish damp
 	case "jungle":
-		return "#3d4a3a" // overgrown
+		return "#2a3d2f" // deeper green overgrown
 	case "cinder":
-		return "#4a3d3a" // ashen red
+		return "#4a2e2a" // ashen reddish
 	default:
 		// fallback: darken primary toward bg #141210
 		return "#4a4642"
@@ -214,15 +214,15 @@ func (b Biome) FloorColor() string {
 func (b Biome) WallColor() string {
 	switch b.ID {
 	case "crypt":
-		return "#6b645c"
+		return "#6b645c" // neutral
 	case "ossuary":
-		return "#7a6a5a"
+		return "#7a5a3a" // tanner warm
 	case "fungal":
-		return "#5a6a5a"
+		return "#4a6a4a" // greener
 	case "jungle":
-		return "#4a6a4a"
+		return "#3d5a3a" // deep green
 	case "cinder":
-		return "#6a5a4a"
+		return "#6a3d2f" // redder
 	default:
 		return "#6b645c"
 	}
@@ -351,19 +351,19 @@ func litterHP(kind string) int {
 func litterColor(kind string) string {
 	switch kind {
 	case "mushroom_cap", "spore_pod", "fungal_column":
-		return "#6a8a6a" // fungal green
+		return "#5a9a5a" // fungal green — more saturated to match #4a6a4a walls
 	case "vine_cluster", "vine_wall", "thicket":
-		return "#6a8a5a" // jungle green
+		return "#4a8a3a" // jungle green — deeper, distinct from fungal
 	case "moss":
-		return "#5a6a4a" // jungle/fungal moss
+		return "#4a7a3a" // jungle/fungal moss — ties to jungle wall #3d5a3a
 	case "slime":
-		return "#5a7a5a"
+		return "#4a9a4a" // brighter fungal slime
 	case "ash", "ash_barrel", "cinder_block", "cinder_column":
-		return "#7a6a5a" // cinder ash
+		return "#8a5a3a" // cinder ash — warmer, redder to match #6a3d2f walls
 	case "lava_pit":
-		return "#8a5a4a" // hot cinder
+		return "#9a4a2a" // hot cinder — more saturated reddish
 	case "bone_pile", "bone_column", "bone_dust", "rubble_wall":
-		return "#8a7a6a" // ossuary bone
+		return "#9a7a5a" // ossuary bone — warmer tan matching #7a5a3a walls
 	case "column", "altar", "sarcophagus", "urn":
 		return "#6a7a7a" // crypt stone
 	case "rubble", "dust":
@@ -1228,4 +1228,141 @@ func (g *Game) MaybeTickAmbience() {
 	// Slate-blue ambience is rendered via log; text carries meaning first.
 	g.Logf("%s", line)
 	g.NextAmbienceTurn = g.Turn + 30 + g.RNG.IntN(31)
+}
+
+// litterStepAmbience returns a short slate ambience line for stepping onto
+// a passable litter tile. kind is the litter kind, biomeID provides
+// biome-specific flavour. Empty string means no line.
+func litterStepAmbience(kind, biomeID string) string {
+	switch kind {
+	case "dust":
+		return "Dust puffs underfoot."
+	case "rubble":
+		// Keep distinct but still dusty; acceptance expects a dust-like line for rubble in some biomes.
+		if biomeID == "cinder" {
+			return "Cinder crunches underfoot."
+		}
+		return "Rubble shifts underfoot."
+	case "puddle":
+		if biomeID == "cinder" {
+			return "Warm water ripples underfoot."
+		}
+		if biomeID == "fungal" || biomeID == "jungle" {
+			return "Water ripples through moss."
+		}
+		return "Water ripples underfoot."
+	case "moss":
+		return "Moss squelches softly."
+	case "slime":
+		return "Slime squelches underfoot."
+	case "ash":
+		return "Ash crunches."
+	case "bone_dust":
+		// Alternate phrasing requested: "Bones clatter."
+		if biomeID == "ossuary" {
+			return "Bones clatter."
+		}
+		return "Bone dust puffs underfoot."
+	default:
+		return ""
+	}
+}
+// ---------------------------------------------------------------------------
+// Biome entry feels
+// ---------------------------------------------------------------------------
+
+var (
+	entryFeelMu  sync.Mutex
+	entryFeelRNG *rand.Rand
+)
+
+func getEntryFeelRNG() *rand.Rand {
+	entryFeelMu.Lock()
+	defer entryFeelMu.Unlock()
+	if entryFeelRNG == nil {
+		entryFeelRNG = rand.New(rand.NewPCG(0x9e3779b97f4a7c15, 0x6a09e667f3bcc908))
+	}
+	return entryFeelRNG
+}
+
+// BiomeEntryFeel returns one of 2-3 evocative entry variants for biome.
+// The returned string always contains biome.Name for acceptance checks.
+func BiomeEntryFeel(b *Biome) string {
+	if b == nil {
+		return ""
+	}
+	var variants []string
+	switch b.ID {
+	case "crypt":
+		variants = []string{
+			fmt.Sprintf("You enter the %s — cold drafts curl through low arches.", b.Name),
+			fmt.Sprintf("You descend into the %s — the air is still and chill, scented with old myrrh.", b.Name),
+			fmt.Sprintf("You step into the %s — vaulted dark presses close, footsteps echoing too long.", b.Name),
+		}
+	case "ossuary":
+		variants = []string{
+			fmt.Sprintf("You enter the %s — chalky air catches in your throat.", b.Name),
+			fmt.Sprintf("You descend into the %s — bones whisper as dust shifts.", b.Name),
+			fmt.Sprintf("You step into the %s — hollow clatter rolls from stacked skulls.", b.Name),
+		}
+	case "fungal":
+		variants = []string{
+			fmt.Sprintf("You descend into the %s — the air is thick and sour.", b.Name),
+			fmt.Sprintf("You enter the %s — spores drift like pale snow.", b.Name),
+			fmt.Sprintf("You step into the %s — mushroom caps pulse with faint, humid light.", b.Name),
+		}
+	case "jungle":
+		variants = []string{
+			fmt.Sprintf("You enter the %s — humid air beads on cold stone.", b.Name),
+			fmt.Sprintf("You descend into the %s — vines tighten overhead with a soft creak.", b.Name),
+			fmt.Sprintf("You push into the %s — roots have cracked the temple walls below.", b.Name),
+		}
+	case "cinder":
+		variants = []string{
+			fmt.Sprintf("You enter the %s — ash drifts on heat that has no source.", b.Name),
+			fmt.Sprintf("You descend into the %s — stone sweats with old, trapped heat.", b.Name),
+			fmt.Sprintf("You step into the %s — embers blink in the dark like tired eyes.", b.Name),
+		}
+	default:
+		variants = []string{
+			fmt.Sprintf("You enter the %s — the air shifts around you.", b.Name),
+			fmt.Sprintf("You descend into the %s — shadows deepen.", b.Name),
+		}
+	}
+	// Use package RNG for variety; lock ordering: copy RNG pointer under lock then pick.
+	rng := getEntryFeelRNG()
+	entryFeelMu.Lock()
+	idx := rng.IntN(len(variants))
+	entryFeelMu.Unlock()
+	return variants[idx]
+}
+
+// biomeForCurrentFloor resolves biome for g.Floor via Level.BiomeID or GetBiomeForFloor.
+func (g *Game) biomeForCurrentFloor() *Biome {
+	if g == nil {
+		return nil
+	}
+	lvl := g.CurLevel()
+	if lvl != nil && lvl.BiomeID != "" {
+		biomes := LoadBiomes()
+		for _, b := range biomes {
+			if b.ID == lvl.BiomeID {
+				bb := b
+				return &bb
+			}
+		}
+	}
+	return GetBiomeForFloor(g.Floor)
+}
+
+// logBiomeEntry logs an entry feel for the current floor's biome.
+func (g *Game) logBiomeEntry() {
+	b := g.biomeForCurrentFloor()
+	if b == nil {
+		return
+	}
+	feel := BiomeEntryFeel(b)
+	if feel != "" {
+		g.Logf("%s", feel)
+	}
 }

@@ -92,6 +92,7 @@ func NewGame(seed int64, tuning Tuning) *Game {
 			}
 		}
 	}
+	g.logBiomeEntry()
 	g.UpdateFOV()
 	return g
 }
@@ -1279,6 +1280,14 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	// Move - silent (log reserved for combat/stairs/ambience)
 	g.Party.Pos = next
 	g.Party.Active = g.Party.Selected
+	// Litter step ambience: 25% chance on passable ground litter (slate).
+	if lit := lvl.LitterAt(next); lit != nil && lit.Category == "passable" {
+		if g.RNG != nil && g.RNG.Float64() < 0.25 {
+			if line := litterStepAmbience(lit.Kind, lvl.BiomeID); line != "" {
+				g.Logf("%s", line)
+			}
+		}
+	}
 	// Post-move feature interactions: Vault loot, Den warning, Shrine, Fountain, Merchant.
 	// Forge is deliberate-use only (press g/u on forge tile to trigger).
 	if f := g.featureAt(next); f != nil {
@@ -1381,6 +1390,7 @@ func (g *Game) TryStairsDown() {
 	} else {
 		// Ensure visited marked even if transition already fired (for tracking).
 		g.VisitedFloors[g.Floor] = true
+		g.logBiomeEntry()
 	}
 	g.UpdateFOV()
 	g.EnemyTurn() // enemies act after descent?
@@ -1415,11 +1425,14 @@ func (g *Game) TryStairsUp() {
 		g.TransitionFiredForLevel[g.Floor] = true
 	} else {
 		g.VisitedFloors[g.Floor] = true
+		g.logBiomeEntry()
 	}
 	g.UpdateFOV()
 }
 
 func (g *Game) ApplyFloorTransition() {
+	// Biome entry feel: log evocative line on floor entry.
+	g.logBiomeEntry()
 	// On-transition talents: fire once per floor per run, reset on relic.
 	// Forage (druid): +100 food per bearer. Restoration (cleric): full heal all living members.
 	for _, m := range g.Party.Members {

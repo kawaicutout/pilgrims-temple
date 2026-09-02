@@ -20,8 +20,8 @@
       "floorGlyph": ".",
       "wallGlyphVariants": ["#", "#", "▒"],
       "floorGlyphVariants": [".", "·", "⋅"],
-      "color": "#8a7a6a",
-      "tint": "#8a7a6a",
+      "color": "#7a5a3a",
+      "tint": "#7a5a3a",
       "enemyWeights": { "goblin": 0.9, "orc": 1.0, "kobold": 0.7, "rat": 0.9, "troll": 0.2 },
       "itemWeights": { "potion": 1.1, "scroll": 1.0, "ration": 1.0, "gold": 1.1 }
     },
@@ -32,8 +32,8 @@
       "floorGlyph": ".",
       "wallGlyphVariants": ["#", "#", "♣"],
       "floorGlyphVariants": [".", "·", ","],
-      "color": "#5a7a5a",
-      "tint": "#5a7a5a",
+      "color": "#4a6a4a",
+      "tint": "#4a6a4a",
       "enemyWeights": { "goblin": 0.8, "orc": 0.7, "kobold": 1.2, "rat": 1.3, "troll": 0.4 },
       "itemWeights": { "potion": 1.2, "scroll": 0.8, "ration": 1.1, "gold": 0.9 }
     },
@@ -68,8 +68,8 @@
       "floorGlyph": ".",
       "wallGlyphVariants": ["#", "#", "▒"],
       "floorGlyphVariants": [".", "·", "`"],
-      "color": "#7a6a5a",
-      "tint": "#7a6a5a",
+      "color": "#6a3d2f",
+      "tint": "#6a3d2f",
       "enemyWeights": { "goblin": 0.6, "orc": 1.2, "kobold": 1.0, "rat": 0.5, "troll": 0.7 },
       "itemWeights": { "potion": 0.9, "scroll": 1.0, "ration": 0.8, "gold": 1.3 }
     },

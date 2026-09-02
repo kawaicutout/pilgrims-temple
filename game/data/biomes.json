@@ -1,114 +1,239 @@
 {
-  "notes": "Pilgrim's Temple — biomes. 5 biomes with eligible ranges, desaturated palettes, litter categories (shared rubble + uniques like vines/mushroom caps), generationMethod rooms vs cavern (cellular automata), special enemies per biome, and slate-blue ambience lines every 30-60 turns.",
+  "notes": "Pilgrim's Temple \u2014 biomes. 5 biomes with eligible ranges, desaturated palettes, litter categories (shared rubble + uniques like vines/mushroom caps), generationMethod rooms vs cavern (cellular automata), special enemies per biome, and slate-blue ambience lines every 30-60 turns.",
   "biomes": [
     {
       "id": "crypt",
       "name": "Crypt",
-      "eligibleLevelRange": [1, 3],
-      "colorPalette": { "primary": "#6a7a7a", "secondary": "#5a6a6a", "accent": "#8a7a7a" },
+      "eligibleLevelRange": [
+        1,
+        3
+      ],
+      "colorPalette": {
+        "primary": "#6a7a7a",
+        "secondary": "#5a6a6a",
+        "accent": "#8a7a7a"
+      },
       "color": "#6a7a7a",
       "tint": "#6a7a7a",
       "litter": {
-        "destructible": ["barrel", "crate", "urn"],
-        "passable": ["rubble", "dust", "puddle"],
-        "impassable": ["column", "altar", "sarcophagus"]
+        "destructible": [
+          "barrel",
+          "crate",
+          "urn"
+        ],
+        "passable": [
+          "rubble",
+          "dust",
+          "puddle"
+        ],
+        "impassable": [
+          "column",
+          "altar",
+          "sarcophagus"
+        ]
       },
       "generationMethod": "rooms",
-      "specialEnemies": ["rat", "kobold"],
+      "specialEnemies": [
+        "rat",
+        "kobold"
+      ],
       "ambience": [
         "Cold drafts curl through the crypt aisles.",
         "Distant stone lids grind against their sarcophagi.",
         "A faint incense of old myrrh hangs in the air.",
         "Footsteps echo too long in the vaulted dark.",
-        "Candle smoke ghosts along the low arches."
+        "Candle smoke ghosts along the low arches.",
+        "Water drips somewhere beyond the pillars, patient and cold.",
+        "An unlit censer sways faintly, though no hand touched it.",
+        "Mortar dust sifts from the vault above, catching dim light."
       ]
     },
     {
       "id": "ossuary",
       "name": "Ossuary",
-      "eligibleLevelRange": [2, 4],
-      "colorPalette": { "primary": "#8a7a6a", "secondary": "#7a6a5a", "accent": "#9a8a7a" },
-      "color": "#8a7a6a",
-      "tint": "#8a7a6a",
+      "eligibleLevelRange": [
+        2,
+        4
+      ],
+      "colorPalette": {
+        "primary": "#7a5a3a",
+        "secondary": "#6a4a32",
+        "accent": "#9a7a5a"
+      },
+      "color": "#7a5a3a",
+      "tint": "#7a5a3a",
       "litter": {
-        "destructible": ["bone_pile", "crate", "barrel"],
-        "passable": ["rubble", "bone_dust", "puddle"],
-        "impassable": ["bone_column", "pit", "rubble_wall"]
+        "destructible": [
+          "bone_pile",
+          "crate",
+          "barrel"
+        ],
+        "passable": [
+          "rubble",
+          "bone_dust",
+          "puddle"
+        ],
+        "impassable": [
+          "bone_column",
+          "pit",
+          "rubble_wall"
+        ]
       },
       "generationMethod": "rooms",
-      "specialEnemies": ["kobold", "orc"],
+      "specialEnemies": [
+        "kobold",
+        "orc"
+      ],
       "ambience": [
         "Bones whisper as dust shifts across the ossuary.",
         "A hollow clatter rolls from stacked skulls.",
         "Chalky air catches in your throat.",
         "Shadows pool between leaning bone-columns.",
-        "Something small scuttles among the remains."
+        "Something small scuttles among the remains.",
+        "A femur settles with a soft, tired crack.",
+        "Dry air tastes of chalk and old marrow.",
+        "Pale skulls watch with empty, patient sockets."
       ]
     },
     {
       "id": "fungal",
       "name": "Fungal Grove",
-      "eligibleLevelRange": [3, 5],
-      "colorPalette": { "primary": "#5a7a5a", "secondary": "#4a6a4a", "accent": "#6a8a6a" },
-      "color": "#5a7a5a",
-      "tint": "#5a7a5a",
+      "eligibleLevelRange": [
+        3,
+        5
+      ],
+      "colorPalette": {
+        "primary": "#4a6a4a",
+        "secondary": "#2e4a35",
+        "accent": "#5a8a5a"
+      },
+      "color": "#4a6a4a",
+      "tint": "#4a6a4a",
       "litter": {
-        "destructible": ["mushroom_cap", "spore_pod", "crate"],
-        "passable": ["moss", "slime", "rubble"],
-        "impassable": ["fungal_column", "pit", "thicket"]
+        "destructible": [
+          "mushroom_cap",
+          "spore_pod",
+          "crate"
+        ],
+        "passable": [
+          "moss",
+          "slime",
+          "rubble"
+        ],
+        "impassable": [
+          "fungal_column",
+          "pit",
+          "thicket"
+        ]
       },
       "generationMethod": "cavern",
-      "specialEnemies": ["spore_mother", "rat"],
+      "specialEnemies": [
+        "spore_mother",
+        "rat"
+      ],
       "ambience": [
         "Spores drift like pale snow through fungal gloom.",
         "Mushroom caps pulse with faint light.",
         "The air is thick, sweet, and slightly sour.",
         "Soft caps sigh as you brush past.",
-        "Mycelial threads hum beneath the floor."
+        "Mycelial threads hum beneath the floor.",
+        "A damp, earthy perfume clings to every breath.",
+        "Distant caps release a soft puff of glowing dust.",
+        "The floor gives slightly, spongy with hidden growth."
       ]
     },
     {
       "id": "jungle",
       "name": "Jungle Overgrowth",
-      "eligibleLevelRange": [4, 6],
-      "colorPalette": { "primary": "#5a6a4a", "secondary": "#4a5a4a", "accent": "#6a7a4a" },
-      "color": "#5a6a4a",
-      "tint": "#5a6a4a",
+      "eligibleLevelRange": [
+        4,
+        6
+      ],
+      "colorPalette": {
+        "primary": "#3d5a3a",
+        "secondary": "#2a3d2f",
+        "accent": "#4a7a4a"
+      },
+      "color": "#3d5a3a",
+      "tint": "#3d5a3a",
       "litter": {
-        "destructible": ["vine_cluster", "crate", "barrel"],
-        "passable": ["moss", "rubble", "puddle"],
-        "impassable": ["vine_wall", "pit", "column"]
+        "destructible": [
+          "vine_cluster",
+          "crate",
+          "barrel"
+        ],
+        "passable": [
+          "moss",
+          "rubble",
+          "puddle"
+        ],
+        "impassable": [
+          "vine_wall",
+          "pit",
+          "column"
+        ]
       },
       "generationMethod": "cavern",
-      "specialEnemies": ["vine_horror", "kobold"],
+      "specialEnemies": [
+        "vine_horror",
+        "kobold"
+      ],
       "ambience": [
         "Vines tighten overhead with a soft creak.",
         "Humid air beads on cold stone.",
         "Leaves rustle where no wind should reach.",
         "A distant vine snaps taut, then stills.",
-        "Roots have cracked the temple walls below."
+        "Roots have cracked the temple walls below.",
+        "Warm rot and green perfume hang heavy in the air.",
+        "Something unseen pushes through tangled fronds.",
+        "Moss muffles your steps like a living carpet."
       ]
     },
     {
       "id": "cinder",
       "name": "Cinder Chapel",
-      "eligibleLevelRange": [5, 8],
-      "colorPalette": { "primary": "#7a6a5a", "secondary": "#6a5a4a", "accent": "#8a7a5a" },
-      "color": "#7a6a5a",
-      "tint": "#7a6a5a",
+      "eligibleLevelRange": [
+        5,
+        8
+      ],
+      "colorPalette": {
+        "primary": "#6a3d2f",
+        "secondary": "#4a2e2a",
+        "accent": "#8a5a45"
+      },
+      "color": "#6a3d2f",
+      "tint": "#6a3d2f",
       "litter": {
-        "destructible": ["ash_barrel", "crate", "cinder_block"],
-        "passable": ["ash", "rubble", "puddle"],
-        "impassable": ["cinder_column", "lava_pit", "rubble_wall"]
+        "destructible": [
+          "ash_barrel",
+          "crate",
+          "cinder_block"
+        ],
+        "passable": [
+          "ash",
+          "rubble",
+          "puddle"
+        ],
+        "impassable": [
+          "cinder_column",
+          "lava_pit",
+          "rubble_wall"
+        ]
       },
       "generationMethod": "cavern",
-      "specialEnemies": ["troll", "orc"],
+      "specialEnemies": [
+        "troll",
+        "orc"
+      ],
       "ambience": [
         "Ash drifts on heat that has no source.",
         "Cinder clicks underfoot, cooling and cracking.",
         "A low draft carries the tang of soot.",
         "Embers blink in the dark like tired eyes.",
-        "Stone sweats with old, trapped heat."
+        "Stone sweats with old, trapped heat.",
+        "Cracked tiles tick as they cool in the dark.",
+        "A faint, acrid haze stings the eyes.",
+        "Distant stone sighs as heat shifts through old flues."
       ]
     }
   ]

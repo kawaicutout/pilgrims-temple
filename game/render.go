@@ -63,9 +63,11 @@ func (g *Game) Render() Frame {
 				continue
 			}
 			if !vis {
-				// Seen but not currently visible: dim
+				// Seen but not currently visible: dim — remember walls, doors, and litter.
 				if lvl.IsDoor(p) {
 					glyph = lvl.DoorGlyph(p)
+				} else if lit := lvl.LitterAt(p); lit != nil {
+					glyph = lit.Glyph
 				} else {
 					glyph = lvl.At(p).Glyph()
 				}

@@ -393,10 +393,24 @@ func (g *Game) Render() Frame {
 	} else if g.Quit {
 		hints = "Quit to menu. Seed " + fmt.Sprint(g.Seed) + " - Esc again or close window"
 	} else if g.Over {
+		depth := g.Floor + 1
+		for k := range g.VisitedFloors {
+			if k+1 > depth {
+				depth = k + 1
+			}
+		}
+		cause := g.Cause
+		if cause == "" {
+			if g.Won {
+				cause = "Victory"
+			} else {
+				cause = "Unknown"
+			}
+		}
 		if g.Won {
-			hints = fmt.Sprintf("VICTORY! Score %d. Press Esc to quit. Seed %d", g.CalculateScore(), g.Seed)
+			hints = fmt.Sprintf("VICTORY! Score %d Lvl %d Gold %d Depth %d Cause %s Seed %d - Press Esc", g.CalculateScore(), g.Level, g.Gold, depth, cause, g.Seed)
 		} else {
-			hints = fmt.Sprintf("YOU DIED. Score %d. Press Esc to quit. Seed %d", g.CalculateScore(), g.Seed)
+			hints = fmt.Sprintf("YOU DIED (%s) Score %d Lvl %d Gold %d Depth %d Seed %d - Press Esc", cause, g.CalculateScore(), g.Level, g.Gold, depth, g.Seed)
 		}
 	} else if f := g.featureAt(g.Party.Pos); f != nil {
 		if f.IsFountain() {

@@ -36,6 +36,7 @@ type gameJSON struct {
 	Over                    bool          `json:"over"`
 	Won                     bool          `json:"won"`
 	Quit                    bool          `json:"quit"`
+	Cause                   string        `json:"cause"`
 	Relic                   Pos           `json:"relic"`
 	Wizard                  bool          `json:"wizard"`
 	WizardReveal            bool          `json:"wizardReveal"`
@@ -68,6 +69,7 @@ func (g *Game) MarshalJSON() ([]byte, error) {
 		Over:                    g.Over,
 		Won:                     g.Won,
 		Quit:                    g.Quit,
+		Cause:                   g.Cause,
 		Relic:                   g.Relic,
 		Wizard:                  g.Wizard,
 		WizardReveal:            g.WizardReveal,
@@ -106,6 +108,7 @@ func (g *Game) UnmarshalJSON(data []byte) error {
 	g.Over = aux.Over
 	g.Won = aux.Won
 	g.Quit = aux.Quit
+	g.Cause = aux.Cause
 	g.Relic = aux.Relic
 	g.Wizard = aux.Wizard
 	g.WizardReveal = aux.WizardReveal

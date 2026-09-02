@@ -4,6 +4,29 @@ import (
 	"encoding/json"
 )
 
+// MemberScore is per-member snapshot for scoreboard.
+type MemberScore struct {
+	Name  string `json:"name"`
+	Class string `json:"class"`
+	Race  string `json:"race"`
+	Alive bool   `json:"alive"`
+	HP    int    `json:"hp"`
+	MaxHP int    `json:"maxHP"`
+}
+
+// ScoreEntry is one run result persisted to the scoreboard.
+type ScoreEntry struct {
+	PartyLevel   int           `json:"partyLevel"`
+	Gold         int           `json:"gold"`
+	DepthReached int           `json:"depthReached"`
+	Members      []MemberScore `json:"members"`
+	Seed         int64         `json:"seed"`
+	Victory      bool          `json:"victory"`
+	CauseOfDeath string        `json:"causeOfDeath"`
+	Score        int           `json:"score"`
+	Turn         int           `json:"turn"`
+}
+
 // ScoreWeights are tunable via tuning.json scoreWeights.
 type ScoreWeights struct {
 	Floor       int `json:"floor"`
@@ -133,4 +156,70 @@ func (g *Game) CalculateScoreWithWeights(w ScoreWeights) int {
 		survivors = g.Party.LivingCount()
 	}
 	return scoreForPure(floors, kills, survivors, g.Won, w)
+}
+// depthReached computes DepthReached as max(g.Floor+1, max VisitedFloors+1).
+func (g *Game) depthReached() int {
+	depth := g.Floor + 1
+	if depth < 1 {
+		depth = 1
+	}
+	for k := range g.VisitedFloors {
+		if k+1 > depth {
+			depth = k + 1
+		}
+	}
+	return depth
+}
+
+// buildScoreEntry creates a ScoreEntry snapshot from current Game state.
+func (g *Game) buildScoreEntry() ScoreEntry {
+	cause := g.Cause
+	if g.Won {
+		cause = "Victory"
+	} else if cause == "" {
+		cause = "Unknown"
+	}
+	depth := g.depthReached()
+	var members []MemberScore
+	if g.Party != nil {
+		for _, m := range g.Party.Members {
+			if m == nil {
+				continue
+			}
+			members = append(members, MemberScore{
+				Name:  m.Name,
+				Class: m.Class,
+				Race:  m.Race,
+				Alive: m.IsAlive(),
+				HP:    m.HP,
+				MaxHP: m.MaxHP,
+			})
+		}
+	}
+	return ScoreEntry{
+		PartyLevel:   g.Level,
+		Gold:         g.Gold,
+		DepthReached: depth,
+		Members:      members,
+		Seed:         g.Seed,
+		Victory:      g.Won,
+		CauseOfDeath: cause,
+		Score:        g.CalculateScore(),
+		Turn:         g.Turn,
+	}
+}
+
+// RecordScore builds a ScoreEntry and appends it to the persisted scoreboard.
+// It is idempotent per call; callers should ensure they only invoke once per game-over.
+func (g *Game) RecordScore() {
+	if g == nil {
+		return
+	}
+	entry := g.buildScoreEntry()
+	sb, err := LoadScoreboard()
+	if err != nil || sb == nil {
+		sb = &Scoreboard{}
+	}
+	sb.AddEntry(entry)
+	_ = SaveScoreboard(sb)
 }

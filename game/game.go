@@ -41,6 +41,7 @@ type Game struct {
 	Over                    bool          `json:"over"`
 	Won                     bool          `json:"won"`
 	Quit                    bool          `json:"quit"`
+	Cause                   string        `json:"cause"`
 	Look                    *LookState    `json:"look"`
 	ThrowPending            ThrowState    `json:"throwPending"`
 	UsePending              UseState      `json:"usePending"`
@@ -652,7 +653,11 @@ func (g *Game) applyStarvation() {
 	if g.Party.LivingCount() == 0 {
 		g.Over = true
 		g.Won = false
+		if g.Cause == "" {
+			g.Cause = "Starvation"
+		}
 		g.Logf("You have succumbed to starvation. Seed %d.", g.Seed)
+		g.RecordScore()
 	}
 }
 
@@ -715,7 +720,11 @@ func (g *Game) handleVault(f *Feature) bool {
 		g.Logf("Vault treasure +%d gold! Trap springs for %d damage!", treasure, actual)
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
+			if g.Cause == "" {
+				g.Cause = "Slain by vault trap"
+			}
 			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
+			g.RecordScore()
 		}
 	} else {
 		g.Logf("Vault opened +%d gold!", treasure)
@@ -1368,7 +1377,11 @@ func (g *Game) handleFountain(f *Feature) {
 		g.Logf("Fountain %s: %s (%d damage)", o.Name, o.Desc, actual)
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
+			if g.Cause == "" {
+				g.Cause = "Poison"
+			}
 			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
+			g.RecordScore()
 		}
 	} else {
 		g.Logf("Fountain %s: %s", o.Name, o.Desc)
@@ -1483,7 +1496,11 @@ func (g *Game) handlePitfall(f *Feature) bool {
 		g.Logf("Hidden pitfall! You fall -- %d damage!", actual)
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
+			if g.Cause == "" {
+				g.Cause = "Fell into pit"
+			}
 			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
+			g.RecordScore()
 			return true
 		}
 		// One-way fall to next level if possible.
@@ -1833,8 +1850,10 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	if g.Floor == g.Tuning.Floors-1 && next == g.Relic {
 		g.Over = true
 		g.Won = true
+		g.Cause = "Victory"
 		g.RelicCollected = true
 		g.Logf("You claim the relic! Victory - seed %d. Score %d.", g.Seed, g.CalculateScore())
+		g.RecordScore()
 		// Reset transition tracking so old floors feel new again.
 		g.VisitedFloors = make(map[int]bool)
 		g.TransitionFiredForLevel = make(map[int]bool)
@@ -2044,7 +2063,11 @@ func (g *Game) EndPlayerTurn(msg string) {
 			g.Logf("Bleed deals %d damage!", actual)
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
+				if g.Cause == "" {
+					g.Cause = "Bleed"
+				}
 				g.Logf("You have bled out. Seed %d.", g.Seed)
+				g.RecordScore()
 			}
 		}
 		if g.Party.HasStatus(StatusSpore) || g.Party.HasStatus(StatusPoison) {
@@ -2052,7 +2075,11 @@ func (g *Game) EndPlayerTurn(msg string) {
 			g.Logf("Poison deals %d damage!", actual)
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
+				if g.Cause == "" {
+					g.Cause = "Poison"
+				}
 				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+				g.RecordScore()
 			}
 		}
 	}
@@ -2224,7 +2251,15 @@ func (g *Game) EnemyTurn() {
 			}
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
+				if g.Cause == "" {
+					if attackerName != "" {
+						g.Cause = "Slain by " + attackerName
+					} else {
+						g.Cause = "Slain by enemy"
+					}
+				}
 				g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
+				g.RecordScore()
 				return
 			}
 			continue

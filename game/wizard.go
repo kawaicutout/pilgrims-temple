@@ -191,7 +191,11 @@ func (g *Game) WizardRemoveMember(idx int) bool {
 	g.Logf("Wizard: Remove Party Member -> %s left", name)
 	if g.Party.LivingCount() == 0 {
 		g.Over = true
+		if g.Cause == "" {
+			g.Cause = "Fallen"
+		}
 		g.Logf("Party has fallen.")
+		g.RecordScore()
 	}
 	return true
 }

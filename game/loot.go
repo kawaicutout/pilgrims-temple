@@ -398,7 +398,11 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 				g.Logf("Poison potion deals %d damage!", dmg)
 				if g.Party.LivingCount() == 0 {
 					g.Over = true
+					if g.Cause == "" {
+						g.Cause = "Poison"
+					}
 					g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+					g.RecordScore()
 				}
 			} else if targetEnemy != nil {
 				dmgTotal := 0
@@ -896,7 +900,11 @@ func (g *Game) TryUseItem() bool {
 			g.Logf("Poison potion deals %d damage!", dmg)
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
+				if g.Cause == "" {
+					g.Cause = "Poison"
+				}
 				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+				g.RecordScore()
 			}
 		case "strength":
 			g.Party.ApplyStatus(StatusStrength, 41)

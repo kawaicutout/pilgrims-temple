@@ -32,6 +32,7 @@ type Feature struct {
 	MonsterCount int         `json:"monsterCount,omitempty"`
 	Hidden       bool        `json:"hidden,omitempty"`
 	Damage       int         `json:"damage,omitempty"`
+	Wares        []Ware      `json:"wares,omitempty"`
 }
 
 // Vault is the structured view of a vault Feature (locked/treasure/traps).
@@ -554,7 +555,15 @@ func MaybeSpawnFeatures(lvl *Level, floor int, rng *rand.Rand) []Feature {
 
 	if rng.Float64() < cfg.Merchants.Rate {
 		if p, ok := nextPos(); ok {
-			out = append(out, Feature{Pos: p, Type: FeatureMerchant})
+			wares := merchantWares(rng)
+			out = append(out, Feature{Pos: p, Type: FeatureMerchant, Wares: wares})
+		}
+		// Rare second merchant on same floor via independent roll (preserves scarce rate).
+		if rng.Float64() < cfg.Merchants.Rate {
+			if p, ok := nextPos(); ok {
+				wares := merchantWares(rng)
+				out = append(out, Feature{Pos: p, Type: FeatureMerchant, Wares: wares})
+			}
 		}
 	}
 	if rng.Float64() < cfg.Fountains.Rate {
@@ -568,23 +577,177 @@ func MaybeSpawnFeatures(lvl *Level, floor int, rng *rand.Rand) []Feature {
 		}
 	}
 	// Vault — locked room, treasure, possible trap.
+	// FIX: vault treasure must be strictly inside vault interior (center of 5x5..7x7 room),
+	// not at random Walkable tile / door / outside. Structured vault rooms are created
+	// in generateRooms (biome.go) with FeatureVault at interior center (vx+w/2, vy+h/2)
+	// and TileFloor there. Random scattered vaults would spawn $ outside vault; disable
+	// that and only allow vault features that are inside a vault interior. If a structured
+	// vault already exists, skip random vault. If no vault exists (e.g., cavern), attempt
+	// to carve a vault interior around a candidate and place treasure at its center, otherwise skip.
 	if rng.Float64() < cfg.Vaults.Rate {
-		if p, ok := nextPos(); ok {
-			treasureMin := cfg.Vaults.TreasureMin
-			if treasureMin == 0 {
-				treasureMin = 25
+		hasVault := false
+		for _, f := range lvl.Features {
+			if f.IsVault() {
+				hasVault = true
+				break
 			}
-			treasureMax := cfg.Vaults.TreasureMax
-			if treasureMax == 0 {
-				treasureMax = 80
+		}
+		if hasVault {
+			// Structured vault already present — do not spawn random $ outside.
+		} else {
+			// No vault room present (cavern or failed placement). Try to create a vault
+			// interior 5x5..7x7 with walls and single locked door, treasure at interior center.
+			// Find candidate walkable position to center vault near, then carve vault.
+			placed := false
+			for _, p := range candidates {
+				vw := 5 + rng.IntN(3) // 5..7
+				vh := 5 + rng.IntN(3)
+				ow := vw + 2
+				oh := vh + 2
+				// Try to place vault outer such that p is near its center region.
+				// Center of vault interior should be at p if possible; derive outer origin.
+				ox := p.X - ow/2
+				oy := p.Y - oh/2
+				if ox < 1 {
+					ox = 1
+				}
+				if oy < 1 {
+					oy = 1
+				}
+				if ox+ow >= lvl.W {
+					ox = lvl.W - ow - 1
+				}
+				if oy+oh >= lvl.H {
+					oy = lvl.H - oh - 1
+				}
+				outerOverlapsStairs := false
+				for yy := oy - 1; yy <= oy+oh; yy++ {
+					for xx := ox - 1; xx <= ox+ow; xx++ {
+						pp := Pos{xx, yy}
+						if pp == lvl.StairsUp || pp == lvl.StairsDown {
+							outerOverlapsStairs = true
+							break
+						}
+					}
+					if outerOverlapsStairs {
+						break
+					}
+				}
+				if outerOverlapsStairs {
+					continue
+				}
+				// Check overlap with existing vault walls: ensure outer perimeter not overlapping floor except where we will carve.
+				// For random placement, just ensure interior not on stairs and outer inside bounds.
+				// Carve outer walls + floor interior.
+				for yy := oy; yy < oy+oh; yy++ {
+					for xx := ox; xx < ox+ow; xx++ {
+						isPerim := xx == ox || xx == ox+ow-1 || yy == oy || yy == oy+oh-1
+						if isPerim {
+							lvl.Tiles[yy][xx] = TileWall
+						} else {
+							lvl.Tiles[yy][xx] = TileFloor
+						}
+					}
+				}
+				side := rng.IntN(4)
+				var door Pos
+				switch side {
+				case 0:
+					door = Pos{ox + ow/2, oy}
+				case 1:
+					door = Pos{ox + ow/2, oy + oh - 1}
+				case 2:
+					door = Pos{ox, oy + oh/2}
+				case 3:
+					door = Pos{ox + ow - 1, oy + oh/2}
+				}
+				lvl.Tiles[door.Y][door.X] = TileDoor
+				if lvl.Doors == nil {
+					lvl.Doors = make(map[Pos]bool)
+				}
+				lvl.Doors[door] = false
+				// Ensure outside of door is floor corridor to main area (carve 1-2 tiles outward if wall).
+				var outside Pos
+				var dir Dir
+				switch side {
+				case 0:
+					outside = Pos{door.X, door.Y - 1}
+					dir = DirN
+				case 1:
+					outside = Pos{door.X, door.Y + 1}
+					dir = DirS
+				case 2:
+					outside = Pos{door.X - 1, door.Y}
+					dir = DirW
+				case 3:
+					outside = Pos{door.X + 1, door.Y}
+					dir = DirE
+				}
+				if lvl.InBounds(outside) && lvl.At(outside) == TileWall {
+					lvl.Tiles[outside.Y][outside.X] = TileFloor
+				}
+				// Optionally carve a short stub to connect to existing floor.
+				cur := outside
+				for range 5 {
+					nxt := cur.Add(dir)
+					if !lvl.InBounds(nxt) {
+						break
+					}
+					if lvl.At(nxt) == TileFloor || lvl.At(nxt) == TileStairsDown || lvl.At(nxt) == TileStairsUp {
+						break
+					}
+					if lvl.At(nxt) == TileWall {
+						lvl.Tiles[nxt.Y][nxt.X] = TileFloor
+					}
+					cur = nxt
+					found := false
+					for _, d := range []Dir{DirN, DirS, DirE, DirW} {
+						adj := cur.Add(d)
+						if !lvl.InBounds(adj) {
+							continue
+						}
+						if lvl.At(adj) != TileFloor {
+							continue
+						}
+						if adj == door {
+							continue
+						}
+						inside := adj.X > ox && adj.X < ox+ow-1 && adj.Y > oy && adj.Y < oy+oh-1
+						if inside {
+							continue
+						}
+						found = true
+						break
+					}
+					if found {
+						break
+					}
+				}
+				interior := Pos{ox + 1 + vw/2, oy + 1 + vh/2}
+				// Ensure center is TileFloor inside vault, not TileWall or door (distance >=2 from wall).
+				lvl.Tiles[interior.Y][interior.X] = TileFloor
+				treasureMin := cfg.Vaults.TreasureMin
+				if treasureMin == 0 {
+					treasureMin = 25
+				}
+				treasureMax := cfg.Vaults.TreasureMax
+				if treasureMax == 0 {
+					treasureMax = 80
+				}
+				if treasureMax < treasureMin {
+					treasureMax = treasureMin
+				}
+				treasure := treasureMin + rng.IntN(treasureMax-treasureMin+1)
+				trapped := rng.Float64() < cfg.Vaults.TrappedChance
+				locked := cfg.Vaults.Locked
+				out = append(out, Feature{Pos: interior, Type: FeatureVault, Locked: locked, Treasure: treasure, Trapped: trapped})
+				used[interior] = true
+				placed = true
+				break
 			}
-			if treasureMax < treasureMin {
-				treasureMax = treasureMin
+			if !placed {
+				// fallback: do not spawn vault outside if we could not carve interior — avoids $ outside.
 			}
-			treasure := treasureMin + rng.IntN(treasureMax-treasureMin+1)
-			trapped := rng.Float64() < cfg.Vaults.TrappedChance
-			locked := cfg.Vaults.Locked
-			out = append(out, Feature{Pos: p, Type: FeatureVault, Locked: locked, Treasure: treasure, Trapped: trapped})
 		}
 	}
 	// Forge — improve ATK/DEF for gold/food.

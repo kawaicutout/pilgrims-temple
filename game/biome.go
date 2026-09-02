@@ -1110,6 +1110,45 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 				}
 			}
 			if !foundDoor {
+				// Vault door missing — rebuild 7x7 vault around center to ensure walls/door exist.
+				ow, oh := 7, 7
+				ox := c.X - ow/2
+				oy := c.Y - oh/2
+				if ox < 1 {
+					ox = 1
+				}
+				if oy < 1 {
+					oy = 1
+				}
+				if ox+ow >= l.W {
+					ox = l.W - ow - 1
+				}
+				if oy+oh >= l.H {
+					oy = l.H - oh - 1
+				}
+				door = Pos{ox + ow/2, oy + oh - 1}
+				for yy := oy; yy < oy+oh; yy++ {
+					for xx := ox; xx < ox+ow; xx++ {
+						isPerim := xx == ox || xx == ox+ow-1 || yy == oy || yy == oy+oh-1
+						p := Pos{xx, yy}
+						if p == door {
+							l.Tiles[yy][xx] = TileDoor
+							if l.Doors == nil {
+								l.Doors = make(map[Pos]bool)
+							}
+							l.Doors[p] = false
+							continue
+						}
+						if isPerim {
+							l.Tiles[yy][xx] = TileWall
+							if l.Doors != nil {
+								delete(l.Doors, p)
+							}
+						} else {
+							l.Tiles[yy][xx] = TileFloor
+						}
+					}
+				}
 				continue
 			}
 			// Find outer by scanning from center to wall/door
@@ -1249,6 +1288,44 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 			}
 		}
 		if !foundDoor {
+			ow, oh := 7, 7
+			ox := c.X - ow/2
+			oy := c.Y - oh/2
+			if ox < 1 {
+				ox = 1
+			}
+			if oy < 1 {
+				oy = 1
+			}
+			if ox+ow >= l.W {
+				ox = l.W - ow - 1
+			}
+			if oy+oh >= l.H {
+				oy = l.H - oh - 1
+			}
+			door = Pos{ox + ow/2, oy + oh - 1}
+			for yy := oy; yy < oy+oh; yy++ {
+				for xx := ox; xx < ox+ow; xx++ {
+					isPerim := xx == ox || xx == ox+ow-1 || yy == oy || yy == oy+oh-1
+					p := Pos{xx, yy}
+					if p == door {
+						l.Tiles[yy][xx] = TileDoor
+						if l.Doors == nil {
+							l.Doors = make(map[Pos]bool)
+						}
+						l.Doors[p] = false
+						continue
+					}
+					if isPerim {
+						l.Tiles[yy][xx] = TileWall
+						if l.Doors != nil {
+							delete(l.Doors, p)
+						}
+					} else {
+						l.Tiles[yy][xx] = TileFloor
+					}
+				}
+			}
 			continue
 		}
 		left := c.X
@@ -1354,10 +1431,33 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 		}
 	}
 	// Final door post-pass: remove any remaining doors without opposite walls or not single-wide.
+	// Preserve vault doors (within 6 of a locked vault) even if not single-wide, as they must remain locked.
 	for y := range l.H {
 		for x := range l.W {
 			p := Pos{x, y}
 			if l.At(p) != TileDoor {
+				continue
+			}
+			// Check if this is a vault door — skip removal.
+			isVaultDoor := false
+			for _, vf := range l.Features {
+				if !vf.IsVault() {
+					continue
+				}
+				dx := p.X - vf.Pos.X
+				if dx < 0 {
+					dx = -dx
+				}
+				dy := p.Y - vf.Pos.Y
+				if dy < 0 {
+					dy = -dy
+				}
+				if dx+dy <= 6 {
+					isVaultDoor = true
+					break
+				}
+			}
+			if isVaultDoor {
 				continue
 			}
 			if !isSingleWideDoor(l, p) {
@@ -1380,6 +1480,108 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 	// Preserve special vault/merchant rooms carved in generateRooms (doors + features) and append random features.
 	existing := l.Features
 	l.Features = append(existing, MaybeSpawnFeatures(l, floor, rng)...)
+	// FIX: ensure vault treasure ($) is inside vault interior (TileFloor, not wall/door/outside).
+	// GenerateRooms already places vault at interior center with TileFloor; this hardens any
+	// vault that ended up on wall/door (e.g., cavern fallback or random spawn) and avoids $ outside.
+	for idx := range l.Features {
+		f := &l.Features[idx]
+		if !f.IsVault() {
+			continue
+		}
+		c := f.Pos
+		if l.InBounds(c) && l.At(c) == TileFloor && !l.IsDoor(c) {
+			continue
+		}
+		// Vault on wall/door/outside — relocate to nearest vault door interior if possible.
+		if l.InBounds(c) {
+			l.Tiles[c.Y][c.X] = TileFloor
+		}
+		var door Pos
+		bestDist := 1000
+		foundDoor := false
+		for y := range l.H {
+			for x := range l.W {
+				p := Pos{x, y}
+				if l.At(p) != TileDoor {
+					continue
+				}
+				dx := p.X - c.X
+				if dx < 0 {
+					dx = -dx
+				}
+				dy := p.Y - c.Y
+				if dy < 0 {
+					dy = -dy
+				}
+				d := dx + dy
+				if d < bestDist && d <= 6 {
+					bestDist = d
+					door = p
+					foundDoor = true
+				}
+			}
+		}
+		if foundDoor {
+			// Find interior neighbor bounded by walls and move vault there.
+			best := Pos{}
+			found := false
+			for _, d := range []Dir{DirN, DirS, DirE, DirW} {
+				n := door.Add(d)
+				if !l.InBounds(n) || l.At(n) != TileFloor {
+					continue
+				}
+				// Prefer side that is enclosed (vault interior has walls close).
+				left := n.X
+				for left >= 0 {
+					t := l.At(Pos{left, n.Y})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					left--
+				}
+				right := n.X
+				for right < l.W {
+					t := l.At(Pos{right, n.Y})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					right++
+				}
+				top := n.Y
+				for top >= 0 {
+					t := l.At(Pos{n.X, top})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					top--
+				}
+				bottom := n.Y
+				for bottom < l.H {
+					t := l.At(Pos{n.X, bottom})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					bottom++
+				}
+				if right-left+1 >= 7 && bottom-top+1 >= 7 {
+					center := Pos{left + 1 + (right-left-1)/2, top + 1 + (bottom-top-1)/2}
+					if l.InBounds(center) {
+						l.Tiles[center.Y][center.X] = TileFloor
+						f.Pos = center
+						found = true
+						break
+					}
+				}
+				if !found {
+					best = n
+				}
+			}
+			if !found && (best != Pos{}) {
+				l.Tiles[best.Y][best.X] = TileFloor
+				f.Pos = best
+			}
+		}
+	}
 	// Spawn floor loot using same weighted table as wizard debug spawns.
 	SpawnFloorLoot(l, rng, floor, biome)
 	// Guarantee exit: after vault/doors/litter/features/loot, re-verify BFS and carve emergency corridor up to 5 times.
@@ -1393,12 +1595,33 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 			panic(fmt.Sprintf("GenerateWithBiome floor %d failed to guarantee exit (up %v down %v)", floor, l.StairsUp, l.StairsDown))
 		}
 	}
-
 	// Final width-aware door cleanup after emergency corridors (which may have widened hallways).
+	// Preserve vault doors even if not single-wide.
 	for y := range l.H {
 		for x := range l.W {
 			p := Pos{x, y}
 			if l.At(p) != TileDoor {
+				continue
+			}
+			isVaultDoor := false
+			for _, vf := range l.Features {
+				if !vf.IsVault() {
+					continue
+				}
+				dx := p.X - vf.Pos.X
+				if dx < 0 {
+					dx = -dx
+				}
+				dy := p.Y - vf.Pos.Y
+				if dy < 0 {
+					dy = -dy
+				}
+				if dx+dy <= 6 {
+					isVaultDoor = true
+					break
+				}
+			}
+			if isVaultDoor {
 				continue
 			}
 			if !isSingleWideDoor(l, p) {
@@ -1409,7 +1632,160 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 			}
 		}
 	}
-
+	// Re-enforce vault walls after emergency corridor and door cleanup — ensure vault 7x7 outer intact
+	// and treasure ($) at interior center (distance >=2 from walls, TileFloor, not door).
+	for _, vf := range l.Features {
+		if !vf.IsVault() {
+			continue
+		}
+		c := vf.Pos
+		// Find nearest vault door within 6, or fallback to south wall.
+		var door Pos
+		bestDist := 1000
+		foundDoor := false
+		for y := range l.H {
+			for x := range l.W {
+				p := Pos{x, y}
+				if l.At(p) != TileDoor {
+					continue
+				}
+				dx := p.X - c.X
+				if dx < 0 {
+					dx = -dx
+				}
+				dy := p.Y - c.Y
+				if dy < 0 {
+					dy = -dy
+				}
+				d := dx + dy
+				if d < bestDist && d <= 6 {
+					bestDist = d
+					door = p
+					foundDoor = true
+				}
+			}
+		}
+		var ox, oy, ow, oh int
+		if foundDoor {
+			// Derive outer from door and center: scan to find outer bounds, or fallback to 7x7 around center.
+			left := c.X
+			for left >= 0 {
+				t := l.At(Pos{left, c.Y})
+				if t == TileWall || t == TileDoor {
+					break
+				}
+				left--
+			}
+			right := c.X
+			for right < l.W {
+				t := l.At(Pos{right, c.Y})
+				if t == TileWall || t == TileDoor {
+					break
+				}
+				right++
+			}
+			top := c.Y
+			for top >= 0 {
+				t := l.At(Pos{c.X, top})
+				if t == TileWall || t == TileDoor {
+					break
+				}
+				top--
+			}
+			bottom := c.Y
+			for bottom < l.H {
+				t := l.At(Pos{c.X, bottom})
+				if t == TileWall || t == TileDoor {
+					break
+				}
+				bottom++
+			}
+			outerW := right - left + 1
+			outerH := bottom - top + 1
+			if outerW >= 7 && outerW <= 9 && outerH >= 7 && outerH <= 9 {
+				ox, oy, ow, oh = left, top, outerW, outerH
+			} else {
+				// Fallback: 7x7 around door based on door side
+				ow, oh = 7, 7
+				dx := door.X - c.X
+				dy := door.Y - c.Y
+				if dy < 0 && -dy > dx && -dy > -dx {
+					ox = door.X - ow/2
+					oy = door.Y
+				} else if dy > 0 && dy > dx && dy > -dx {
+					ox = door.X - ow/2
+					oy = door.Y - oh + 1
+				} else if dx < 0 {
+					ox = door.X
+					oy = door.Y - oh/2
+				} else {
+					ox = door.X - ow + 1
+					oy = door.Y - oh/2
+				}
+				if ox < 1 {
+					ox = 1
+				}
+				if oy < 1 {
+					oy = 1
+				}
+				if ox+ow >= l.W {
+					ox = l.W - ow - 1
+				}
+				if oy+oh >= l.H {
+					oy = l.H - oh - 1
+				}
+			}
+		} else {
+			ow, oh = 7, 7
+			ox = c.X - ow/2
+			oy = c.Y - oh/2
+			if ox < 1 {
+				ox = 1
+			}
+			if oy < 1 {
+				oy = 1
+			}
+			if ox+ow >= l.W {
+				ox = l.W - ow - 1
+			}
+			if oy+oh >= l.H {
+				oy = l.H - oh - 1
+			}
+			door = Pos{ox + ow/2, oy + oh - 1}
+		}
+		// Rebuild outer walls and ensure interior floor and door closed
+		for yy := oy; yy < oy+oh; yy++ {
+			for xx := ox; xx < ox+ow; xx++ {
+				isPerim := xx == ox || xx == ox+ow-1 || yy == oy || yy == oy+oh-1
+				p := Pos{xx, yy}
+				if p == door {
+					l.Tiles[yy][xx] = TileDoor
+					if l.Doors == nil {
+						l.Doors = make(map[Pos]bool)
+					}
+					l.Doors[p] = false
+					continue
+				}
+				if isPerim {
+					l.Tiles[yy][xx] = TileWall
+					if l.Doors != nil {
+						delete(l.Doors, p)
+					}
+				} else {
+					l.Tiles[yy][xx] = TileFloor
+				}
+			}
+		}
+		// Ensure vault feature at interior center (distance >=2 from walls)
+		center := Pos{ox + 1 + (ow-2)/2, oy + 1 + (oh-2)/2}
+		l.Tiles[center.Y][center.X] = TileFloor
+		for i := range l.Features {
+			if l.Features[i].IsVault() && l.Features[i].Pos == c {
+				l.Features[i].Pos = center
+				break
+			}
+		}
+	}
 	// Debug helper
 	_ = fmt.Sprintf("biome %s floor %d", biome.ID, floor)
 }
@@ -1799,8 +2175,8 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 		interior := rect{ox + 1, oy + 1, vw, vh}
 		rooms = append(rooms, interior)
 		center := Pos{interior.x + interior.w/2, interior.y + interior.h/2}
+		l.Tiles[center.Y][center.X] = TileFloor
 		l.Features = append(l.Features, Feature{Pos: center, Type: FeatureVault, Locked: true, Treasure: 25 + rng.IntN(56), Trapped: rng.Float64() < 0.2})
-		vaultOuters = append(vaultOuters, outer)
 		vaultDoors = append(vaultDoors, door)
 		vaultPlaced = true
 	}
@@ -1897,8 +2273,8 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 			}
 			rooms[idx] = rect{vx, vy, fvw, fvh}
 			center := Pos{vx + fvw/2, vy + fvh/2}
+			l.Tiles[center.Y][center.X] = TileFloor
 			l.Features = append(l.Features, Feature{Pos: center, Type: FeatureVault, Locked: true, Treasure: 25 + rng.IntN(56), Trapped: rng.Float64() < 0.2})
-			vaultOuters = append(vaultOuters, outer)
 			vaultDoors = append(vaultDoors, door)
 			vaultPlaced = true
 			break
@@ -1932,8 +2308,8 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 			interior := rect{ox + 1, oy + 1, vw, vh}
 			rooms = append(rooms, interior)
 			center := Pos{interior.x + interior.w/2, interior.y + interior.h/2}
+			l.Tiles[center.Y][center.X] = TileFloor
 			l.Features = append(l.Features, Feature{Pos: center, Type: FeatureVault, Locked: true, Treasure: 25 + rng.IntN(56), Trapped: rng.Float64() < 0.2})
-			vaultOuters = append(vaultOuters, rect{ox, oy, ow, oh})
 			vaultDoors = append(vaultDoors, door)
 		}
 	}
@@ -1941,7 +2317,8 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 	mh := 3 + rng.IntN(2)
 	if mr, mdoor, ok := trySpecialRoom(mw, mh); ok {
 		center := Pos{mr.x + mr.w/2, mr.y + mr.h/2}
-		l.Features = append(l.Features, Feature{Pos: center, Type: FeatureMerchant})
+		wares := merchantWares(rng)
+		l.Features = append(l.Features, Feature{Pos: center, Type: FeatureMerchant, Wares: wares})
 		_ = mdoor
 	} else if len(rooms) > 1 {
 		idx := rng.IntN(len(rooms))
@@ -1986,7 +2363,8 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 			}
 		}
 		if !has {
-			l.Features = append(l.Features, Feature{Pos: center, Type: FeatureMerchant})
+			wares := merchantWares(rng)
+			l.Features = append(l.Features, Feature{Pos: center, Type: FeatureMerchant, Wares: wares})
 		}
 	}
 	// Hallway doors at corridor ends (rooms biomes)

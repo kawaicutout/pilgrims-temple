@@ -819,16 +819,18 @@ func (g *Game) StartMerchant(pos Pos) bool {
 	if f == nil || !f.IsMerchant() {
 		return false
 	}
-	lvl := g.CurLevel()
-	m := SpawnMerchant(g.RNG, lvl, pos)
-	if m == nil || len(m.Wares) == 0 {
+	// Use persistent wares from Feature; fallback for old saves.
+	if len(f.Wares) == 0 {
+		f.Wares = merchantWares(g.RNG)
+	}
+	if len(f.Wares) == 0 {
 		g.Logf("Merchant has nothing to sell right now.")
 		g.removeFeatureAt(pos, FeatureMerchant)
 		return false
 	}
-	g.Merchant = MerchantState{Active: true, Pos: pos, Wares: m.Wares, Selected: 0}
+	g.Merchant = MerchantState{Active: true, Pos: pos, Wares: f.Wares, Selected: 0}
 	var offerStr string
-	for i, w := range m.Wares {
+	for i, w := range f.Wares {
 		if i > 0 {
 			offerStr += ", "
 		}
@@ -1385,16 +1387,18 @@ func (g *Game) handleMerchant(f *Feature) {
 	if f == nil || !f.IsMerchant() {
 		return
 	}
-	lvl := g.CurLevel()
-	m := SpawnMerchant(g.RNG, lvl, f.Pos)
-	if m == nil || len(m.Wares) == 0 {
+	if len(f.Wares) == 0 {
+		f.Wares = merchantWares(g.RNG)
+	}
+	if len(f.Wares) == 0 {
 		g.Logf("Merchant (M) has nothing to sell right now.")
 		g.removeFeatureAt(f.Pos, FeatureMerchant)
 		return
 	}
+	m := &Merchant{Pos: f.Pos, Wares: f.Wares, Scarce: true}
 	// Build offer list
 	var offerStr string
-	for i, w := range m.Wares {
+	for i, w := range f.Wares {
 		if i > 0 {
 			offerStr += ", "
 		}
@@ -1403,7 +1407,7 @@ func (g *Game) handleMerchant(f *Feature) {
 	// Find cheapest affordable ware
 	cheapestIdx := -1
 	cheapestPrice := 1 << 30
-	for i, w := range m.Wares {
+	for i, w := range f.Wares {
 		if g.Gold >= w.Price && w.Price < cheapestPrice {
 			cheapestPrice = w.Price
 			cheapestIdx = i
@@ -1413,7 +1417,7 @@ func (g *Game) handleMerchant(f *Feature) {
 		g.Logf("Merchant offers: %s -- need more gold (you have %dg).", offerStr, g.Gold)
 		return
 	}
-	w := m.Wares[cheapestIdx]
+	w := f.Wares[cheapestIdx]
 	if err := g.BuyWare(m, w.ID); err != nil {
 		g.Logf("Merchant: %v", err)
 		return

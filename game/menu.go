@@ -87,6 +87,56 @@ func (cs *CharSelectState) Back() bool {
 
 func (cs *CharSelectState) Done() bool { return len(cs.Picks) == 2 }
 
+// RaceSelectState holds race picks for each class slot.
+type RaceSelectState struct {
+	Classes []string
+	Races   []Race
+	Cursor  int
+	Picks   []string
+}
+
+func NewRaceSelect(classes []string) (*RaceSelectState, error) {
+	races := LoadRaces()
+	if len(races) == 0 {
+		races = fallbackRaces()
+	}
+	cp := make([]string, len(classes))
+	copy(cp, classes)
+	return &RaceSelectState{Classes: cp, Races: races, Cursor: 0, Picks: []string{}}, nil
+}
+
+func (rs *RaceSelectState) Move(dir int) {
+	n := len(rs.Races)
+	if n == 0 {
+		return
+	}
+	rs.Cursor = (rs.Cursor + dir + n) % n
+}
+
+func (rs *RaceSelectState) Select() {
+	if len(rs.Picks) >= len(rs.Classes) {
+		return
+	}
+	if len(rs.Races) == 0 {
+		return
+	}
+	if rs.Cursor < 0 || rs.Cursor >= len(rs.Races) {
+		return
+	}
+	id := rs.Races[rs.Cursor].ID
+	rs.Picks = append(rs.Picks, id)
+}
+
+func (rs *RaceSelectState) Back() bool {
+	if len(rs.Picks) > 0 {
+		rs.Picks = rs.Picks[:len(rs.Picks)-1]
+		return false
+	}
+	return true
+}
+
+func (rs *RaceSelectState) Done() bool { return len(rs.Classes) > 0 && len(rs.Picks) == len(rs.Classes) }
+
 func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
 	InitIdentificationSeed(seed)
@@ -117,6 +167,51 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 			names += ", "
 		}
 		names += fmt.Sprintf("%s (%s)", m.Name, m.Class)
+	}
+	g.Logf("Party: %s", names)
+	g.Logf("You stand at the temple threshold.")
+	g.UpdateFOV()
+	return g
+}
+
+func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, races []string) *Game {
+	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
+	InitIdentificationSeed(seed)
+	g := &Game{
+		Seed: seed, RNG: rng, Tuning: tuning,
+		Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1,
+		VisitedFloors: make(map[int]bool), TransitionFiredForLevel: make(map[int]bool),
+	}
+	g.XPToNext = g.xpForNext()
+	g.Levels = make([]*Level, tuning.Floors)
+	for i := range tuning.Floors {
+		lvl := NewLevel(tuning.Map.Width, tuning.Map.Height)
+		lvl.Generate(rng, i)
+		g.Levels[i] = lvl
+	}
+	final := g.Levels[tuning.Floors-1]
+	g.Relic = final.StairsDown
+	g.Party = GeneratePartyWithClassesAndRaces(rng, classes, races, 1)
+	start := g.Levels[0].StairsUp
+	g.Party.Pos = start
+	g.Floor = 0
+	g.VisitedFloors[0] = true
+	g.TransitionFiredForLevel[0] = true
+	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
+	names := ""
+	for i, m := range g.Party.Members {
+		if i > 0 {
+			names += ", "
+		}
+		raceName := ""
+		if m.Race != "" {
+			if r, ok := GetRace(m.Race); ok {
+				raceName = r.Name + " "
+			} else {
+				raceName = FriendlyID(m.Race) + " "
+			}
+		}
+		names += fmt.Sprintf("%s (%s%s)", m.Name, raceName, FriendlyID(m.Class))
 	}
 	g.Logf("Party: %s", names)
 	g.Logf("You stand at the temple threshold.")
@@ -223,6 +318,128 @@ func RenderCharSelect(tuning Tuning, cs *CharSelectState) Frame {
 	status := fmt.Sprintf("Choose pilgrims %d/2", len(cs.Picks))
 	hints := "Up/Down: move  Enter: pick  Esc: back  (need 2 to start)"
 	if len(cs.Picks) == 2 {
+		hints = "Enter: begin  Esc: back"
+	}
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+func buffSummary(b Buff) string {
+	var parts []string
+	if b.HP != 0 {
+		parts = append(parts, fmt.Sprintf("%+d HP", b.HP))
+	}
+	if b.ATK != 0 {
+		parts = append(parts, fmt.Sprintf("%+d ATK", b.ATK))
+	}
+	if b.DEF != 0 {
+		parts = append(parts, fmt.Sprintf("%+d DEF", b.DEF))
+	}
+	if b.MDEF != 0 {
+		parts = append(parts, fmt.Sprintf("%+d MDEF", b.MDEF))
+	}
+	if b.Light != 0 {
+		parts = append(parts, fmt.Sprintf("%+d Light", b.Light))
+	}
+	if b.Carry != 0 {
+		parts = append(parts, fmt.Sprintf("%+d Carry", b.Carry))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, ", ")
+}
+
+func RenderRaceSelect(tuning Tuning, rs *RaceSelectState) Frame {
+	w, h := tuning.Map.Width, tuning.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	total := len(rs.Classes)
+	picked := len(rs.Picks)
+	title := "CHOOSE RACES"
+	var sub string
+	if rs.Done() {
+		sub = "Press Enter to begin"
+	} else if picked < total {
+		className := FriendlyID(rs.Classes[picked])
+		sub = fmt.Sprintf("Race for %s (%d/%d)", className, picked+1, total)
+	} else {
+		sub = fmt.Sprintf("Pick %d/%d", picked, total)
+	}
+	drawCentered(cells, w, 2, title, "gold-bright")
+	drawCentered(cells, w, 3, sub, "gray-1")
+	pickLine := ""
+	for i := range total {
+		if i > 0 {
+			pickLine += " + "
+		}
+		className := FriendlyID(rs.Classes[i])
+		if i < len(rs.Picks) {
+			raceName := FriendlyID(rs.Picks[i])
+			if r, ok := GetRace(rs.Picks[i]); ok {
+				raceName = r.Name
+			}
+			pickLine += fmt.Sprintf("%s %s", raceName, className)
+		} else if i == picked {
+			pickLine += fmt.Sprintf("? %s", className)
+		} else {
+			pickLine += fmt.Sprintf("? %s", className)
+		}
+	}
+	if pickLine == "" {
+		pickLine = "(none)"
+	}
+	if len(pickLine) > w-2 {
+		pickLine = pickLine[:w-5] + "..."
+	}
+	drawCentered(cells, w, 5, pickLine, "gold")
+	for i, r := range rs.Races {
+		y := 7 + i*2
+		if y+1 >= h-1 {
+			break
+		}
+		prefix := "  "
+		fg := "gray-1"
+		if i == rs.Cursor {
+			prefix = "> "
+			fg = "gold-bright"
+		}
+		line := fmt.Sprintf("%s%s", prefix, r.Name)
+		if s := buffSummary(r.CharBuff); s != "" {
+			line += fmt.Sprintf(" [%s]", s)
+		}
+		if r.PartyBuff.Light != 0 || r.PartyBuff.HP != 0 || r.PartyBuff.ATK != 0 || r.PartyBuff.DEF != 0 {
+			if ps := buffSummary(r.PartyBuff); ps != "" {
+				line += fmt.Sprintf(" Party:%s", ps)
+			}
+		}
+		if r.SynergyBuff.Desc != "" {
+			line += fmt.Sprintf(" Syn:%s", r.SynergyBuff.Desc)
+		}
+		if len(line) > w-2 {
+			line = line[:w-5] + "..."
+		}
+		drawString(cells, 2, y, line, fg)
+		desc := r.Desc
+		if len(desc) > w-6 {
+			desc = desc[:w-9] + "..."
+		}
+		drawString(cells, 4, y+1, desc, "gray-2")
+	}
+	panel := []string{"", "Choose race", fmt.Sprintf("Picked: %d/%d", picked, total)}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+	}
+	panel = append(panel, "Enter: pick", "Esc: back", "1-7: quick")
+	status := fmt.Sprintf("Choose race %d/%d", picked, total)
+	if rs.Done() {
+		status = "Races chosen - Enter to begin"
+	}
+	hints := "Up/Down: move  Enter: pick  Esc: back  1-7: quick pick"
+	if rs.Done() {
 		hints = "Enter: begin  Esc: back"
 	}
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}

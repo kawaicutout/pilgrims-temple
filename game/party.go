@@ -276,6 +276,39 @@ func GeneratePartyWithClasses(rng *rand.Rand, classes []string, level int) *Part
 	return p
 }
 
+// GeneratePartyWithClassesAndRaces creates a party from explicit class and race lists.
+func GeneratePartyWithClassesAndRaces(rng *rand.Rand, classes []string, races []string, level int) *Party {
+	if len(classes) == 0 {
+		classes = []string{"fighter"}
+	}
+	if len(classes) > 4 {
+		classes = classes[:4]
+	}
+	if len(races) > len(classes) {
+		races = races[:len(classes)]
+	}
+	used := map[string]bool{}
+	var members []*Member
+	for i, c := range classes {
+		var race string
+		if i < len(races) && races[i] != "" {
+			race = normalizeRaceID(races[i])
+			if _, ok := GetRace(race); !ok {
+				race = randomRace(rng)
+			}
+		} else {
+			race = randomRace(rng)
+		}
+		m := generateMemberWithRace(rng, c, race, level, used)
+		m.Alive = true
+		used[m.Name] = true
+		members = append(members, m)
+	}
+	p := &Party{Members: members, Pos: Pos{0, 0}, Selected: 0, Active: 0}
+	ApplyRaceBuffs(p)
+	return p
+}
+
 // classStats holds per-class tuning from classes.json.
 type classStats struct {
 	HitDice      string `json:"hitDice"`
@@ -341,6 +374,10 @@ func rollHD(rng *rand.Rand, sides int) int {
 }
 
 func generateMember(rng *rand.Rand, class string, level int, used map[string]bool) *Member {
+	return generateMemberWithRace(rng, class, randomRace(rng), level, used)
+}
+
+func generateMemberWithRace(rng *rand.Rand, class string, race string, level int, used map[string]bool) *Member {
 	if level < 1 {
 		level = 1
 	}
@@ -394,10 +431,14 @@ func generateMember(rng *rand.Rand, class string, level int, used map[string]boo
 		used = map[string]bool{}
 	}
 	name := GenerateName(rng, used)
+	race = normalizeRaceID(race)
+	if _, ok := GetRace(race); !ok {
+		race = randomRace(rng)
+	}
 	m := &Member{
 		Name:       name,
 		Class:      class,
-		Race:       randomRace(rng),
+		Race:       race,
 		HP:         hp,
 		MaxHP:      hp,
 		ATK:        [2]int{atkMin, atkMax},

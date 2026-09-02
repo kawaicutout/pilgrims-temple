@@ -222,6 +222,7 @@ func main() {
 	const (
 		stateMenu appState = iota
 		stateCharSelect
+		stateRaceSelect
 		statePlaying
 		stateWizard
 		stateWizardAddMember
@@ -237,6 +238,7 @@ func main() {
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
+	var rs *game.RaceSelectState
 	var g *game.Game
 	wizardState := &game.WizardState{Selected: 0}
 	var wizardAddCS *game.CharSelectState
@@ -254,6 +256,10 @@ func main() {
 			case stateCharSelect:
 				if cs != nil {
 					drawFrame(game.RenderCharSelect(tuning, cs))
+				}
+			case stateRaceSelect:
+				if rs != nil {
+					drawFrame(game.RenderRaceSelect(tuning, rs))
 				}
 			case statePlaying:
 				if g != nil {
@@ -348,15 +354,21 @@ func main() {
 					drawFrame(game.RenderCharSelect(tuning, cs))
 				case game.KeyEnter:
 					if cs.Done() {
-						seed := time.Now().UnixNano()
-						g = game.NewGameWithClasses(seed, tuning, cs.Picks)
-						state = statePlaying
-						drawFrame(g.Render())
+						var err error
+						rs, err = game.NewRaceSelect(cs.Picks)
+						if err != nil {
+							seed := time.Now().UnixNano()
+							g = game.NewGameWithClasses(seed, tuning, cs.Picks)
+							state = statePlaying
+							drawFrame(g.Render())
+							break
+						}
+						state = stateRaceSelect
+						drawFrame(game.RenderRaceSelect(tuning, rs))
 					} else {
 						cs.Select()
 						drawFrame(game.RenderCharSelect(tuning, cs))
 						if cs.Done() {
-							// Stay, waiting for Enter to begin
 							drawFrame(game.RenderCharSelect(tuning, cs))
 						}
 					}
@@ -366,6 +378,78 @@ func main() {
 						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					} else {
 						drawFrame(game.RenderCharSelect(tuning, cs))
+					}
+				default:
+					// number keys 1-9 quick pick class by index
+					if key >= "1" && key <= "9" {
+						idx := int(key[0] - '1')
+						if idx >= 0 && idx < len(cs.Classes) {
+							cs.Cursor = idx
+							cs.Select()
+							drawFrame(game.RenderCharSelect(tuning, cs))
+							if cs.Done() {
+								var err error
+								rs, err = game.NewRaceSelect(cs.Picks)
+								if err == nil {
+									state = stateRaceSelect
+									drawFrame(game.RenderRaceSelect(tuning, rs))
+								}
+							}
+						}
+					}
+				}
+			case stateRaceSelect:
+				if rs == nil {
+					state = stateCharSelect
+					if cs != nil {
+						drawFrame(game.RenderCharSelect(tuning, cs))
+					} else {
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					}
+					break
+				}
+				switch k {
+				case game.KeyUp:
+					rs.Move(-1)
+					drawFrame(game.RenderRaceSelect(tuning, rs))
+				case game.KeyDown:
+					rs.Move(1)
+					drawFrame(game.RenderRaceSelect(tuning, rs))
+				case game.KeyEnter:
+					if rs.Done() {
+						seed := time.Now().UnixNano()
+						g = game.NewGameWithClassesAndRaces(seed, tuning, rs.Classes, rs.Picks)
+						state = statePlaying
+						drawFrame(g.Render())
+					} else {
+						rs.Select()
+						drawFrame(game.RenderRaceSelect(tuning, rs))
+						if rs.Done() {
+							drawFrame(game.RenderRaceSelect(tuning, rs))
+						}
+					}
+				case game.KeyQuit:
+					if rs.Back() {
+						state = stateCharSelect
+						drawFrame(game.RenderCharSelect(tuning, cs))
+					} else {
+						drawFrame(game.RenderRaceSelect(tuning, rs))
+					}
+				default:
+					if key >= "1" && key <= "7" {
+						idx := int(key[0] - '1')
+						if idx >= 0 && idx < len(rs.Races) {
+							rs.Cursor = idx
+							if !rs.Done() {
+								rs.Select()
+							}
+							drawFrame(game.RenderRaceSelect(tuning, rs))
+							if rs.Done() {
+								// stay waiting for Enter
+							}
+						}
+					} else if key >= "1" && key <= "9" {
+						// fallback no-op
 					}
 				}
 			case statePlaying:

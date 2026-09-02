@@ -103,14 +103,12 @@ func GetMerchantWares() []Ware {
 	return out
 }
 
-// SpawnMerchant creates a merchant on lvl at pos with random wares.
-// Scarce: 1-2 wares per merchant; pick without replacement.
-func SpawnMerchant(rng *rand.Rand, lvl *Level, pos Pos) *Merchant {
+// merchantWares returns 1-2 random wares without replacement, using rng.
+func merchantWares(rng *rand.Rand) []Ware {
 	wares := loadMerchants()
 	if len(wares) == 0 {
-		return &Merchant{Pos: pos, Scarce: true}
+		return nil
 	}
-	// Shuffle indices.
 	idx := make([]int, len(wares))
 	for i := range idx {
 		idx[i] = i
@@ -126,6 +124,16 @@ func SpawnMerchant(rng *rand.Rand, lvl *Level, pos Pos) *Merchant {
 	picked := make([]Ware, n)
 	for i := range n {
 		picked[i] = wares[idx[i]]
+	}
+	return picked
+}
+
+// SpawnMerchant creates a merchant on lvl at pos with random wares.
+// Scarce: 1-2 wares per merchant; pick without replacement.
+func SpawnMerchant(rng *rand.Rand, lvl *Level, pos Pos) *Merchant {
+	picked := merchantWares(rng)
+	if len(picked) == 0 {
+		return &Merchant{Pos: pos, Scarce: true}
 	}
 	return &Merchant{Pos: pos, Wares: picked, Scarce: true}
 }

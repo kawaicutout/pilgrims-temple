@@ -1,7 +1,43 @@
 package game
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // Pos is a grid coordinate.
 type Pos struct{ X, Y int }
+
+// MarshalJSON ensures Pos marshals as object {"X":1,"Y":2} for struct fields.
+func (p Pos) MarshalJSON() ([]byte, error) {
+	type posAlias Pos
+	return json.Marshal(posAlias(p))
+}
+
+func (p *Pos) UnmarshalJSON(data []byte) error {
+	type posAlias Pos
+	var a posAlias
+	if err := json.Unmarshal(data, &a); err != nil {
+		// fallback for string form "x,y" (used as map key text)
+		var s string
+		if err2 := json.Unmarshal(data, &s); err2 == nil {
+			_, err2 = fmt.Sscanf(s, "%d,%d", &p.X, &p.Y)
+			return err2
+		}
+		return err
+	}
+	*p = Pos(a)
+	return nil
+}
+
+// MarshalText implements encoding.TextMarshaler for map keys (e.g., Doors).
+func (p Pos) MarshalText() ([]byte, error) { return []byte(fmt.Sprintf("%d,%d", p.X, p.Y)), nil }
+
+// UnmarshalText implements encoding.TextUnmarshaler for map keys.
+func (p *Pos) UnmarshalText(text []byte) error {
+	_, err := fmt.Sscanf(string(text), "%d,%d", &p.X, &p.Y)
+	return err
+}
 
 func (p Pos) Add(d Dir) Pos { return Pos{p.X + d.DX, p.Y + d.DY} }
 

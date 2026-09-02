@@ -267,6 +267,9 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 		line := prefix + opt
 		drawCentered(cells, w, h/2-1+i, line, fg)
 	}
+	if HasModifiedData() {
+		drawCentered(cells, w, h-3, "MODDED — scores disabled", "red-bright")
+	}
 	panel := []string{}
 	for len(panel) < 12 {
 		panel = append(panel, "")

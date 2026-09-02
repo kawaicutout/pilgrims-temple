@@ -228,6 +228,7 @@ func main() {
 		stateWizardRemoveMember
 		stateWizardResurrectMember
 		stateUseInventory
+		stateUseTarget
 		stateThrowMenu
 		stateThrowCursor
 		stateMerchant
@@ -279,6 +280,10 @@ func main() {
 			case stateUseInventory:
 				if g != nil {
 					drawFrame(g.RenderUseMenu(useSelected))
+				}
+			case stateUseTarget:
+				if g != nil {
+					drawFrame(g.Render())
 				}
 			case stateThrowMenu:
 				if g != nil {
@@ -446,7 +451,7 @@ func main() {
 					break
 				}
 				// Use inventory: open usage menu (not instant consume)
-				if k == game.KeyUse && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit {
+				if k == game.KeyUse && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit && !g.UsePending.Active && !g.ThrowPending.Active {
 					// Try forge first (like pickup); if forge present, use it directly
 					if g.TryUseForge() {
 						g.EndPlayerTurn("")
@@ -468,7 +473,7 @@ func main() {
 					break
 				}
 				// Throw inventory: open throw menu then cursor
-				if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.Over && !g.Quit {
+				if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.UsePending.Active && !g.Over && !g.Quit {
 					entries := g.InventoryPotionEntries()
 					if len(entries) == 0 {
 						g.Logf("No potions to throw.")
@@ -556,9 +561,67 @@ func main() {
 					drawFrame(g.Render())
 				case game.KeyEnter:
 					if len(entries) > 0 && useSelected >= 0 && useSelected < len(entries) {
-						g.TryUseItemAt(useSelected)
+						e := entries[useSelected]
+						g.StartUse(e.Appearance, e.Kind)
+						state = stateUseTarget
+						drawFrame(g.Render())
+					} else {
 						state = statePlaying
 						drawFrame(g.Render())
+					}
+				default:
+					drawFrame(g.RenderUseMenu(useSelected))
+				}
+			case stateUseTarget:
+				if g == nil {
+					state = statePlaying
+					drawFrame(g.Render())
+					break
+				}
+				switch k {
+				case game.KeyQuit:
+					g.CancelUse()
+					g.Logf("Cancelled use.")
+					state = statePlaying
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					g.UseAt(g.UsePending.Cursor)
+					state = statePlaying
+					drawFrame(g.Render())
+					if g.LevelUpPending != nil {
+						drawFrame(g.RenderLevelUp())
+					}
+					if g.Quit {
+						state = stateMenu
+						g = nil
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					} else if g.Over {
+						for {
+							ev2 := s.PollEvent()
+							if ke, ok := ev2.(*tcell.EventKey); ok {
+								key2, code2 := tcellKeyToRaw(ke)
+								k2 := game.NormalizeKey(key2, code2)
+								if k2 == game.KeyQuit || k2 == game.KeyEnter {
+									state = stateMenu
+									g = nil
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+									break
+								}
+							} else if _, ok := ev2.(*tcell.EventResize); ok {
+								s.Sync()
+								if g != nil {
+									drawFrame(g.Render())
+								} else {
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+								}
+							}
+						}
+					}
+				default:
+					handledTurn := g.HandleKey(k)
+					drawFrame(g.Render())
+					if handledTurn {
+						state = statePlaying
 						if g.LevelUpPending != nil {
 							drawFrame(g.RenderLevelUp())
 						}
@@ -588,12 +651,7 @@ func main() {
 								}
 							}
 						}
-					} else {
-						state = statePlaying
-						drawFrame(g.Render())
 					}
-				default:
-					drawFrame(g.RenderUseMenu(useSelected))
 				}
 			case stateThrowMenu:
 				if g == nil {

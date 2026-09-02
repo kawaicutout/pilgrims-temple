@@ -536,6 +536,367 @@ func stairsReachableViaBFS(lvl *Level) bool {
 	return visited[goal]
 }
 
+
+// AssertLevelHasExit checks that a level has a reachable exit stairs.
+// For non-final floors (Floor != Tuning.Floors-1), both StairsUp and StairsDown
+// must be InBounds, on TileStairsUp/TileStairsDown, Walkable (not blocked by
+// litter/closed door), not coincident, and BFS-reachable via Walkable tiles.
+// For the final floor (relic floor), StairsUp must be present and Walkable and
+// reachable to the relic (which sits at StairsDown); if StairsDown is missing,
+// StairsUp alone suffices but if present it must also be walkable and reachable.
+func AssertLevelHasExit(lvl *Level) bool {
+	if lvl == nil {
+		return false
+	}
+	if !lvl.InBounds(lvl.StairsUp) {
+		return false
+	}
+	if lvl.At(lvl.StairsUp) != TileStairsUp {
+		return false
+	}
+	if !lvl.Walkable(lvl.StairsUp) {
+		return false
+	}
+	for _, f := range lvl.Features {
+		if f.Pos == lvl.StairsUp {
+			return false
+		}
+	}
+	// Determine final floor via tuning; fallback to 8.
+	floors := 8
+	if t, err := LoadTuning(); err == nil && t.Floors > 0 {
+		floors = t.Floors
+	}
+	isFinal := lvl.Floor == floors-1
+	if isFinal {
+		if !lvl.InBounds(lvl.StairsDown) {
+			// No stairs down required on relic floor; stairs up alone is enough.
+			return true
+		}
+		if lvl.At(lvl.StairsDown) != TileStairsDown {
+			return false
+		}
+		if !lvl.Walkable(lvl.StairsDown) {
+			return false
+		}
+		for _, f := range lvl.Features {
+			if f.Pos == lvl.StairsDown {
+				return false
+			}
+		}
+		return stairsReachableViaBFS(lvl)
+	}
+	if !lvl.InBounds(lvl.StairsDown) {
+		return false
+	}
+	if lvl.At(lvl.StairsDown) != TileStairsDown {
+		return false
+	}
+	if !lvl.Walkable(lvl.StairsDown) {
+		return false
+	}
+	if lvl.StairsUp == lvl.StairsDown {
+		return false
+	}
+	for _, f := range lvl.Features {
+		if f.Pos == lvl.StairsDown {
+			return false
+		}
+	}
+	return stairsReachableViaBFS(lvl)
+}
+
+// ensureStairsTiles fixes missing or blocked stairs by relocating them to
+// walkable TileFloor positions that are not blocked by litter/features/doors.
+func ensureStairsTiles(lvl *Level, rng *rand.Rand) {
+	if lvl == nil {
+		return
+	}
+	// Helper to clean litter/door at p for stairs.
+	cleanPos := func(p Pos) {
+		for i := 0; i < len(lvl.Litter); {
+			if lvl.Litter[i].Pos == p {
+				lvl.Litter = append(lvl.Litter[:i], lvl.Litter[i+1:]...)
+			} else {
+				i++
+			}
+		}
+		if lvl.Doors != nil {
+			delete(lvl.Doors, p)
+		}
+	}
+	needsUp := !lvl.InBounds(lvl.StairsUp) || lvl.At(lvl.StairsUp) != TileStairsUp || !lvl.Walkable(lvl.StairsUp)
+	if !needsUp {
+		for _, f := range lvl.Features {
+			if f.Pos == lvl.StairsUp {
+				needsUp = true
+				break
+			}
+		}
+	}
+	needsDown := false
+	floors := 8
+	if t, err := LoadTuning(); err == nil && t.Floors > 0 {
+		floors = t.Floors
+	}
+	isFinal := lvl.Floor == floors-1
+	if !isFinal {
+		needsDown = !lvl.InBounds(lvl.StairsDown) || lvl.At(lvl.StairsDown) != TileStairsDown || !lvl.Walkable(lvl.StairsDown) || lvl.StairsUp == lvl.StairsDown
+		if !needsDown {
+			for _, f := range lvl.Features {
+				if f.Pos == lvl.StairsDown {
+					needsDown = true
+					break
+				}
+			}
+		}
+	} else {
+		if lvl.InBounds(lvl.StairsDown) {
+			if lvl.At(lvl.StairsDown) != TileStairsDown || !lvl.Walkable(lvl.StairsDown) {
+				needsDown = true
+			}
+			for _, f := range lvl.Features {
+				if f.Pos == lvl.StairsDown {
+					needsDown = true
+					break
+				}
+			}
+		}
+	}
+	if !needsUp && !needsDown {
+		// Still ensure no blocking litter directly on stairs.
+		cleanPos(lvl.StairsUp)
+		if lvl.InBounds(lvl.StairsDown) {
+			cleanPos(lvl.StairsDown)
+		}
+		// Re-assert tiles.
+		if lvl.InBounds(lvl.StairsUp) {
+			lvl.Tiles[lvl.StairsUp.Y][lvl.StairsUp.X] = TileStairsUp
+		}
+		if lvl.InBounds(lvl.StairsDown) {
+			lvl.Tiles[lvl.StairsDown.Y][lvl.StairsDown.X] = TileStairsDown
+		}
+		return
+	}
+	// Collect walkable floor candidates not blocked.
+	var candidates []Pos
+	for y := 0; y < lvl.H; y++ {
+		for x := 0; x < lvl.W; x++ {
+			p := Pos{x, y}
+			if lvl.At(p) != TileFloor {
+				continue
+			}
+			if !lvl.Walkable(p) {
+				continue
+			}
+			blocked := false
+			for _, f := range lvl.Features {
+				if f.Pos == p {
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+			if p == lvl.StairsUp || p == lvl.StairsDown {
+				continue
+			}
+			candidates = append(candidates, p)
+		}
+	}
+	// Also include current stairs positions if they are floor-like fallback.
+	if len(candidates) == 0 {
+		for y := 0; y < lvl.H; y++ {
+			for x := 0; x < lvl.W; x++ {
+				p := Pos{x, y}
+				if lvl.At(p) == TileFloor {
+					candidates = append(candidates, p)
+				}
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	// Shuffle with rng if available.
+	if rng != nil {
+		for i := len(candidates) - 1; i > 0; i-- {
+			j := rng.IntN(i + 1)
+			candidates[i], candidates[j] = candidates[j], candidates[i]
+		}
+	}
+	if needsUp {
+		// Pick far from down if down valid.
+		pick := candidates[0]
+		if lvl.InBounds(lvl.StairsDown) && len(candidates) > 1 {
+			best := pick
+			bestDist := abs(best.X-lvl.StairsDown.X) + abs(best.Y-lvl.StairsDown.Y)
+			for _, c := range candidates[1:] {
+				d := abs(c.X-lvl.StairsDown.X) + abs(c.Y-lvl.StairsDown.Y)
+				if d > bestDist {
+					bestDist = d
+					best = c
+				}
+			}
+			pick = best
+		}
+		cleanPos(pick)
+		// Clear previous stairs tile to floor if it was stairs.
+		if lvl.InBounds(lvl.StairsUp) && lvl.At(lvl.StairsUp) == TileStairsUp {
+			lvl.Tiles[lvl.StairsUp.Y][lvl.StairsUp.X] = TileFloor
+		}
+		lvl.StairsUp = pick
+		lvl.Tiles[pick.Y][pick.X] = TileStairsUp
+	}
+	if needsDown {
+		// Refresh candidates excluding new up.
+		var filtered []Pos
+		for _, c := range candidates {
+			if c == lvl.StairsUp {
+				continue
+			}
+			filtered = append(filtered, c)
+		}
+		if len(filtered) > 0 {
+			candidates = filtered
+		}
+		pick := candidates[0]
+		best := pick
+		bestDist := abs(best.X-lvl.StairsUp.X) + abs(best.Y-lvl.StairsUp.Y)
+		for _, c := range candidates[1:] {
+			d := abs(c.X-lvl.StairsUp.X) + abs(c.Y-lvl.StairsUp.Y)
+			if d > bestDist {
+				bestDist = d
+				best = c
+			}
+		}
+		pick = best
+		cleanPos(pick)
+		if lvl.InBounds(lvl.StairsDown) && lvl.At(lvl.StairsDown) == TileStairsDown {
+			lvl.Tiles[lvl.StairsDown.Y][lvl.StairsDown.X] = TileFloor
+		}
+		lvl.StairsDown = pick
+		lvl.Tiles[pick.Y][pick.X] = TileStairsDown
+	}
+	// Final clean after relocation.
+	cleanPos(lvl.StairsUp)
+	if lvl.InBounds(lvl.StairsDown) {
+		cleanPos(lvl.StairsDown)
+	}
+	lvl.Tiles[lvl.StairsUp.Y][lvl.StairsUp.X] = TileStairsUp
+	if lvl.InBounds(lvl.StairsDown) {
+		lvl.Tiles[lvl.StairsDown.Y][lvl.StairsDown.X] = TileStairsDown
+	}
+}
+
+// carveEmergencyCorridor carves an L-shaped corridor between stairs, removes
+// blocking litter on the path, and opens any doors encountered.
+func carveEmergencyCorridor(lvl *Level, rng *rand.Rand, horizFirst bool) {
+	if lvl == nil || !lvl.InBounds(lvl.StairsUp) || !lvl.InBounds(lvl.StairsDown) {
+		return
+	}
+	ax, ay := lvl.StairsUp.X, lvl.StairsUp.Y
+	bx, by := lvl.StairsDown.X, lvl.StairsDown.Y
+	var path []Pos
+	if horizFirst {
+		for x := min(ax, bx); x <= max(ax, bx); x++ {
+			path = append(path, Pos{x, ay})
+		}
+		for y := min(ay, by); y <= max(ay, by); y++ {
+			path = append(path, Pos{bx, y})
+		}
+	} else {
+		for y := min(ay, by); y <= max(ay, by); y++ {
+			path = append(path, Pos{ax, y})
+		}
+		for x := min(ax, bx); x <= max(ax, bx); x++ {
+			path = append(path, Pos{x, by})
+		}
+	}
+	seen := make(map[Pos]bool, len(path))
+	var uniq []Pos
+	for _, p := range path {
+		if !seen[p] {
+			seen[p] = true
+			uniq = append(uniq, p)
+		}
+	}
+	for _, p := range uniq {
+		if !lvl.InBounds(p) {
+			continue
+		}
+		if p == lvl.StairsUp || p == lvl.StairsDown {
+			// Ensure stairs remain.
+			if p == lvl.StairsUp {
+				lvl.Tiles[p.Y][p.X] = TileStairsUp
+			} else {
+				lvl.Tiles[p.Y][p.X] = TileStairsDown
+			}
+			// Remove blocking litter at stairs.
+			for i := 0; i < len(lvl.Litter); {
+				if lvl.Litter[i].Pos == p && lvl.Litter[i].BlocksMovement {
+					lvl.Litter = append(lvl.Litter[:i], lvl.Litter[i+1:]...)
+				} else {
+					i++
+				}
+			}
+			if lvl.Doors != nil {
+				delete(lvl.Doors, p)
+			}
+			continue
+		}
+		// Remove blocking litter on corridor.
+		for i := 0; i < len(lvl.Litter); {
+			if lvl.Litter[i].Pos == p && lvl.Litter[i].BlocksMovement {
+				lvl.Litter = append(lvl.Litter[:i], lvl.Litter[i+1:]...)
+			} else {
+				i++
+			}
+		}
+		// Open door if present.
+		if lvl.At(p) == TileDoor {
+			lvl.SetDoorOpen(p, true)
+			continue
+		}
+		// Carve floor (overwrites wall).
+		lvl.Tiles[p.Y][p.X] = TileFloor
+		if lvl.Doors != nil {
+			delete(lvl.Doors, p)
+		}
+	}
+	// Ensure doors on corridor that were doors remain open (already handled).
+	// Re-assert stairs tiles.
+	lvl.Tiles[lvl.StairsUp.Y][lvl.StairsUp.X] = TileStairsUp
+	lvl.Tiles[lvl.StairsDown.Y][lvl.StairsDown.X] = TileStairsDown
+}
+
+// ensureExitGuarantee loops up to 5 times carving emergency corridors until
+// AssertLevelHasExit passes; each iteration alternates orientation and fixes
+// stairs tiles. Doors on the carved path are opened.
+func ensureExitGuarantee(lvl *Level, rng *rand.Rand) {
+	if lvl == nil {
+		return
+	}
+	if rng == nil {
+		rng = rand.New(rand.NewPCG(0, 0))
+	}
+	for i := range 5 {
+		if AssertLevelHasExit(lvl) {
+			return
+		}
+		ensureStairsTiles(lvl, rng)
+		carveEmergencyCorridor(lvl, rng, i%2 == 0)
+		if stairsReachableViaBFS(lvl) {
+			if AssertLevelHasExit(lvl) {
+				return
+			}
+		}
+	}
+}
+
+
+
 // spawnLitter places litter without blocking StairsUp->StairsDown BFS.
 func spawnLitter(lvl *Level, rng *rand.Rand, biome *Biome) {
 	if lvl == nil || rng == nil || biome == nil {
@@ -1022,6 +1383,17 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 	l.Features = append(existing, MaybeSpawnFeatures(l, floor, rng)...)
 	// Spawn floor loot using same weighted table as wizard debug spawns.
 	SpawnFloorLoot(l, rng, floor, biome)
+	// Guarantee exit: after vault/doors/litter/features/loot, re-verify BFS and carve emergency corridor up to 5 times.
+	ensureExitGuarantee(l, rng)
+	if !AssertLevelHasExit(l) {
+		fmt.Printf("WARN: floor %d exit not reachable after guarantee (biome %s up %v down %v)\n", floor, biome.ID, l.StairsUp, l.StairsDown)
+		// Last-ditch: try both orientations once more.
+		carveEmergencyCorridor(l, rng, true)
+		carveEmergencyCorridor(l, rng, false)
+		if !AssertLevelHasExit(l) {
+			panic(fmt.Sprintf("GenerateWithBiome floor %d failed to guarantee exit (up %v down %v)", floor, l.StairsUp, l.StairsDown))
+		}
+	}
 	// Debug helper
 	_ = fmt.Sprintf("biome %s floor %d", biome.ID, floor)
 }

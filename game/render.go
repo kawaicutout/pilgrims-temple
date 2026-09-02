@@ -126,6 +126,10 @@ func (g *Game) Render() Frame {
 				if g.Look != nil && g.Look.Active && p == g.Look.Cursor {
 					fg = "gold-bright"
 				}
+				// Use cursor highlight (gold-bright like throw)
+				if g.UsePending.Active && p == g.UsePending.Cursor {
+					fg = "gold-bright"
+				}
 				// Throw cursor highlight (gold-bright, distinct from Look)
 				if g.ThrowPending.Active && p == g.ThrowPending.Cursor {
 					fg = "gold-bright"
@@ -379,8 +383,10 @@ func (g *Game) Render() Frame {
 	}
 	copy(logLines[max(0, len(logLines)-len(g.Log)):], g.Log)
 
-	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u(menu)  Throw:t(menu+cursor)  Stairs:>/ <  Quit:Esc  Help:?"
-	if g.ThrowPending.Active {
+	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u(menu+cursor)  Throw:t(menu+cursor)  Stairs:>/ <  Quit:Esc  Help:?"
+	if g.UsePending.Active {
+		hints = "Use: move cursor, Enter to use, Esc to cancel"
+	} else if g.ThrowPending.Active {
 		hints = "Throw: move cursor, Enter to throw, Esc to cancel"
 	} else if g.Merchant.Active {
 		hints = "Merchant: Up/Down select, Enter buy, Esc leave"
@@ -886,8 +892,8 @@ func (g *Game) RenderHelpOverlay() Frame {
 		{"5 / . / Space  - wait 1 turn", "gray-1"},
 		{"z / Z  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", "gray-1"},
 		{"g  - contextual use: pickup, or on fountain/merchant/forge (press g)", "gray-1"},
-		{"u/U - use menu (potions/scrolls); on forge also g/u", "gray-1"},
-		{"t  - throw potion (menu + cursor)", "gray-1"},
+		{"u/U - use menu (potions/scrolls) -> cursor targeting (gamble on enemies)", "gray-1"},
+		{"t  - throw potion (menu + cursor)  -- use cursor also for potions/scrolls", "gray-1"},
 		{"v  - look: move cursor, v/Enter/Esc to examine", "gray-1"},
 		{"> / <  - stairs down / up", "gray-1"},
 		{"?  - help (this overlay)", "gold"},

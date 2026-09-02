@@ -83,6 +83,51 @@ func (g *Game) HandleKey(k Key) bool {
 			return false
 		}
 	}
+	// Use mode has priority after look: when pending, movement moves cursor, Enter confirms, Esc cancels.
+	if g.UsePending.Active {
+		switch k {
+		case KeyQuit:
+			g.CancelUse()
+			g.Logf("Cancelled use.")
+			return false
+		case KeyEnter:
+			g.UseAt(g.UsePending.Cursor)
+			return true
+		default:
+			if dir, ok := KeyToDir(k); ok {
+				if dir == DirNone {
+					g.CancelUse()
+					g.Logf("Cancelled use.")
+					return false
+				}
+				next := g.UsePending.Cursor.Add(dir)
+				lvl := g.CurLevel()
+				if lvl == nil || !lvl.InBounds(next) {
+					return false
+				}
+				dx := next.X - g.Party.Pos.X
+				if dx < 0 {
+					dx = -dx
+				}
+				dy := next.Y - g.Party.Pos.Y
+				if dy < 0 {
+					dy = -dy
+				}
+				if dx > 5 || dy > 5 {
+					return false
+				}
+				if next.Y < 0 || next.Y >= len(lvl.Visible) || next.X < 0 || next.X >= len(lvl.Visible[0]) {
+					return false
+				}
+				if !lvl.Visible[next.Y][next.X] {
+					return false
+				}
+				g.UsePending.Cursor = next
+				return false
+			}
+			return false
+		}
+	}
 	// Throw mode has next priority: when pending, movement moves cursor, Enter confirms, Esc cancels.
 	if g.ThrowPending.Active {
 		switch k {

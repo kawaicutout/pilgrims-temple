@@ -275,7 +275,18 @@ func (g *Game) InventoryPotionEntries() []UseEntry {
 
 
 // TryUseAppearance consumes one item of the given appearance, identifies it, applies effect and advances turn.
+// Fallback for non-cursor callers (wizard etc) defaults target to Party.Pos.
 func (g *Game) TryUseAppearance(appearance string) bool {
+	if g.Party == nil {
+		return false
+	}
+	return g.TryUseAppearanceAt(appearance, g.Party.Pos)
+}
+
+// TryUseAppearanceAt consumes one item of the given appearance, identifies it, applies effect to target party and advances turn.
+// If target == Party.Pos -> apply to Party; else if enemy at target -> apply to that EnemyParty (gamble).
+// Unidentified scrolls are still usable on enemy tiles without revealing effect beforehand.
+func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 	if g.Party == nil || len(g.Party.Inventory) == 0 {
 		g.Logf("No potions or scrolls to use.")
 		return false
@@ -292,12 +303,9 @@ func (g *Game) TryUseAppearance(appearance string) bool {
 		return false
 	}
 	it := g.Party.Inventory[idx]
-	// Gnome 5% per gnome to not consume scroll: if scroll and roll success, keep copy
 	saved := false
 	if it.Kind == "scroll" && ShouldGnomeSaveScroll(g.RNG, g.Party) {
 		saved = true
-		// keep inventory unchanged: don't remove? we already plan to remove, so retain by not removing
-		// Since we haven't removed yet logically, skip removal and keep it
 		g.Logf("Gnomish thrift: scroll preserved!")
 	} else {
 		g.Party.Inventory = append(g.Party.Inventory[:idx], g.Party.Inventory[idx+1:]...)
@@ -315,61 +323,163 @@ func (g *Game) TryUseAppearance(appearance string) bool {
 	} else {
 		g.Logf("Used %s.", it.Name)
 	}
-	// if saved, ensure scroll still present (already not removed) else already removed
 	_ = saved
+	// Resolve target party: self if target == Party.Pos, else enemy at target.
+	isSelf := target == g.Party.Pos
+	var targetEnemy *EnemyParty
+	if !isSelf {
+		if lvl := g.CurLevel(); lvl != nil {
+			for _, e := range lvl.Enemies {
+				if e.IsAlive() && e.Pos == target {
+					targetEnemy = e
+					break
+				}
+			}
+		}
+	}
 	switch it.Kind {
 	case "potion":
 		switch trueType {
 		case "healing":
-			healed := 0
-			for _, m := range g.Party.Members {
-				if m.IsAlive() && m.HP < m.MaxHP {
-					m.HP += 12
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
+			if isSelf {
+				healed := 0
+				for _, m := range g.Party.Members {
+					if m.IsAlive() && m.HP < m.MaxHP {
+						m.HP += 12
+						if m.HP > m.MaxHP {
+							m.HP = m.MaxHP
+						}
+						healed++
 					}
-					healed++
 				}
-			}
-			if healed > 0 {
-				g.Logf("Healing potion restores 12 HP to %d members.", healed)
+				if healed > 0 {
+					g.Logf("Healing potion restores 12 HP to %d members.", healed)
+				} else {
+					g.Logf("Healing potion: already at full health.")
+				}
+			} else if targetEnemy != nil {
+				healed := 0
+				for _, m := range targetEnemy.Members {
+					if m.IsAlive() && m.HP < m.MaxHP {
+						m.HP += 12
+						if m.HP > m.MaxHP {
+							m.HP = m.MaxHP
+						}
+						healed++
+					}
+				}
+				if healed > 0 {
+					g.Logf("Healing potion restores 12 HP to %d enemies (%s).", healed, targetEnemy.DisplayName())
+				} else {
+					g.Logf("Healing potion splashes on %s with no effect.", targetEnemy.DisplayName())
+				}
 			} else {
-				g.Logf("Healing potion: already at full health.")
+				g.Logf("Healing potion shatters on ground.")
 			}
 		case "poison":
-			_, dmg := g.Party.ApplyDamage(g.RNG, 6)
-			g.Logf("Poison potion deals %d damage!", dmg)
-			if g.Party.LivingCount() == 0 {
-				g.Over = true
-				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
-			}
-		case "strength":
-			g.Party.ApplyStatus(StatusStrength, 41)
-			g.Logf("Strength potion: +2 ATK for 40 turns.")
-		case "invisibility":
-			g.Party.ApplyStatus(StatusInvisibility, 21)
-			g.Logf("Invisibility potion: you fade from sight for 20 turns.")
-		case "fire_resist":
-			g.Party.ApplyStatus(StatusFireResist, 61)
-			g.Logf("Fire resistance potion: +30%% fire resist for 60 turns.")
-		case "paralysis":
-			g.Party.ApplyStatus(StatusParalysis, 4)
-			g.Logf("Paralysis potion: you are paralyzed for 3 turns!")
-		case "levitation":
-			g.Party.ApplyStatus(StatusLevitation, 26)
-			g.Logf("Levitation potion: you float above traps for 25 turns.")
-		case "enlightenment":
-			g.Party.ApplyStatus(StatusEnlightenment, 16)
-			g.Logf("Enlightenment potion: your mind expands for 15 turns.")
-			if lvl := g.CurLevel(); lvl != nil {
-				for y := range lvl.H {
-					for x := range lvl.W {
-						lvl.Seen[y][x] = true
+			if isSelf {
+				_, dmg := g.Party.ApplyDamage(g.RNG, 6)
+				g.Logf("Poison potion deals %d damage!", dmg)
+				if g.Party.LivingCount() == 0 {
+					g.Over = true
+					g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+				}
+			} else if targetEnemy != nil {
+				dmgTotal := 0
+				for _, m := range targetEnemy.Members {
+					if m.IsAlive() {
+						m.HP -= 6
+						dmgTotal += 6
+						if m.HP <= 0 {
+							m.HP = 0
+							m.Alive = false
+						}
 					}
 				}
+				g.Logf("Poison potion deals %d damage to %s!", dmgTotal, targetEnemy.DisplayName())
+				if !targetEnemy.IsAlive() {
+					g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
+					g.AddKill()
+					g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
+				}
+			} else {
+				g.Logf("Poison potion shatters on ground.")
+			}
+		case "strength":
+			if isSelf {
+				g.Party.ApplyStatus(StatusStrength, 41)
+				g.Logf("Strength potion: +2 ATK for 40 turns.")
+			} else if targetEnemy != nil {
+				targetEnemy.ApplyStatus(StatusStrength, 41)
+				g.Logf("Strength potion: %s gains +2 ATK for 40 turns.", targetEnemy.DisplayName())
+			} else {
+				g.Logf("Strength potion shatters on ground.")
+			}
+		case "invisibility":
+			if isSelf {
+				g.Party.ApplyStatus(StatusInvisibility, 21)
+				g.Logf("Invisibility potion: you fade from sight for 20 turns.")
+			} else if targetEnemy != nil {
+				targetEnemy.ApplyStatus(StatusInvisibility, 21)
+				g.Logf("Invisibility potion: %s fades from sight for 20 turns.", targetEnemy.DisplayName())
+			} else {
+				g.Logf("Invisibility potion shatters on ground.")
+			}
+		case "fire_resist":
+			if isSelf {
+				g.Party.ApplyStatus(StatusFireResist, 61)
+				g.Logf("Fire resistance potion: +30%% fire resist for 60 turns.")
+			} else if targetEnemy != nil {
+				targetEnemy.ApplyStatus(StatusFireResist, 61)
+				g.Logf("Fire resistance potion splashes on %s (+30%% for 60 turns).", targetEnemy.DisplayName())
+			} else {
+				g.Logf("Fire resistance potion shatters on ground.")
+			}
+		case "paralysis":
+			if isSelf {
+				g.Party.ApplyStatus(StatusParalysis, 4)
+				g.Logf("Paralysis potion: you are paralyzed for 3 turns!")
+			} else if targetEnemy != nil {
+				targetEnemy.ApplyStatus(StatusParalysis, 4)
+				g.Logf("Paralysis potion: %s is paralyzed for 3 turns!", targetEnemy.DisplayName())
+			} else {
+				g.Logf("Paralysis potion shatters on ground.")
+			}
+		case "levitation":
+			if isSelf {
+				g.Party.ApplyStatus(StatusLevitation, 26)
+				g.Logf("Levitation potion: you float above traps for 25 turns.")
+			} else if targetEnemy != nil {
+				targetEnemy.ApplyStatus(StatusLevitation, 26)
+				g.Logf("Levitation potion: %s floats above traps for 25 turns.", targetEnemy.DisplayName())
+			} else {
+				g.Logf("Levitation potion shatters on ground.")
+			}
+		case "enlightenment":
+			if isSelf {
+				g.Party.ApplyStatus(StatusEnlightenment, 16)
+				g.Logf("Enlightenment potion: your mind expands for 15 turns.")
+				if lvl := g.CurLevel(); lvl != nil {
+					for y := range lvl.H {
+						for x := range lvl.W {
+							lvl.Seen[y][x] = true
+						}
+					}
+				}
+			} else if targetEnemy != nil {
+				targetEnemy.ApplyStatus(StatusEnlightenment, 16)
+				g.Logf("Enlightenment potion splashes on %s.", targetEnemy.DisplayName())
+			} else {
+				g.Logf("Enlightenment potion shatters on ground.")
 			}
 		default:
-			g.Logf("Potion effect: %s.", typeName)
+			if targetEnemy != nil {
+				g.Logf("Potion effect (%s) hits %s.", typeName, targetEnemy.DisplayName())
+			} else if isSelf {
+				g.Logf("Potion effect: %s.", typeName)
+			} else {
+				g.Logf("Potion shatters on ground.")
+			}
 		}
 	case "scroll":
 		switch trueType {
@@ -390,73 +500,118 @@ func (g *Game) TryUseAppearance(appearance string) bool {
 				g.Logf("Identify reveals: nothing left to identify.")
 			}
 		case "teleport":
-			// Verification 2026-09-01: teleport destination is filtered to
-			// InBounds && Walkable && reachable from StairsUp (so vault interiors with locked/closed doors are excluded).
-			// Walkable returns false for TileWall, closed TileDoor, and litter.BlocksMovement;
-			// reachable via BFS from StairsUp over Walkable ensures vault locked doors make interior unwalkable to exits.
-			// Enemy-occupied tiles are excluded so the party never lands on an alive EnemyParty.
-			// After move, UpdateFOV is called. Bounds assert: candidate set never contains TileWall.
-			if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
-				reachable := lvl.TeleportReachable()
-				var cands []Pos
-				for y := range lvl.H {
-					for x := range lvl.W {
-						p := Pos{x, y}
-						if !lvl.InBounds(p) {
-							continue
-						}
-						if !lvl.Walkable(p) {
-							continue
-						}
-						if !reachable[p] {
-							continue
-						}
-						// Extra guard: vault interior heuristic (if BFS stale or start inside vault - rare)
-						if lvl.IsDoor(p) && lvl.IsDoorClosed(p) {
-							continue
-						}
-						occupied := false
-						for _, e := range lvl.Enemies {
-							if e != nil && e.IsAlive() && e.Pos == p {
-								occupied = true
-								break
-							}
-						}
-						if occupied {
-							continue
-						}
-						cands = append(cands, p)
-					}
-				}
-				// Fallback: if every walkable reachable tile is enemy-occupied (vanishingly rare),
-				// allow any walkable reachable tile rather than failing to teleport.
-				if len(cands) == 0 {
+			if isSelf || targetEnemy == nil {
+				if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
+					reachable := lvl.TeleportReachable()
+					var cands []Pos
 					for y := range lvl.H {
 						for x := range lvl.W {
 							p := Pos{x, y}
-							if lvl.InBounds(p) && lvl.Walkable(p) && reachable[p] {
-								cands = append(cands, p)
+							if !lvl.InBounds(p) {
+								continue
+							}
+							if !lvl.Walkable(p) {
+								continue
+							}
+							if !reachable[p] {
+								continue
+							}
+							if lvl.IsDoor(p) && lvl.IsDoorClosed(p) {
+								continue
+							}
+							occupied := false
+							for _, e := range lvl.Enemies {
+								if e != nil && e.IsAlive() && e.Pos == p {
+									occupied = true
+									break
+								}
+							}
+							if occupied {
+								continue
+							}
+							cands = append(cands, p)
+						}
+					}
+					if len(cands) == 0 {
+						for y := range lvl.H {
+							for x := range lvl.W {
+								p := Pos{x, y}
+								if lvl.InBounds(p) && lvl.Walkable(p) && reachable[p] {
+									cands = append(cands, p)
+								}
 							}
 						}
 					}
+					if len(cands) > 0 {
+						g.Party.Pos = cands[g.RNG.IntN(len(cands))]
+						g.Logf("Teleport scroll: you vanish to a new location.")
+						g.UpdateFOV()
+					}
 				}
-				if len(cands) > 0 {
-					g.Party.Pos = cands[g.RNG.IntN(len(cands))]
-					g.Logf("Teleport scroll: you vanish to a new location.")
-					g.UpdateFOV()
+			} else {
+				if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
+					reachable := lvl.TeleportReachable()
+					var cands []Pos
+					for y := range lvl.H {
+						for x := range lvl.W {
+							p := Pos{x, y}
+							if !lvl.InBounds(p) || !lvl.Walkable(p) || !reachable[p] {
+								continue
+							}
+							if lvl.IsDoor(p) && lvl.IsDoorClosed(p) {
+								continue
+							}
+							occupied := false
+							if p == g.Party.Pos {
+								occupied = true
+							}
+							for _, e := range lvl.Enemies {
+								if e != nil && e.IsAlive() && e.Pos == p && e != targetEnemy {
+									occupied = true
+									break
+								}
+							}
+							if occupied {
+								continue
+							}
+							cands = append(cands, p)
+						}
+					}
+					if len(cands) == 0 {
+						for y := range lvl.H {
+							for x := range lvl.W {
+								p := Pos{x, y}
+								if lvl.InBounds(p) && lvl.Walkable(p) && reachable[p] {
+									cands = append(cands, p)
+								}
+							}
+						}
+					}
+					if len(cands) > 0 {
+						targetEnemy.Pos = cands[g.RNG.IntN(len(cands))]
+						g.Logf("Teleport scroll: %s vanishes to a new location!", targetEnemy.DisplayName())
+					} else {
+						g.Logf("Teleport scroll fizzles.")
+					}
 				}
 			}
 		case "fireball":
-			g.Logf("Fireball scroll: flames burst around you!")
+			g.Logf("Fireball scroll: flames burst!")
 			if lvl := g.CurLevel(); lvl != nil {
+				center := g.Party.Pos
+				if targetEnemy != nil {
+					center = targetEnemy.Pos
+				} else if !isSelf {
+					center = target
+				}
 				for _, e := range lvl.Enemies {
 					if !e.IsAlive() {
 						continue
 					}
-					if max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= 2 {
+					if max(abs(e.Pos.X-center.X), abs(e.Pos.Y-center.Y)) <= 2 {
 						dmg := 10
 						if e.HasStatus(StatusFireResist) {
-							dmg = (dmg * 7) / 10 // -30%
+							dmg = (dmg * 7) / 10
 							if dmg < 1 {
 								dmg = 1
 							}
@@ -490,67 +645,149 @@ func (g *Game) TryUseAppearance(appearance string) bool {
 				g.Logf("Mapping scroll reveals the floor.")
 			}
 		case "enchant":
-			members := g.Party.LivingMembers()
-			if len(members) > 0 {
-				m := members[g.RNG.IntN(len(members))]
-				affix := GetRandomAffix(g.RNG)
-				if affix != "" {
-					m.Affixes = append(m.Affixes, affix)
-					g.Logf("Enchant scroll: %s gains %s.", m.Name, affix)
+			if isSelf || targetEnemy == nil {
+				members := g.Party.LivingMembers()
+				if len(members) > 0 {
+					m := members[g.RNG.IntN(len(members))]
+					affix := GetRandomAffix(g.RNG)
+					if affix != "" {
+						m.Affixes = append(m.Affixes, affix)
+						g.Logf("Enchant scroll: %s gains %s.", m.Name, affix)
+					} else {
+						m.ATK[0]++
+						m.ATK[1]++
+						g.Logf("Enchant scroll: %s grows stronger (ATK %d-%d).", m.Name, m.ATK[0], m.ATK[1])
+					}
 				} else {
-					m.ATK[0]++
-					m.ATK[1]++
-					g.Logf("Enchant scroll: %s grows stronger (ATK %d-%d).", m.Name, m.ATK[0], m.ATK[1])
+					g.Logf("Enchant scroll fizzles.")
 				}
 			} else {
-				g.Logf("Enchant scroll fizzles.")
+				// enchant enemy as gamble
+				var members []*Member
+				for _, m := range targetEnemy.Members {
+					if m.IsAlive() {
+						members = append(members, m)
+					}
+				}
+				if len(members) > 0 {
+					m := members[g.RNG.IntN(len(members))]
+					affix := GetRandomAffix(g.RNG)
+					if affix != "" {
+						m.Affixes = append(m.Affixes, affix)
+						g.Logf("Enchant scroll: %s gains %s!", targetEnemy.DisplayName(), affix)
+					} else {
+						m.ATK[0]++
+						m.ATK[1]++
+						g.Logf("Enchant scroll: %s grows stronger (ATK %d-%d)!", targetEnemy.DisplayName(), m.ATK[0], m.ATK[1])
+					}
+				} else {
+					g.Logf("Enchant scroll fizzles on %s.", targetEnemy.DisplayName())
+				}
 			}
 		case "confusion":
-			affected := 0
-			if lvl := g.CurLevel(); lvl != nil {
-				for _, e := range lvl.Enemies {
-					if e.IsAlive() && max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= 8 {
-						e.ApplyStatus(StatusConfusion, 9)
-						affected++
+			if isSelf || targetEnemy == nil {
+				// confusion when targeted on self (or empty) = area as before
+				if !isSelf && targetEnemy == nil {
+					// empty ground targeted: confuse enemies around target
+					affected := 0
+					if lvl := g.CurLevel(); lvl != nil {
+						for _, e := range lvl.Enemies {
+							if e.IsAlive() && max(abs(e.Pos.X-target.X), abs(e.Pos.Y-target.Y)) <= 8 {
+								e.ApplyStatus(StatusConfusion, 9)
+								affected++
+							}
+						}
+					}
+					if affected > 0 {
+						g.Logf("Confusion scroll: %d enemies are confused for 8 turns.", affected)
+					} else {
+						g.Logf("Confusion scroll: no enemies in range.")
+					}
+				} else {
+					affected := 0
+					if lvl := g.CurLevel(); lvl != nil {
+						for _, e := range lvl.Enemies {
+							if e.IsAlive() && max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= 8 {
+								e.ApplyStatus(StatusConfusion, 9)
+								affected++
+							}
+						}
+					}
+					if affected > 0 {
+						g.Logf("Confusion scroll: %d enemies are confused for 8 turns.", affected)
+					} else {
+						g.Logf("Confusion scroll: no enemies in range.")
 					}
 				}
-			}
-			if affected > 0 {
-				g.Logf("Confusion scroll: %d enemies are confused for 8 turns.", affected)
 			} else {
-				g.Logf("Confusion scroll: no enemies in range.")
+				targetEnemy.ApplyStatus(StatusConfusion, 9)
+				g.Logf("Confusion scroll: %s is confused for 8 turns!", targetEnemy.DisplayName())
 			}
 		case "greater_healing":
-			for _, m := range g.Party.Members {
-				if m.IsAlive() {
-					m.HP += 20
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
+			if isSelf || targetEnemy == nil {
+				for _, m := range g.Party.Members {
+					if m.IsAlive() {
+						m.HP += 20
+						if m.HP > m.MaxHP {
+							m.HP = m.MaxHP
+						}
 					}
 				}
-			}
-			// Remove curse and related negative statuses.
-			if g.Party.HasStatus(StatusCurse) {
-				g.Party.RemoveStatus(StatusCurse)
-				g.Logf("Greater healing removes curse.")
-			}
-			if g.Party.HasStatus(StatusHex) {
-				g.Party.RemoveStatus(StatusHex)
-			}
-			g.Logf("Greater healing scroll restores 20 HP to all members.")
-		case "summon":
-			if len(g.Party.Members) >= 4 {
-				g.Logf("Summon scroll: party is full, summon fizzles.")
+				if g.Party.HasStatus(StatusCurse) {
+					g.Party.RemoveStatus(StatusCurse)
+					g.Logf("Greater healing removes curse.")
+				}
+				if g.Party.HasStatus(StatusHex) {
+					g.Party.RemoveStatus(StatusHex)
+				}
+				g.Logf("Greater healing scroll restores 20 HP to all members.")
 			} else {
-				classes := []string{"fighter", "cleric", "rogue", "wizard", "druid", "bard", "barbarian", "paladin"}
-				cls := classes[g.RNG.IntN(len(classes))]
-				tmp := GeneratePartyWithClasses(g.RNG, []string{cls}, g.Level)
-				if tmp != nil && len(tmp.Members) > 0 {
-					m := tmp.Members[0]
-					m.Name = "Summoned " + m.Name
-					g.Party.Members = append(g.Party.Members, m)
-					g.Party.ApplyStatus(StatusSummon, 16)
-					g.Logf("Summon scroll: %s the %s appears for 15 turns.", m.Name, m.Class)
+				for _, m := range targetEnemy.Members {
+					if m.IsAlive() {
+						m.HP += 20
+						if m.HP > m.MaxHP {
+							m.HP = m.MaxHP
+						}
+					}
+				}
+				if targetEnemy.HasStatus(StatusCurse) {
+					targetEnemy.RemoveStatus(StatusCurse)
+				}
+				if targetEnemy.HasStatus(StatusHex) {
+					targetEnemy.RemoveStatus(StatusHex)
+				}
+				g.Logf("Greater healing scroll restores 20 HP to %s!", targetEnemy.DisplayName())
+			}
+		case "summon":
+			if isSelf || targetEnemy == nil {
+				if len(g.Party.Members) >= 4 {
+					g.Logf("Summon scroll: party is full, summon fizzles.")
+				} else {
+					classes := []string{"fighter", "cleric", "rogue", "wizard", "druid", "bard", "barbarian", "paladin"}
+					cls := classes[g.RNG.IntN(len(classes))]
+					tmp := GeneratePartyWithClasses(g.RNG, []string{cls}, g.Level)
+					if tmp != nil && len(tmp.Members) > 0 {
+						m := tmp.Members[0]
+						m.Name = "Summoned " + m.Name
+						g.Party.Members = append(g.Party.Members, m)
+						g.Party.ApplyStatus(StatusSummon, 16)
+						g.Logf("Summon scroll: %s the %s appears for 15 turns.", m.Name, m.Class)
+					}
+				}
+			} else {
+				if len(targetEnemy.Members) >= 4 {
+					g.Logf("Summon scroll: %s party is full, summon fizzles.", targetEnemy.DisplayName())
+				} else {
+					classes := []string{"fighter", "cleric", "rogue", "wizard", "druid", "bard", "barbarian", "paladin"}
+					cls := classes[g.RNG.IntN(len(classes))]
+					tmp := GeneratePartyWithClasses(g.RNG, []string{cls}, g.Level)
+					if tmp != nil && len(tmp.Members) > 0 {
+						m := tmp.Members[0]
+						m.Name = "Summoned " + m.Name
+						targetEnemy.Members = append(targetEnemy.Members, m)
+						targetEnemy.ApplyStatus(StatusSummon, 16)
+						g.Logf("Summon scroll: %s summons %s!", targetEnemy.DisplayName(), m.Name)
+					}
 				}
 			}
 		default:

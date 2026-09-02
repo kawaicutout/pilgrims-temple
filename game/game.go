@@ -43,6 +43,7 @@ type Game struct {
 	Quit                    bool          `json:"quit"`
 	Look                    *LookState    `json:"look"`
 	ThrowPending            ThrowState    `json:"throwPending"`
+	UsePending              UseState      `json:"usePending"`
 	Relic                   Pos           `json:"relic"`
 	Wizard                  bool          `json:"wizard"`
 	WizardReveal            bool          `json:"wizardReveal"`
@@ -295,7 +296,38 @@ func (g *Game) TryThrowAppearance(appearance string, target Pos) bool {
 	g.EndPlayerTurn("")
 	return true
 }
-// throw cursor helpers end
+// UseState holds use cursor state for targeted potions/scrolls.
+type UseState struct {
+	Active     bool   `json:"active"`
+	Appearance string `json:"appearance"`
+	Kind       string `json:"kind"`
+	Cursor     Pos    `json:"cursor"`
+}
+
+// StartUse begins use targeting with the given appearance.
+func (g *Game) StartUse(appearance string, kind string) {
+	if g.Party == nil {
+		return
+	}
+	g.UsePending = UseState{Active: true, Appearance: appearance, Kind: kind, Cursor: g.Party.Pos}
+	g.Logf("Use %s: move cursor (hjkl/arrows), Enter to use, Esc to cancel.", appearance)
+}
+
+// CancelUse clears use pending state.
+func (g *Game) CancelUse() {
+	g.UsePending = UseState{}
+}
+
+// UseAt uses the stored appearance at target, consumes item, advances turn and clears pending.
+func (g *Game) UseAt(target Pos) bool {
+	if !g.UsePending.Active {
+		return false
+	}
+	appearance := g.UsePending.Appearance
+	g.UsePending = UseState{}
+	return g.TryUseAppearanceAt(appearance, target)
+}
+
 
 type LevelUpState struct {
 	NewLevel int

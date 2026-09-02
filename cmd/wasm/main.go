@@ -53,6 +53,7 @@ const (
 	stateWizardRemoveMember
 	stateWizardResurrectMember
 	stateUseInventory
+	stateUseTarget
 	stateThrowMenu
 	stateThrowCursor
 	stateMerchant
@@ -320,7 +321,7 @@ const (
 				renderWizard()
 				break
 			}
-			if k == game.KeyUse && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit {
+			if k == game.KeyUse && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit && !g.UsePending.Active && !g.ThrowPending.Active {
 				if g.TryUseForge() {
 					g.EndPlayerTurn("")
 					renderGame()
@@ -340,7 +341,7 @@ const (
 				renderUseMenu()
 				break
 			}
-			if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.Over && !g.Quit {
+			if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.UsePending.Active && !g.Over && !g.Quit {
 				entries := g.InventoryPotionEntries()
 				if len(entries) == 0 {
 					g.Logf("No potions to throw.")
@@ -408,9 +409,52 @@ const (
 				renderGame()
 			case game.KeyEnter:
 				if len(entries) > 0 && useSelected >= 0 && useSelected < len(entries) {
-					g.TryUseItemAt(useSelected)
+					e := entries[useSelected]
+					g.StartUse(e.Appearance, e.Kind)
+					state = stateUseTarget
+					renderGame()
+				} else {
 					state = statePlaying
 					renderGame()
+				}
+			default:
+				renderUseMenu()
+			}
+		case stateUseTarget:
+			if g == nil {
+				state = statePlaying
+				renderGame()
+				break
+			}
+			switch k {
+			case game.KeyQuit:
+				g.CancelUse()
+				g.Logf("Cancelled use.")
+				state = statePlaying
+				renderGame()
+			case game.KeyEnter:
+				g.UseAt(g.UsePending.Cursor)
+				state = statePlaying
+				renderGame()
+				if g.LevelUpPending != nil {
+					renderLevelUp()
+				}
+				if g.Quit {
+					state = stateMenu
+					g = nil
+					renderMenu()
+				} else if g.Over {
+					if k == game.KeyQuit || k == game.KeyEnter {
+						state = stateMenu
+						g = nil
+						renderMenu()
+					}
+				}
+			default:
+				handledTurn := g.HandleKey(k)
+				renderGame()
+				if handledTurn {
+					state = statePlaying
 					if g.LevelUpPending != nil {
 						renderLevelUp()
 					}
@@ -425,12 +469,7 @@ const (
 							renderMenu()
 						}
 					}
-				} else {
-					state = statePlaying
-					renderGame()
 				}
-			default:
-				renderUseMenu()
 			}
 		case stateThrowMenu:
 			if g == nil {

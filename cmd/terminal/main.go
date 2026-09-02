@@ -429,7 +429,7 @@ func main() {
 					if cs != nil {
 						drawFrame(game.RenderCharSelect(tuning, cs))
 					} else {
-						drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					}
 					break
 				}
@@ -480,7 +480,7 @@ func main() {
 			case statePlaying:
 				if g == nil {
 					state = stateMenu
-					drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					break
 				}
 				// Help overlay has priority: Esc / Enter / ? exits without consuming turn.
@@ -617,7 +617,7 @@ func main() {
 					// Return to menu, not a death
 					state = stateMenu
 					g = nil
-					drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 				} else if g.Over {
 					// Wait for Esc to return to menu
 					for {
@@ -628,7 +628,7 @@ func main() {
 							if k2 == game.KeyQuit || k2 == game.KeyEnter {
 								state = stateMenu
 								g = nil
-								drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 								break
 							}
 						} else if _, ok := ev2.(*tcell.EventResize); ok {
@@ -636,7 +636,7 @@ func main() {
 							if g != nil {
 								drawFrame(g.Render())
 							} else {
-								drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 							}
 						}
 					}
@@ -703,7 +703,7 @@ func main() {
 					if g.Quit {
 						state = stateMenu
 						g = nil
-						drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					} else if g.Over {
 						for {
 							ev2 := s.PollEvent()
@@ -713,7 +713,7 @@ func main() {
 								if k2 == game.KeyQuit || k2 == game.KeyEnter {
 									state = stateMenu
 									g = nil
-									drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									break
 								}
 							} else if _, ok := ev2.(*tcell.EventResize); ok {
@@ -721,7 +721,7 @@ func main() {
 								if g != nil {
 									drawFrame(g.Render())
 								} else {
-									drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 								}
 							}
 						}
@@ -737,7 +737,7 @@ func main() {
 						if g.Quit {
 							state = stateMenu
 							g = nil
-							drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 						} else if g.Over {
 							for {
 								ev2 := s.PollEvent()
@@ -747,7 +747,7 @@ func main() {
 									if k2 == game.KeyQuit || k2 == game.KeyEnter {
 										state = stateMenu
 										g = nil
-										drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										break
 									}
 								} else if _, ok := ev2.(*tcell.EventResize); ok {
@@ -755,7 +755,7 @@ func main() {
 									if g != nil {
 										drawFrame(g.Render())
 									} else {
-										drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									}
 								}
 							}
@@ -824,7 +824,7 @@ func main() {
 					if g.Quit {
 						state = stateMenu
 						g = nil
-						drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					} else if g.Over {
 						for {
 							ev2 := s.PollEvent()
@@ -834,7 +834,7 @@ func main() {
 								if k2 == game.KeyQuit || k2 == game.KeyEnter {
 									state = stateMenu
 									g = nil
-									drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									break
 								}
 							} else if _, ok := ev2.(*tcell.EventResize); ok {
@@ -842,7 +842,7 @@ func main() {
 								if g != nil {
 									drawFrame(g.Render())
 								} else {
-									drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 								}
 							}
 						}
@@ -859,7 +859,7 @@ func main() {
 						if g.Quit {
 							state = stateMenu
 							g = nil
-							drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 						} else if g.Over {
 							for {
 								ev2 := s.PollEvent()
@@ -869,7 +869,7 @@ func main() {
 									if k2 == game.KeyQuit || k2 == game.KeyEnter {
 										state = stateMenu
 										g = nil
-										drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										break
 									}
 								} else if _, ok := ev2.(*tcell.EventResize); ok {
@@ -877,7 +877,7 @@ func main() {
 									if g != nil {
 										drawFrame(g.Render())
 									} else {
-										drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									}
 								}
 							}
@@ -926,7 +926,7 @@ func main() {
 							if g.Quit {
 								state = stateMenu
 								g = nil
-								drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 							} else if g.Over {
 								for {
 									ev2 := s.PollEvent()
@@ -936,7 +936,7 @@ func main() {
 										if k2 == game.KeyQuit || k2 == game.KeyEnter {
 											state = stateMenu
 											g = nil
-											drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+											drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 											break
 										}
 									} else if _, ok := ev2.(*tcell.EventResize); ok {
@@ -944,7 +944,7 @@ func main() {
 										if g != nil {
 											drawFrame(g.Render())
 										} else {
-											drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+											drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										}
 									}
 								}
@@ -1005,7 +1005,7 @@ func main() {
 								if g.Quit {
 									state = stateMenu
 									g = nil
-									drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 								} else if g.Over {
 									for {
 										ev2 := s.PollEvent()
@@ -1015,7 +1015,7 @@ func main() {
 											if k2 == game.KeyQuit || k2 == game.KeyEnter {
 												state = stateMenu
 												g = nil
-												drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+												drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 												break
 											}
 										} else if _, ok := ev2.(*tcell.EventResize); ok {
@@ -1023,7 +1023,7 @@ func main() {
 											if g != nil {
 												drawFrame(g.Render())
 											} else {
-												drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+												drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 											}
 										}
 									}

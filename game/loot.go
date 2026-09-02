@@ -420,7 +420,6 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 				if !targetEnemy.IsAlive() {
 					g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
 					g.AddKill()
-					g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 				}
 			} else {
 				g.Logf("Poison potion shatters on ground.")
@@ -648,7 +647,6 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 						if !e.IsAlive() {
 							g.Logf("Fireball slays %s!", e.DisplayName())
 							g.AddKill()
-							g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 						} else {
 							g.Logf("Fireball hits %s for %d fire damage.", e.DisplayName(), dmg)
 						}
@@ -1022,7 +1020,6 @@ func (g *Game) TryUseItem() bool {
 						if wasAlive && !e.IsAlive() {
 							g.Logf("Fireball slays %s!", e.DisplayName())
 							g.AddKill()
-							g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 						} else if wasAlive {
 							g.Logf("Fireball hits %s for %d fire damage.", e.DisplayName(), dmg)
 						}
@@ -1193,7 +1190,6 @@ func (g *Game) TryThrowPotion(dir Dir) bool {
 			if !targetEnemy.IsAlive() {
 				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
 				g.AddKill()
-				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			}
 		} else {
 			g.Logf("Poison potion shatters on ground.")

@@ -417,12 +417,27 @@ func RenderScoresScreen(tuning Tuning, selected int) Frame {
 					return ""
 				}
 				m := e.Members[idx]
-				// Title-case class for display.
-				cls := strings.Title(m.Class)
-				if m.Name != "" {
-					return fmt.Sprintf("%s %s", m.Name, cls)
+				cls := FriendlyID(m.Class)
+				race := FriendlyID(m.Race)
+				var base string
+				if race != "" && cls != "" {
+					base = race + " " + cls
+				} else if race != "" {
+					base = race
+				} else if cls != "" {
+					base = cls
+				} else if m.Name != "" {
+					base = m.Name
+				} else {
+					base = "Unknown"
 				}
-				return cls
+				if m.Name != "" {
+					if base == m.Name {
+						return base
+					}
+					return fmt.Sprintf("%s, %s", m.Name, base)
+				}
+				return base
 			}
 			s0 := memberStr(0)
 			s1 := memberStr(1)

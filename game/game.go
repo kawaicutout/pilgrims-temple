@@ -240,7 +240,6 @@ func (g *Game) TryThrowAppearance(appearance string, target Pos) bool {
 			if !targetEnemy.IsAlive() {
 				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
 				g.AddKill()
-				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			}
 		} else {
 			g.Logf("Poison potion shatters on ground.")
@@ -1697,12 +1696,10 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 				g.Logf("%s hits %s for %d -- party slain!", attacker, e.DisplayName(), dmg)
 				g.AddKill()
 				g.GainXP(20 + g.Floor*10)
-				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			} else if killed {
 				g.Logf("%s hits %s for %d -- slain!", attacker, memberName, dmg)
 				g.AddKill()
 				g.GainXP(10 + g.Floor*5)
-				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			} else {
 				g.Logf("%s hits %s for %d.", attacker, memberName, dmg)
 			}
@@ -2169,7 +2166,6 @@ func (g *Game) EnemyTurn() {
 			if !e.IsAlive() {
 				g.Logf("%s bleeds out!", e.DisplayName())
 				g.AddKill()
-				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 				continue
 			}
 		}
@@ -2186,7 +2182,6 @@ func (g *Game) EnemyTurn() {
 			if !e.IsAlive() {
 				g.Logf("%s succumbs to poison!", e.DisplayName())
 				g.AddKill()
-				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 				continue
 			}
 		}

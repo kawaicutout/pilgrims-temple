@@ -20,6 +20,21 @@ var typeToAppearance = map[string]string{}
 // Data loading
 // ---------------------------------------------------------------------------
 
+type ConsumableEffect struct {
+	Kind      string   `json:"kind,omitempty"`
+	Amount    int      `json:"amount,omitempty"`
+	Damage    int      `json:"damage,omitempty"`
+	Heal      int      `json:"heal,omitempty"`
+	Status    string   `json:"status,omitempty"`
+	Duration  int      `json:"duration,omitempty"`
+	Atk       int      `json:"atk,omitempty"`
+	ResistPct int      `json:"resistPct,omitempty"`
+	Radius    int      `json:"radius,omitempty"`
+	Cap       int      `json:"cap,omitempty"`
+	Cleanse   []string `json:"cleanse,omitempty"`
+	Target    string   `json:"target,omitempty"`
+}
+
 type potionFile struct {
 	Appearances []string   `json:"appearances"`
 	Types       []itemType `json:"types"`
@@ -31,9 +46,10 @@ type scrollFile struct {
 }
 
 type itemType struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Desc string `json:"desc"`
+	ID     string           `json:"id"`
+	Name   string           `json:"name"`
+	Desc   string           `json:"desc"`
+	Effect ConsumableEffect `json:"effect,omitempty"`
 }
 
 // potionAdjectives and potionColors are the combinatorial pools for automated
@@ -101,25 +117,25 @@ var fallbackScrollAppearances = []string{
 }
 
 var fallbackPotionTypes = []itemType{
-	{ID: "healing", Name: "Healing"},
-	{ID: "poison", Name: "Poison"},
-	{ID: "strength", Name: "Strength"},
-	{ID: "invisibility", Name: "Invisibility"},
-	{ID: "fire_resist", Name: "Fire Resistance"},
-	{ID: "paralysis", Name: "Paralysis"},
-	{ID: "levitation", Name: "Levitation"},
-	{ID: "enlightenment", Name: "Enlightenment"},
+	{ID: "healing", Name: "Healing", Desc: "Restores 12 HP to one member", Effect: ConsumableEffect{Kind: "heal", Amount: 12}},
+	{ID: "poison", Name: "Poison", Desc: "Deals 6 poison damage", Effect: ConsumableEffect{Kind: "damage", Amount: 6}},
+	{ID: "strength", Name: "Strength", Desc: "+2 attack for 40 turns", Effect: ConsumableEffect{Kind: "status", Status: "strength", Duration: 40, Atk: 2}},
+	{ID: "invisibility", Name: "Invisibility", Desc: "Become unseen for 20 turns", Effect: ConsumableEffect{Kind: "status", Status: "invisibility", Duration: 20}},
+	{ID: "fire_resist", Name: "Fire Resistance", Desc: "+30% fire resist for 60 turns", Effect: ConsumableEffect{Kind: "status", Status: "fire_resist", Duration: 60, ResistPct: 30}},
+	{ID: "paralysis", Name: "Paralysis", Desc: "Paralyzes for 3 turns (negative)", Effect: ConsumableEffect{Kind: "status", Status: "paralysis", Duration: 3}},
+	{ID: "levitation", Name: "Levitation", Desc: "Float over traps for 25 turns", Effect: ConsumableEffect{Kind: "status", Status: "levitation", Duration: 25}},
+	{ID: "enlightenment", Name: "Enlightenment", Desc: "Reveals map for 15 turns", Effect: ConsumableEffect{Kind: "status", Status: "enlightenment", Duration: 15}},
 }
 
 var fallbackScrollTypes = []itemType{
-	{ID: "identify", Name: "Identify"},
-	{ID: "teleport", Name: "Teleport"},
-	{ID: "fireball", Name: "Fireball"},
-	{ID: "enchant", Name: "Enchant"},
-	{ID: "mapping", Name: "Mapping"},
-	{ID: "confusion", Name: "Confusion"},
-	{ID: "healing", Name: "Greater Healing"},
-	{ID: "summon", Name: "Summon Aid"},
+	{ID: "identify", Name: "Identify", Desc: "Identifies all items in inventory", Effect: ConsumableEffect{Kind: "identify"}},
+	{ID: "teleport", Name: "Teleport", Desc: "Teleports to a random floor tile", Effect: ConsumableEffect{Kind: "teleport"}},
+	{ID: "fireball", Name: "Fireball", Desc: "Deals 10 fire damage to adjacent enemies", Effect: ConsumableEffect{Kind: "fireball", Damage: 10, Radius: 2, ResistPct: 30}},
+	{ID: "enchant", Name: "Enchant", Desc: "Grants a random affix to one member", Effect: ConsumableEffect{Kind: "enchant"}},
+	{ID: "mapping", Name: "Mapping", Desc: "Reveals the current floor map", Effect: ConsumableEffect{Kind: "mapping"}},
+	{ID: "confusion", Name: "Confusion", Desc: "Confuses enemies for 8 turns (negative if misapplied)", Effect: ConsumableEffect{Kind: "confusion", Duration: 8, Radius: 8}},
+	{ID: "greater_healing", Name: "Greater Healing", Desc: "Restores 20 HP to all living members", Effect: ConsumableEffect{Kind: "greater_healing", Heal: 20, Cleanse: []string{"curse", "hex"}}},
+	{ID: "summon", Name: "Summon Aid", Desc: "Summons a temporary ally for 15 turns", Effect: ConsumableEffect{Kind: "summon", Duration: 15, Cap: 4}},
 }
 
 func loadPotionData() (appearances []string, types []itemType) {

@@ -1,0 +1,40 @@
+{
+  "notes": "Pilgrim's Temple — status definitions. Central numeric source for durations, DEF deltas, DoT ticks, and resists. JSON stores visible turns — code applies visible+1 via StatusAppliedDuration to account for TickStatuses decrement on creation turn (H19). Effects with duration 0 are instantaneous/removal.",
+  "statuses": [
+    { "id": "hex", "name": "Hex", "desc": "-1 DEF", "duration": 10, "defDelta": -1 },
+    { "id": "curse", "name": "Curse", "desc": "-1 DEF until cured (fountain/shrine/greater_healing)", "duration": 200, "defDelta": -1 },
+    { "id": "bless", "name": "Bless", "desc": "+1 DEF", "duration": 100, "defDelta": 1 },
+    { "id": "strength", "name": "Strength", "desc": "+2 ATK", "duration": 40, "atk": 2 },
+    { "id": "invisibility", "name": "Invisibility", "desc": "Unseen", "duration": 20 },
+    { "id": "fire_resist", "name": "Fire Resistance", "desc": "+30% fire resist", "duration": 60, "resistPct": 30 },
+    { "id": "paralysis", "name": "Paralysis", "desc": "Paralyzed (no actions)", "duration": 3 },
+    { "id": "levitation", "name": "Levitation", "desc": "Float over traps", "duration": 25 },
+    { "id": "enlightenment", "name": "Enlightenment", "desc": "Reveal map", "duration": 15 },
+    { "id": "confusion", "name": "Confusion", "desc": "Confused AI", "duration": 8, "radius": 8 },
+    { "id": "summon", "name": "Summon", "desc": "Temporary ally", "duration": 15, "cap": 4 },
+    { "id": "rend", "name": "Rend", "desc": "Bleed 2/turn", "duration": 5, "dot": 2 },
+    { "id": "bleed", "name": "Bleed", "desc": "Bleed 2/turn", "duration": 5, "dot": 2 },
+    { "id": "spore", "name": "Spore", "desc": "Poison 1/turn", "duration": 7, "dot": 1 },
+    { "id": "poison", "name": "Poison", "desc": "Poison 1/turn", "duration": 5, "dot": 1 },
+    { "id": "entangle", "name": "Entangle", "desc": "Rooted", "duration": 3 },
+    { "id": "sleep", "name": "Sleep", "desc": "Asleep", "duration": 4 },
+    { "id": "blindness", "name": "Blindness", "desc": "Blind", "duration": 20 },
+    { "id": "haste", "name": "Haste", "desc": "Hasted", "duration": 50 },
+    { "id": "slow", "name": "Slow", "desc": "Slowed", "duration": 30 },
+    { "id": "silence", "name": "Silence", "desc": "Cannot use scrolls", "duration": 5 },
+    { "id": "stun", "name": "Stun", "desc": "Stunned", "duration": 1 },
+    { "id": "regenerate", "name": "Regenerate", "desc": "Regen 1/2t (troll)", "duration": 0, "dot": -1 },
+    { "id": "ward", "name": "Ward", "desc": "Magic resist helper", "duration": 0 },
+    { "id": "iron_will", "name": "Iron Will", "desc": "Status resist helper", "duration": 0 }
+  ],
+  "resists": {
+    "iron_will": 0.10,
+    "ward": 0.05
+  },
+  "dots": {
+    "poison": 1,
+    "spore": 1,
+    "bleed": 2,
+    "rend": 2
+  }
+}

@@ -205,97 +205,8 @@ func (g *Game) TryThrowAppearance(appearance string, target Pos) bool {
 	} else {
 		g.Logf("Threw %s at (%d,%d).", it.Name, target.X, target.Y)
 	}
-	switch trueType {
-	case "healing":
-		if targetEnemy != nil {
-			healed := 0
-			for _, m := range targetEnemy.Members {
-				if m.IsAlive() && m.HP < m.MaxHP {
-					m.HP += 12
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
-					}
-					healed++
-				}
-			}
-			if healed > 0 {
-				g.Logf("Healing potion restores 12 HP to %d enemies.", healed)
-			} else {
-				g.Logf("Healing potion splashes on %s with no effect.", targetEnemy.DisplayName())
-			}
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	case "poison":
-		if targetEnemy != nil {
-			dmgTotal := 0
-			for _, m := range targetEnemy.Members {
-				if m.IsAlive() {
-					m.HP -= 6
-					dmgTotal += 6
-					if m.HP <= 0 {
-						m.HP = 0
-						m.Alive = false
-					}
-				}
-			}
-			g.Logf("Poison potion deals %d damage to %s!", dmgTotal, targetEnemy.DisplayName())
-			if !targetEnemy.IsAlive() {
-				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
-				g.AddKill()
-			}
-		} else {
-			g.Logf("Poison potion shatters on ground.")
-		}
-	case "strength":
-		if targetEnemy != nil {
-			targetEnemy.ApplyStatus(StatusStrength, 41)
-			g.Logf("Strength potion: %s gains +2 ATK for 40 turns.", targetEnemy.DisplayName())
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	case "invisibility":
-		if targetEnemy != nil {
-			targetEnemy.ApplyStatus(StatusInvisibility, 21)
-			g.Logf("Invisibility potion: %s fades from sight for 20 turns.", targetEnemy.DisplayName())
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	case "fire_resist":
-		if targetEnemy != nil {
-			targetEnemy.ApplyStatus(StatusFireResist, 61)
-			g.Logf("Fire resistance potion splashes on %s (+30%% for 60 turns).", targetEnemy.DisplayName())
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	case "paralysis":
-		if targetEnemy != nil {
-			targetEnemy.ApplyStatus(StatusParalysis, 4)
-			g.Logf("Paralysis potion: %s is paralyzed for 3 turns!", targetEnemy.DisplayName())
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	case "levitation":
-		if targetEnemy != nil {
-			targetEnemy.ApplyStatus(StatusLevitation, 26)
-			g.Logf("Levitation potion: %s floats above traps for 25 turns.", targetEnemy.DisplayName())
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	case "enlightenment":
-		if targetEnemy != nil {
-			targetEnemy.ApplyStatus(StatusEnlightenment, 16)
-			g.Logf("Enlightenment potion splashes on %s.", targetEnemy.DisplayName())
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	default:
-		if targetEnemy != nil {
-			g.Logf("Potion effect (%s) hits %s.", typeName, targetEnemy.DisplayName())
-		} else {
-			g.Logf("Potion shatters on ground.")
-		}
-	}
+	// Cursor throw — reuse consumable hub (enemy-targeted).
+	g.applyPotionEffect(trueType, false, targetEnemy)
 	g.EndPlayerTurn("")
 	return true
 }
@@ -560,6 +471,18 @@ func (g *Game) UpdateFOV() {
 		}
 		return
 	}
+	if g.Party != nil && g.Party.HasStatus(StatusBlind) {
+		ComputeFOV(lvl, g.Party.Pos, 2)
+		if g.WizardReveal {
+			for y := range lvl.H {
+				for x := range lvl.W {
+					lvl.Seen[y][x] = true
+					lvl.Visible[y][x] = true
+				}
+			}
+		}
+		return
+	}
 	ComputeFOV(lvl, g.Party.Pos, g.Party.BestLight())
 	if g.WizardReveal {
 		for y := range lvl.H {
@@ -649,6 +572,12 @@ func (g *Game) tickFood() {
 	cost := float64(living)*float64(g.Tuning.Food.PerMemberPerTurn) - g.frugalBonus()
 	if g.Party.HasAffix("of_plenty") {
 		cost -= 0.25
+	}
+	if g.Party.HasStatus(StatusHaste) {
+		cost *= 0.8
+	}
+	if g.Party.HasStatus(StatusSlow) {
+		cost *= 1.2
 	}
 	if cost < 0 {
 		cost = 0
@@ -755,6 +684,10 @@ func (g *Game) handleVault(f *Feature) bool {
 		dmg := 2 + g.RNG.IntN(3) // 2-4
 		_, actual := g.Party.ApplyDamage(g.RNG, dmg)
 		g.Logf("Vault treasure +%d gold! Trap springs for %d damage!", treasure, actual)
+		if g.RNG.Float64() < 0.20 {
+			g.Party.ApplyStatus(StatusPoison, 6)
+			g.Logf("Trap poisons!")
+		}
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
 			if g.Cause == "" {
@@ -1627,6 +1560,10 @@ func (g *Game) handlePitfall(f *Feature) bool {
 		}
 		_, actual := g.Party.ApplyDamage(g.RNG, dmg)
 		g.Logf("Hidden pitfall! You fall -- %d damage!", actual)
+		if g.RNG.Float64() < 0.10 {
+			g.Party.ApplyStatus(StatusPoison, 4)
+			g.Logf("Trap poisons!")
+		}
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
 			if g.Cause == "" {
@@ -1682,8 +1619,12 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		return ActionResult{}
 	}
 	lvl := g.CurLevel()
-	if g.Party.HasStatus(StatusParalysis) {
-		g.Logf("You are paralyzed and cannot move!")
+	if g.Party.HasStatus(StatusParalysis) || g.Party.HasStatus(StatusStun) {
+		if g.Party.HasStatus(StatusStun) {
+			g.Logf("You are stunned and cannot move!")
+		} else {
+			g.Logf("You are paralyzed and cannot move!")
+		}
 		g.EndPlayerTurn("")
 		return ActionResult{}
 	}
@@ -1848,22 +1789,33 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 				if effect == "" {
 					effect = "hex"
 				}
-				// Apply status to enemy party based on effect.
-				switch effect {
-				case "hex":
-					e.ApplyStatus(StatusHex, 10)
-					g.Logf("%s hexes %s (-1 DEF 10t)", attacker, memberName)
-				case "rend":
-					e.ApplyStatus(StatusRend, 6)
-					e.ApplyStatus(StatusBleed, 6)
-					g.Logf("%s rends %s (bleed 6t)", attacker, memberName)
-				case "entangle":
-					e.ApplyStatus(StatusEntangle, 4)
-					g.Logf("%s entangles %s (root 4t)", attacker, memberName)
-				case "spore":
-					e.ApplyStatus(StatusSpore, 8)
-					g.Logf("%s spores %s (poison 8t)", attacker, memberName)
-				default:
+				applied, _ := applyEffect(e, effect, g.RNG, false)
+				if applied {
+					switch effect {
+					case "hex":
+						g.Logf("%s hexes %s (-1 DEF 10t)", attacker, memberName)
+					case "rend":
+						g.Logf("%s rends %s (bleed 6t)", attacker, memberName)
+					case "entangle":
+						g.Logf("%s entangles %s (root 4t)", attacker, memberName)
+					case "spore":
+						g.Logf("%s spores %s (poison 8t)", attacker, memberName)
+					case "blind", "blindness":
+						g.Logf("%s blinds %s (blind 20t)", attacker, memberName)
+					case "haste":
+						g.Logf("%s hastes %s (haste 50t)", attacker, memberName)
+					case "slow":
+						g.Logf("%s slows %s (slow 30t)", attacker, memberName)
+					case "silence":
+						g.Logf("%s silences %s (silence 6t)", attacker, memberName)
+					case "stun":
+						g.Logf("%s stuns %s (stun 1t)", attacker, memberName)
+					case "poison":
+						g.Logf("%s poisons %s (poison 6t)", attacker, memberName)
+					default:
+						g.Logf("%s tries to %s %s", attacker, effect, memberName)
+					}
+				} else {
 					g.Logf("%s tries to %s %s", attacker, effect, memberName)
 				}
 			}
@@ -2206,6 +2158,22 @@ func (g *Game) EndPlayerTurn(msg string) {
 						break
 					}
 				}
+			case StatusBlind:
+				g.Logf("Blindness lifts.")
+			case StatusHaste:
+				g.Logf("Haste fades.")
+			case StatusSlow:
+				g.Logf("Slow fades.")
+			case StatusSilence:
+				g.Logf("Silence lifts.")
+			case StatusStun:
+				g.Logf("Stun wears off.")
+			case StatusConfusion:
+				g.Logf("Confusion clears.")
+			case StatusHex:
+				g.Logf("Hex fades.")
+			case StatusCurse:
+				g.Logf("Curse lifts.")
 			}
 		}
 		if g.Party.HasStatus(StatusEnlightenment) {
@@ -2217,8 +2185,13 @@ func (g *Game) EndPlayerTurn(msg string) {
 				}
 			}
 		}
+		// DoT — data-driven via statuses.json dots (poison 1, bleed 2)
 		if g.Party.HasStatus(StatusRend) || g.Party.HasStatus(StatusBleed) {
-			_, actual := g.Party.ApplyDamage(g.RNG, 2)
+			dot := statusDotDamage(StatusBleed)
+			if dot == 0 {
+				dot = 2
+			}
+			_, actual := g.Party.ApplyDamage(g.RNG, dot)
 			g.Logf("Bleed deals %d damage!", actual)
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
@@ -2230,7 +2203,11 @@ func (g *Game) EndPlayerTurn(msg string) {
 			}
 		}
 		if g.Party.HasStatus(StatusSpore) || g.Party.HasStatus(StatusPoison) {
-			_, actual := g.Party.ApplyDamage(g.RNG, 1)
+			dot := statusDotDamage(StatusPoison)
+			if dot == 0 {
+				dot = 1
+			}
+			_, actual := g.Party.ApplyDamage(g.RNG, dot)
 			g.Logf("Poison deals %d damage!", actual)
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
@@ -2375,11 +2352,15 @@ func (g *Game) EnemyTurn() {
 		// Regen tick for troll and similar
 		e.RegenTick()
 		e.EnsureActive()
-		// Enemy DoTs from bleed/rend/spore
+		// Enemy DoTs — data-driven via statuses.json (bleed 2, poison 1)
 		if e.HasStatus(StatusRend) || e.HasStatus(StatusBleed) {
+			dot := statusDotDamage(StatusBleed)
+			if dot == 0 {
+				dot = 2
+			}
 			for _, m := range e.Members {
 				if m.IsAlive() {
-					m.HP -= 2
+					m.HP -= dot
 					if m.HP <= 0 {
 						m.HP = 0
 						m.Alive = false
@@ -2393,9 +2374,13 @@ func (g *Game) EnemyTurn() {
 			}
 		}
 		if e.HasStatus(StatusSpore) || e.HasStatus(StatusPoison) {
+			dot := statusDotDamage(StatusPoison)
+			if dot == 0 {
+				dot = 1
+			}
 			for _, m := range e.Members {
 				if m.IsAlive() {
-					m.HP -= 1
+					m.HP -= dot
 					if m.HP <= 0 {
 						m.HP = 0
 						m.Alive = false
@@ -2408,8 +2393,8 @@ func (g *Game) EnemyTurn() {
 				continue
 			}
 		}
-		// Status skip: paralysis/entangle/sleep prevent action.
-		if e.HasStatus(StatusParalysis) || e.HasStatus(StatusEntangle) || e.HasStatus(StatusSleep) {
+		// Status skip: paralysis/entangle/sleep/stun prevent action.
+		if e.HasStatus(StatusParalysis) || e.HasStatus(StatusEntangle) || e.HasStatus(StatusSleep) || e.HasStatus(StatusStun) {
 			continue
 		}
 		// Invisibility prevents enemy targeting entirely.
@@ -2460,29 +2445,36 @@ func (g *Game) EnemyTurn() {
 						effect = "hex"
 					}
 					isMagicEff := atk.DamageType == "magic"
-					if !g.Party.resistsStatus(isMagicEff, g.RNG) {
+					applied, resisted := applyEffect(g.Party, effect, g.RNG, isMagicEff)
+					if resisted {
+						g.Logf("%s resists %s!", defender, effect)
+					} else if applied {
 						switch effect {
 						case "hex":
-							g.Party.ApplyStatus(StatusHex, 10)
 							g.Logf("%s hexes %s (-1 DEF 10t)", attackerName, defender)
 						case "rend":
-							g.Party.ApplyStatus(StatusRend, 6)
-							g.Party.ApplyStatus(StatusBleed, 6)
 							g.Logf("%s rends %s (bleed 2/turn 6t)", attackerName, defender)
 						case "entangle":
-							g.Party.ApplyStatus(StatusEntangle, 4)
 							g.Logf("%s entangles %s (root 4t)", attackerName, defender)
 						case "spore":
-							g.Party.ApplyStatus(StatusSpore, 8)
 							g.Logf("%s spores %s (poison 1/turn 8t)", attackerName, defender)
-						case "regenerate":
-							// no status, regen already via flag
-							g.Logf("%s tries to %s %s", attackerName, effect, defender)
+						case "blind", "blindness":
+							g.Logf("%s blinds %s (blind 20t)", attackerName, defender)
+						case "haste":
+							g.Logf("%s hastes %s (haste 50t)", attackerName, defender)
+						case "slow":
+							g.Logf("%s slows %s (slow 30t)", attackerName, defender)
+						case "silence":
+							g.Logf("%s silences %s (silence 6t)", attackerName, defender)
+						case "stun":
+							g.Logf("%s stuns %s (stun 1t)", attackerName, defender)
+						case "poison":
+							g.Logf("%s poisons %s (poison 6t)", attackerName, defender)
 						default:
 							g.Logf("%s tries to %s %s", attackerName, effect, defender)
 						}
 					} else {
-						g.Logf("%s resists %s!", defender, effect)
+						g.Logf("%s tries to %s %s", attackerName, effect, defender)
 					}
 				}
 			}

@@ -92,16 +92,16 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 		target.Alive = false
 		killed = true
 	}
-	// deitys_gift heal 2 on attack
-	if atk.HasTalent("deitys_gift") && atk.IsAlive() && atk.HP < atk.MaxHP {
+	// deitys_gift heal 2 on attack — blocked by silence
+	if !party.HasStatus(StatusSilence) && atk.HasTalent("deitys_gift") && atk.IsAlive() && atk.HP < atk.MaxHP {
 		atk.HP += 2
 		if atk.HP > atk.MaxHP {
 			atk.HP = atk.MaxHP
 		}
 	}
-	// shrug 20% clear one negative status from self on attack
-	if atk.HasTalent("shrug") && rng != nil && rng.Float64() < 0.20 {
-		for _, sid := range []string{StatusHex, StatusRend, StatusBleed, StatusSpore, StatusPoison, StatusCurse, StatusParalysis, StatusConfusion, StatusEntangle, StatusSleep} {
+	// shrug 20% clear one negative status from self on attack — blocked by silence
+	if !party.HasStatus(StatusSilence) && atk.HasTalent("shrug") && rng != nil && rng.Float64() < 0.20 {
+		for _, sid := range []string{StatusHex, StatusRend, StatusBleed, StatusSpore, StatusPoison, StatusCurse, StatusParalysis, StatusConfusion, StatusEntangle, StatusSleep, StatusBlind, StatusSilence, StatusStun, StatusSlow} {
 			if party.HasStatus(sid) {
 				party.RemoveStatus(sid)
 				break

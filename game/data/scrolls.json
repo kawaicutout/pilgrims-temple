@@ -1,14 +1,14 @@
 {
-  "notes": "Pilgrim's Temple — scroll appearance pool. Run-random: appearances are generated via conlang.json weighted onsets/nuclei/codas (GenerateConlangWord) — 1-2 word tokens like \"thae khor\", \"branel\", \"zae of orin\". 8 appearances, 8 types, bijection per run. JSON appearances may be empty; generation is preferred. Fallback static pool is lower-case conlang style to keep potion/scroll namespaces distinct.",
+  "notes": "Pilgrim's Temple — scroll appearance pool. Run-random: appearances are generated via conlang.json weighted onsets/nuclei/codas (GenerateConlangWord) — 1-2 word tokens like \"thae khor\", \"branel\", \"zae of orin\". 8 appearances, 8 types, bijection per run. JSON appearances may be empty; generation is preferred. Fallback static pool is lower-case conlang style to keep potion/scroll namespaces distinct. Effect holds authoritative numerics; JSON stores visible turns — code applies turns+1. See consumables.go.",
   "appearances": [],
   "types": [
-    { "id": "identify", "name": "Identify", "desc": "Identifies all items in inventory" },
-    { "id": "teleport", "name": "Teleport", "desc": "Teleports to a random floor tile" },
-    { "id": "fireball", "name": "Fireball", "desc": "Deals 10 fire damage to adjacent enemies" },
-    { "id": "enchant", "name": "Enchant", "desc": "Grants a random affix to one member" },
-    { "id": "mapping", "name": "Mapping", "desc": "Reveals the current floor map" },
-    { "id": "confusion", "name": "Confusion", "desc": "Confuses enemies for 8 turns (negative if misapplied)" },
-    { "id": "greater_healing", "name": "Greater Healing", "desc": "Restores 20 HP to all living members" },
-    { "id": "summon", "name": "Summon Aid", "desc": "Summons a temporary ally for 15 turns" }
+    { "id": "identify", "name": "Identify", "desc": "Identifies all items in inventory", "effect": { "kind": "identify" } },
+    { "id": "teleport", "name": "Teleport", "desc": "Teleports to a random floor tile", "effect": { "kind": "teleport" } },
+    { "id": "fireball", "name": "Fireball", "desc": "Deals 10 fire damage to adjacent enemies", "effect": { "kind": "fireball", "damage": 10, "radius": 2, "resistPct": 30 } },
+    { "id": "enchant", "name": "Enchant", "desc": "Grants a random affix to one member", "effect": { "kind": "enchant" } },
+    { "id": "mapping", "name": "Mapping", "desc": "Reveals the current floor map", "effect": { "kind": "mapping" } },
+    { "id": "confusion", "name": "Confusion", "desc": "Confuses enemies for 8 turns (negative if misapplied)", "effect": { "kind": "confusion", "duration": 8, "radius": 8 } },
+    { "id": "greater_healing", "name": "Greater Healing", "desc": "Restores 20 HP to all living members", "effect": { "kind": "greater_healing", "heal": 20, "cleanse": ["curse", "hex"] } },
+    { "id": "summon", "name": "Summon Aid", "desc": "Summons a temporary ally for 15 turns", "effect": { "kind": "summon", "duration": 15, "cap": 4 } }
   ]
 }

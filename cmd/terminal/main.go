@@ -228,8 +228,9 @@ func main() {
 		stateWizardRemoveMember
 		stateWizardResurrectMember
 		stateUseInventory
+		stateThrowMenu
+		stateThrowCursor
 	)
-
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
@@ -238,6 +239,7 @@ func main() {
 	var wizardAddCS *game.CharSelectState
 	wizardRemoveIdx := 0
 	useSelected := 0
+	throwSelected := 0
 	for {
 		ev := s.PollEvent()
 		switch e := ev.(type) {
@@ -275,6 +277,14 @@ func main() {
 			case stateUseInventory:
 				if g != nil {
 					drawFrame(g.RenderUseMenu(useSelected))
+				}
+			case stateThrowMenu:
+				if g != nil {
+					drawFrame(g.RenderThrowMenu(throwSelected))
+				}
+			case stateThrowCursor:
+				if g != nil {
+					drawFrame(g.Render())
 				}
 			}
 		case *tcell.EventKey:
@@ -447,6 +457,19 @@ func main() {
 					drawFrame(g.RenderUseMenu(useSelected))
 					break
 				}
+				// Throw inventory: open throw menu then cursor
+				if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.Over && !g.Quit {
+					entries := g.InventoryPotionEntries()
+					if len(entries) == 0 {
+						g.Logf("No potions to throw.")
+						drawFrame(g.Render())
+						break
+					}
+					throwSelected = 0
+					state = stateThrowMenu
+					drawFrame(g.RenderThrowMenu(throwSelected))
+					break
+				}
 				g.HandleKey(k)
 				if g.HelpActive {
 					drawFrame(g.RenderHelpOverlay())
@@ -551,6 +574,130 @@ func main() {
 					}
 				default:
 					drawFrame(g.RenderUseMenu(useSelected))
+				}
+			case stateThrowMenu:
+				if g == nil {
+					state = statePlaying
+					drawFrame(g.Render())
+					break
+				}
+				entries := g.InventoryPotionEntries()
+				switch k {
+				case game.KeyUp:
+					if len(entries) > 0 {
+						throwSelected--
+						if throwSelected < 0 {
+							throwSelected = len(entries) - 1
+						}
+					}
+					drawFrame(g.RenderThrowMenu(throwSelected))
+				case game.KeyDown:
+					if len(entries) > 0 {
+						throwSelected++
+						if throwSelected >= len(entries) {
+							throwSelected = 0
+						}
+					}
+					drawFrame(g.RenderThrowMenu(throwSelected))
+				case game.KeyQuit:
+					state = statePlaying
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					if len(entries) > 0 && throwSelected >= 0 && throwSelected < len(entries) {
+						appearance := entries[throwSelected].Appearance
+						g.StartThrow(appearance)
+						state = stateThrowCursor
+						drawFrame(g.Render())
+					} else {
+						state = statePlaying
+						drawFrame(g.Render())
+					}
+				default:
+					drawFrame(g.RenderThrowMenu(throwSelected))
+				}
+			case stateThrowCursor:
+				if g == nil {
+					state = statePlaying
+					drawFrame(g.Render())
+					break
+				}
+				switch k {
+				case game.KeyQuit:
+					g.CancelThrow()
+					g.Logf("Cancelled throw.")
+					state = statePlaying
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					g.ThrowAt(g.ThrowPending.Cursor)
+					state = statePlaying
+					drawFrame(g.Render())
+					if g.LevelUpPending != nil {
+						drawFrame(g.RenderLevelUp())
+					}
+					if g.Quit {
+						state = stateMenu
+						g = nil
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					} else if g.Over {
+						for {
+							ev2 := s.PollEvent()
+							if ke, ok := ev2.(*tcell.EventKey); ok {
+								key2, code2 := tcellKeyToRaw(ke)
+								k2 := game.NormalizeKey(key2, code2)
+								if k2 == game.KeyQuit || k2 == game.KeyEnter {
+									state = stateMenu
+									g = nil
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+									break
+								}
+							} else if _, ok := ev2.(*tcell.EventResize); ok {
+								s.Sync()
+								if g != nil {
+									drawFrame(g.Render())
+								} else {
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+								}
+							}
+						}
+					}
+				default:
+					// Delegate cursor movement to HandleKey (moves within range 5 and FOV)
+					handledTurn := g.HandleKey(k)
+					drawFrame(g.Render())
+					if handledTurn {
+						state = statePlaying
+						if g.LevelUpPending != nil {
+							drawFrame(g.RenderLevelUp())
+						}
+						if g.Quit {
+							state = stateMenu
+							g = nil
+							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+						} else if g.Over {
+							for {
+								ev2 := s.PollEvent()
+								if ke, ok := ev2.(*tcell.EventKey); ok {
+									key2, code2 := tcellKeyToRaw(ke)
+									k2 := game.NormalizeKey(key2, code2)
+									if k2 == game.KeyQuit || k2 == game.KeyEnter {
+										state = stateMenu
+										g = nil
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+										break
+									}
+								} else if _, ok := ev2.(*tcell.EventResize); ok {
+									s.Sync()
+									if g != nil {
+										drawFrame(g.Render())
+									} else {
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+									}
+								}
+							}
+						} else {
+							state = statePlaying
+						}
+					}
 				}
 			case stateWizard:
 				switch k {

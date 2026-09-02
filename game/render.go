@@ -118,6 +118,10 @@ func (g *Game) Render() Frame {
 				if g.Look != nil && g.Look.Active && p == g.Look.Cursor {
 					fg = "gold-bright"
 				}
+				// Throw cursor highlight (gold-bright, distinct from Look)
+				if g.ThrowPending.Active && p == g.ThrowPending.Cursor {
+					fg = "gold-bright"
+				}
 			}
 			cells[y][x] = Cell{Glyph: glyph, FG: fg, BG: "bg"}
 		}
@@ -242,8 +246,10 @@ func (g *Game) Render() Frame {
 	}
 	copy(logLines[max(0, len(logLines)-len(g.Log)):], g.Log)
 
-	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u(menu)  Throw:t  Stairs:>/ <  Quit:Esc  Help:?"
-	if g.Quit {
+	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u(menu)  Throw:t(menu+cursor)  Stairs:>/ <  Quit:Esc  Help:?"
+	if g.ThrowPending.Active {
+		hints = "Throw: move cursor, Enter to throw, Esc to cancel"
+	} else if g.Quit {
 		hints = "Quit to menu. Seed " + fmt.Sprint(g.Seed) + " - Esc again or close window"
 	} else if g.Over {
 		if g.Won {
@@ -418,6 +424,91 @@ func (g *Game) RenderUseMenu(selected int) Frame {
 	hints := "Up/Down or k/j: move  Enter: use  Esc: cancel"
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
 }
+func (g *Game) RenderThrowMenu(selected int) Frame {
+	t := g.Tuning
+	w, h := t.Map.Width, t.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	entries := g.InventoryPotionEntries()
+	title := "THROW POTION"
+	sub := "Select potion to throw"
+	if len(entries) == 0 {
+		sub = "No potions to throw"
+	}
+	drawCentered(cells, w, 2, title, "gold-bright")
+	drawCentered(cells, w, 3, sub, "gray-1")
+	if len(entries) == 0 {
+		drawCentered(cells, w, 5, "(empty)", "gray-2")
+	} else {
+		startY := 5
+		if selected < 0 {
+			selected = 0
+		}
+		if selected >= len(entries) {
+			selected = len(entries) - 1
+		}
+		maxRows := h - 7
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		start := 0
+		if len(entries) > maxRows {
+			start = selected - maxRows/2
+			if start < 0 {
+				start = 0
+			}
+			if start+maxRows > len(entries) {
+				start = len(entries) - maxRows
+			}
+		}
+		end := start + maxRows
+		if end > len(entries) {
+			end = len(entries)
+		}
+		for i := start; i < end; i++ {
+			e := entries[i]
+			fg := "gray-1"
+			prefix := "  "
+			if i == selected {
+				prefix = "> "
+				fg = "gold-bright"
+			}
+			var line string
+			if e.Count > 1 {
+				line = fmt.Sprintf("%s%s (x%d)", prefix, e.DisplayName, e.Count)
+			} else {
+				line = fmt.Sprintf("%s%s", prefix, e.DisplayName)
+			}
+			if len(line) > w-4 {
+				line = line[:w-7] + "..."
+			}
+			drawCentered(cells, w, startY+(i-start)*2, line, fg)
+			if i == selected && IsIdentified(e.Appearance) && e.DisplayName != e.Appearance {
+				detail := fmt.Sprintf("(%s)", e.Appearance)
+				drawCentered(cells, w, startY+(i-start)*2+1, detail, "gray-2")
+			}
+		}
+		if len(entries) > maxRows {
+			more := fmt.Sprintf("(%d/%d)", selected+1, len(entries))
+			drawCentered(cells, w, h-3, more, "gray-2")
+		}
+	}
+	panel := []string{"", "Throw Potion", "Enter: select", "Esc: cancel", "Up/Down: move"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	status := "Throw Potion"
+	hints := "Up/Down or k/j: move  Enter: throw  Esc: cancel"
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
+}
+
 
 func (g *Game) RenderWizardMenu(tuning Tuning, selected int) Frame {
 	w, h := tuning.Map.Width, tuning.Map.Height
@@ -481,7 +572,7 @@ func (g *Game) RenderHelpOverlay() Frame {
 		{"5 / . / Space  - wait 1 turn", "gray-1"},
 		{"z / Z  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", "gray-1"},
 		{"g  - pickup  u/U - use menu (potions/scrolls)", "gray-1"},
-		{"t  - throw potion at adjacent target (choose direction)", "gray-1"},
+	{"t  - throw potion (menu + cursor)", "gray-1"},
 		{"v  - look: move cursor, v/Enter/Esc to examine", "gray-1"},
 		{"> / <  - stairs down / up", "gray-1"},
 		{"?  - help (this overlay)", "gold"},

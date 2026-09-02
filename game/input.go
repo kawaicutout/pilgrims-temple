@@ -83,25 +83,53 @@ func (g *Game) HandleKey(k Key) bool {
 			return false
 		}
 	}
-	// Throw mode has next priority: when pending, next direction throws.
-	if g.ThrowPending {
-		if k == KeyQuit {
-			g.ThrowPending = false
+	// Throw mode has next priority: when pending, movement moves cursor, Enter confirms, Esc cancels.
+	if g.ThrowPending.Active {
+		switch k {
+		case KeyQuit:
+			g.CancelThrow()
 			g.Logf("Cancelled throw.")
 			return false
-		}
-		if dir, ok := KeyToDir(k); ok {
-			if dir == DirNone {
-				g.ThrowPending = false
-				g.Logf("Cancelled throw.")
+		case KeyEnter:
+			// Confirm throw at cursor Pos via ThrowAt (which calls TryThrowAppearance)
+			g.ThrowAt(g.ThrowPending.Cursor)
+			return true
+		default:
+			if dir, ok := KeyToDir(k); ok {
+				if dir == DirNone {
+					g.CancelThrow()
+					g.Logf("Cancelled throw.")
+					return false
+				}
+				next := g.ThrowPending.Cursor.Add(dir)
+				lvl := g.CurLevel()
+				if lvl == nil || !lvl.InBounds(next) {
+					return false
+				}
+				// Chebyshev distance 5 from party pos
+				dx := next.X - g.Party.Pos.X
+				if dx < 0 {
+					dx = -dx
+				}
+				dy := next.Y - g.Party.Pos.Y
+				if dy < 0 {
+					dy = -dy
+				}
+				if dx > 5 || dy > 5 {
+					return false
+				}
+				// Must be within FOV Visible, clamped to level bounds (already checked)
+				if next.Y < 0 || next.Y >= len(lvl.Visible) || next.X < 0 || next.X >= len(lvl.Visible[0]) {
+					return false
+				}
+				if !lvl.Visible[next.Y][next.X] {
+					return false
+				}
+				g.ThrowPending.Cursor = next
 				return false
 			}
-			g.ThrowPending = false
-			g.TryThrowPotion(dir)
-			return true
+			return false
 		}
-		// Non-direction while throw pending: cancel on any other key (help already handled).
-		return false
 	}
 	switch k {
 	case KeySelect1, KeySelect2, KeySelect3, KeySelect4:
@@ -159,8 +187,8 @@ func (g *Game) HandleKey(k Key) bool {
 			g.Logf("No potions to throw.")
 			return false
 		}
-		g.ThrowPending = true
-		g.Logf("Throw potion: choose direction (hjkl/arrows/numpad).")
+		// Do not auto-pick first potion; frontend opens throw menu and calls StartThrow(appearance).
+		g.Logf("Throw potion: select potion to throw.")
 		return false
 	case KeyStairsDown:
 		g.TryStairsDown()

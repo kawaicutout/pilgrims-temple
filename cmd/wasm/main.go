@@ -53,6 +53,8 @@ const (
 	stateWizardRemoveMember
 	stateWizardResurrectMember
 	stateUseInventory
+	stateThrowMenu
+	stateThrowCursor
 )
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -62,6 +64,7 @@ const (
 	var wizardAddCS *game.CharSelectState
 	wizardRemoveIdx := 0
 	useSelected := 0
+	throwSelected := 0
 	renderMenu := func() {
 		frame := game.RenderMainMenu(tuning, menu.Selected)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
@@ -134,6 +137,15 @@ const (
 			return
 		}
 		frame := g.RenderUseMenu(useSelected)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderThrowMenu := func() {
+		if g == nil {
+			return
+		}
+		frame := g.RenderThrowMenu(throwSelected)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -308,6 +320,18 @@ const (
 				renderUseMenu()
 				break
 			}
+			if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.Over && !g.Quit {
+				entries := g.InventoryPotionEntries()
+				if len(entries) == 0 {
+					g.Logf("No potions to throw.")
+					renderGame()
+					break
+				}
+				throwSelected = 0
+				state = stateThrowMenu
+				renderThrowMenu()
+				break
+			}
 			g.HandleKey(k)
 			if g.HelpActive {
 				renderHelp()
@@ -377,6 +401,97 @@ const (
 				}
 			default:
 				renderUseMenu()
+			}
+		case stateThrowMenu:
+			if g == nil {
+				state = statePlaying
+				renderGame()
+				break
+			}
+			entries := g.InventoryPotionEntries()
+			switch k {
+			case game.KeyUp:
+				if len(entries) > 0 {
+					throwSelected--
+					if throwSelected < 0 {
+						throwSelected = len(entries) - 1
+					}
+				}
+				renderThrowMenu()
+			case game.KeyDown:
+				if len(entries) > 0 {
+					throwSelected++
+					if throwSelected >= len(entries) {
+						throwSelected = 0
+					}
+				}
+				renderThrowMenu()
+			case game.KeyQuit:
+				state = statePlaying
+				renderGame()
+			case game.KeyEnter:
+				if len(entries) > 0 && throwSelected >= 0 && throwSelected < len(entries) {
+					appearance := entries[throwSelected].Appearance
+					g.StartThrow(appearance)
+					state = stateThrowCursor
+					renderGame()
+				} else {
+					state = statePlaying
+					renderGame()
+				}
+			default:
+				renderThrowMenu()
+			}
+		case stateThrowCursor:
+			if g == nil {
+				state = statePlaying
+				renderGame()
+				break
+			}
+			switch k {
+			case game.KeyQuit:
+				g.CancelThrow()
+				g.Logf("Cancelled throw.")
+				state = statePlaying
+				renderGame()
+			case game.KeyEnter:
+				g.ThrowAt(g.ThrowPending.Cursor)
+				state = statePlaying
+				renderGame()
+				if g.LevelUpPending != nil {
+					renderLevelUp()
+				}
+				if g.Quit {
+					state = stateMenu
+					g = nil
+					renderMenu()
+				} else if g.Over {
+					if k == game.KeyQuit || k == game.KeyEnter {
+						state = stateMenu
+						g = nil
+						renderMenu()
+					}
+				}
+			default:
+				handledTurn := g.HandleKey(k)
+				renderGame()
+				if handledTurn {
+					state = statePlaying
+					if g.LevelUpPending != nil {
+						renderLevelUp()
+					}
+					if g.Quit {
+						state = stateMenu
+						g = nil
+						renderMenu()
+					} else if g.Over {
+						if k == game.KeyQuit || k == game.KeyEnter {
+							state = stateMenu
+							g = nil
+							renderMenu()
+						}
+					}
+				}
 			}
 		case stateWizard:
 			switch k {

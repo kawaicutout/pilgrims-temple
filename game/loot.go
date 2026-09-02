@@ -215,6 +215,18 @@ func (g *Game) InventoryUseEntries() []UseEntry {
 	})
 	return entries
 }
+// InventoryPotionEntries returns potion-only grouped entries for the throw menu, sorted by appearance.
+func (g *Game) InventoryPotionEntries() []UseEntry {
+	entries := g.InventoryUseEntries()
+	var out []UseEntry
+	for _, e := range entries {
+		if e.Kind == "potion" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 
 // TryUseAppearance consumes one item of the given appearance, identifies it, applies effect and advances turn.
 func (g *Game) TryUseAppearance(appearance string) bool {
@@ -389,6 +401,16 @@ func (g *Game) TryUseItemAt(index int) bool {
 	}
 	return g.TryUseAppearance(entries[index].Appearance)
 }
+// TryThrowItemAt consumes the potion at potion-menu index and throws it at target.
+// It identifies the appearance via TryThrowAppearance and advances turn.
+func (g *Game) TryThrowItemAt(index int, target Pos) bool {
+	entries := g.InventoryPotionEntries()
+	if index < 0 || index >= len(entries) {
+		return false
+	}
+	return g.TryThrowAppearance(entries[index].Appearance, target)
+}
+
 
 // TryUseItem consumes the first available potion/scroll in inventory,
 // identifies its appearance, applies its effect, and advances a turn.

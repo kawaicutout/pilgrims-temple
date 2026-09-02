@@ -30,7 +30,7 @@ type Game struct {
 	Won                     bool          `json:"won"`
 	Quit                    bool          `json:"quit"`
 	Look                    *LookState    `json:"look"`
-	ThrowPending            bool          `json:"throwPending"`
+	ThrowPending            ThrowState    `json:"throwPending"`
 	Relic                   Pos           `json:"relic"`
 	Wizard                  bool          `json:"wizard"`
 	WizardReveal            bool          `json:"wizardReveal"`
@@ -95,6 +95,192 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	g.UpdateFOV()
 	return g
 }
+
+// ThrowState holds throw cursor state. Distinct from LookState.
+type ThrowState struct {
+	Active     bool   `json:"active"`
+	Appearance string `json:"appearance"`
+	Cursor     Pos    `json:"cursor"`
+}
+
+// StartThrow begins throw targeting with the given potion appearance.
+// Cursor starts at party position.
+func (g *Game) StartThrow(appearance string) {
+	if g.Party == nil {
+		return
+	}
+	g.ThrowPending = ThrowState{Active: true, Appearance: appearance, Cursor: g.Party.Pos}
+	g.Logf("Throw %s: move cursor (hjkl/arrows), Enter to throw, Esc to cancel.", appearance)
+}
+
+// CancelThrow clears throw pending state.
+func (g *Game) CancelThrow() {
+	g.ThrowPending = ThrowState{}
+}
+
+// ThrowAt throws the stored appearance at target, consumes the potion, advances turn and clears pending.
+func (g *Game) ThrowAt(target Pos) bool {
+	if !g.ThrowPending.Active {
+		return false
+	}
+	appearance := g.ThrowPending.Appearance
+	g.ThrowPending = ThrowState{}
+	return g.TryThrowAppearance(appearance, target)
+}
+
+// TryThrowAppearance throws the potion with given appearance at target Pos.
+// Consumes the matching potion (not first), applies effect, advances turn.
+// This is the cursor-based throw path; TryThrowPotion remains as deprecated Dir wrapper.
+func (g *Game) TryThrowAppearance(appearance string, target Pos) bool {
+	if g.Party == nil {
+		g.Logf("No potions to throw.")
+		return false
+	}
+	idx := -1
+	for i, it := range g.Party.Inventory {
+		if it.Kind == "potion" && appearanceFromItem(it) == appearance {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		// fallback: if appearance not matched (e.g. identified name), try by type
+		for i, it := range g.Party.Inventory {
+			if it.Kind == "potion" {
+				if friendlyTypeName(TypeForAppearance(appearance), "potion") == it.Name || it.Name == appearance {
+					idx = i
+					break
+				}
+			}
+		}
+	}
+	if idx == -1 {
+		g.Logf("No %s potion to throw.", appearance)
+		return false
+	}
+	it := g.Party.Inventory[idx]
+	g.Party.Inventory = append(g.Party.Inventory[:idx], g.Party.Inventory[idx+1:]...)
+	trueType := TypeForAppearance(appearance)
+	if trueType == "" {
+		trueType = it.ID
+	}
+	newlyIdentified := IdentifyOnUse(appearance)
+	typeName := friendlyTypeName(trueType, it.Kind)
+	var targetEnemy *EnemyParty
+	if lvl := g.CurLevel(); lvl != nil {
+		for _, e := range lvl.Enemies {
+			if e.IsAlive() && e.Pos == target {
+				targetEnemy = e
+				break
+			}
+		}
+	}
+	if newlyIdentified {
+		g.Logf("Threw %s potion - identified as %s at (%d,%d)!", appearance, typeName, target.X, target.Y)
+	} else if IsIdentified(appearance) {
+		g.Logf("Threw %s potion (%s) at (%d,%d).", appearance, typeName, target.X, target.Y)
+	} else {
+		g.Logf("Threw %s at (%d,%d).", it.Name, target.X, target.Y)
+	}
+	switch trueType {
+	case "healing":
+		if targetEnemy != nil {
+			healed := 0
+			for _, m := range targetEnemy.Members {
+				if m.IsAlive() && m.HP < m.MaxHP {
+					m.HP += 12
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+					healed++
+				}
+			}
+			if healed > 0 {
+				g.Logf("Healing potion restores 12 HP to %d enemies.", healed)
+			} else {
+				g.Logf("Healing potion splashes on %s with no effect.", targetEnemy.DisplayName())
+			}
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "poison":
+		if targetEnemy != nil {
+			dmgTotal := 0
+			for _, m := range targetEnemy.Members {
+				if m.IsAlive() {
+					m.HP -= 6
+					dmgTotal += 6
+					if m.HP <= 0 {
+						m.HP = 0
+						m.Alive = false
+					}
+				}
+			}
+			g.Logf("Poison potion deals %d damage to %s!", dmgTotal, targetEnemy.DisplayName())
+			if !targetEnemy.IsAlive() {
+				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
+			}
+		} else {
+			g.Logf("Poison potion shatters on ground.")
+		}
+	case "strength":
+		if targetEnemy != nil {
+			var members []*Member
+			for _, m := range targetEnemy.Members {
+				if m.IsAlive() {
+					members = append(members, m)
+				}
+			}
+			if len(members) > 0 {
+				m := members[g.RNG.IntN(len(members))]
+				m.ATK[0] += 2
+				m.ATK[1] += 2
+				g.Logf("Strength potion: %s gains +2 ATK.", m.Name)
+			}
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "invisibility":
+		if targetEnemy != nil {
+			g.Logf("Invisibility potion: %s fades from sight briefly.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "fire_resist":
+		if targetEnemy != nil {
+			g.Logf("Fire resistance potion splashes on %s.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "paralysis":
+		if targetEnemy != nil {
+			g.Logf("Paralysis potion: %s is paralyzed briefly!", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "levitation":
+		if targetEnemy != nil {
+			g.Logf("Levitation potion: %s floats above traps.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "enlightenment":
+		if targetEnemy != nil {
+			g.Logf("Enlightenment potion splashes on %s.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	default:
+		if targetEnemy != nil {
+			g.Logf("Potion effect (%s) hits %s.", typeName, targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	}
+	g.EndPlayerTurn("")
+	return true
+}
+// throw cursor helpers end
 
 type LevelUpState struct {
 	NewLevel int

@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -142,7 +143,29 @@ func describeParty(p *Party, label string) string {
 	if count == 1 {
 		header = label
 	}
-	return header + ": " + strings.Join(parts, "; ")
+	base := header + ": " + strings.Join(parts, "; ")
+	// Annotate with Statuses map: show compact [hex 5] durations Duration-1
+	if p.Statuses != nil && len(p.Statuses) > 0 {
+		keys := make([]string, 0, len(p.Statuses))
+		for k, v := range p.Statuses {
+			if v > 0 {
+				keys = append(keys, k)
+			}
+		}
+		if len(keys) > 0 {
+			sort.Strings(keys)
+			sParts := make([]string, 0, len(keys))
+			for _, k := range keys {
+				dur := p.Statuses[k] - 1
+				if dur < 0 {
+					dur = 0
+				}
+				sParts = append(sParts, fmt.Sprintf("%s %d", k, dur))
+			}
+			base += " Statuses: [" + strings.Join(sParts, ", ") + "]"
+		}
+	}
+	return base
 }
 
 func describeEnemyParty(e *EnemyParty) string {
@@ -162,7 +185,28 @@ func describeEnemyParty(e *EnemyParty) string {
 	if header == "" {
 		header = "Enemy"
 	}
-	return header + ": " + strings.Join(parts, "; ")
+	base := header + ": " + strings.Join(parts, "; ")
+	if e.Statuses != nil && len(e.Statuses) > 0 {
+		keys := make([]string, 0, len(e.Statuses))
+		for k, v := range e.Statuses {
+			if v > 0 {
+				keys = append(keys, k)
+			}
+		}
+		if len(keys) > 0 {
+			sort.Strings(keys)
+			sParts := make([]string, 0, len(keys))
+			for _, k := range keys {
+				dur := e.Statuses[k] - 1
+				if dur < 0 {
+					dur = 0
+				}
+				sParts = append(sParts, fmt.Sprintf("%s %d", k, dur))
+			}
+			base += " Statuses: [" + strings.Join(sParts, ", ") + "]"
+		}
+	}
+	return base
 }
 
 func memberLabel(m *Member, idx int) string {

@@ -35,6 +35,7 @@ func (g *Game) Render() Frame {
 			seen := lvl.Seen[y][x]
 			var glyph rune
 			var fg string
+			bg := "bg"
 			if !seen {
 				// Fog: styled background only (DESIGN 10.4) — space with bg
 				cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
@@ -122,26 +123,32 @@ func (g *Game) Render() Frame {
 						fg = "fg"
 					}
 				}
-				// Look cursor highlight
+				// Look cursor highlight - second channel: bold/reverse via BG "cursor" (frontend renders reverse) plus gold-bright FG ensures color not alone.
 				if g.Look != nil && g.Look.Active && p == g.Look.Cursor {
 					fg = "gold-bright"
+					bg = "cursor"
 				}
 				// Use cursor highlight (gold-bright like throw)
 				if g.UsePending.Active && p == g.UsePending.Cursor {
 					fg = "gold-bright"
+					bg = "cursor"
 				}
 				// Throw cursor highlight (gold-bright, distinct from Look)
 				if g.ThrowPending.Active && p == g.ThrowPending.Cursor {
 					fg = "gold-bright"
+					bg = "cursor"
 				}
 			}
-			cells[y][x] = Cell{Glyph: glyph, FG: fg, BG: "bg"}
+			cells[y][x] = Cell{Glyph: glyph, FG: fg, BG: bg}
 		}
 	}
 	// Panel - right-side overhaul: 5 lines per member (20 total) + 6 potion/scroll lines = 26
 	var panel []string
 	var panelFG []string
-	const panelWrap = 28
+	panelWrap := t.Layout.PanelWrap
+	if panelWrap <= 0 {
+		panelWrap = 30
+	}
 	buildTalentLines := func(talents []string) (string, string) {
 		if len(talents) == 0 {
 			return "  ", "  "
@@ -152,6 +159,7 @@ func (g *Game) Render() Frame {
 		}
 		lines := []string{"  ", "  "}
 		cur := 0
+		overflow := 0
 		for _, part := range friendly {
 			trimmed := strings.TrimSpace(lines[cur])
 			sep := ", "
@@ -172,6 +180,7 @@ func (g *Game) Render() Frame {
 					if len(lines[cur])+len(sep2)+len(part) <= panelWrap {
 						lines[cur] += sep2 + part
 					} else {
+						overflow++
 						if trimmed2 == "" {
 							lines[cur] += part
 						} else {
@@ -179,6 +188,7 @@ func (g *Game) Render() Frame {
 						}
 					}
 				} else {
+					overflow++
 					if strings.TrimSpace(lines[cur]) == "" {
 						lines[cur] += part
 					} else {
@@ -187,7 +197,18 @@ func (g *Game) Render() Frame {
 				}
 			}
 		}
-		if len(lines[1]) > panelWrap {
+		if overflow > 0 {
+			suffix := fmt.Sprintf(" (+%d more)", overflow)
+			if len(lines[1])+len(suffix) <= panelWrap {
+				lines[1] += suffix
+			} else if panelWrap > 3 {
+				if len(lines[1]) > panelWrap-len(suffix) {
+					lines[1] = lines[1][:panelWrap-len(suffix)] + suffix
+				} else {
+					lines[1] += suffix
+				}
+			}
+		} else if len(lines[1]) > panelWrap {
 			if panelWrap > 3 {
 				lines[1] = lines[1][:panelWrap-3] + "..."
 			} else {
@@ -196,14 +217,40 @@ func (g *Game) Render() Frame {
 		}
 		return lines[0], lines[1]
 	}
+	formatPartyStatuses := func() string {
+		if g.Party == nil || len(g.Party.Statuses) == 0 {
+			return ""
+		}
+		keys := make([]string, 0, len(g.Party.Statuses))
+		for k, v := range g.Party.Statuses {
+			if v > 0 {
+				keys = append(keys, k)
+			}
+		}
+		if len(keys) == 0 {
+			return ""
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			dur := g.Party.Statuses[k] - 1
+			if dur < 0 {
+				dur = 0
+			}
+			parts = append(parts, fmt.Sprintf("[%s %d]", k, dur))
+		}
+		return strings.Join(parts, " ")
+	}
+	statusBand := formatPartyStatuses()
 	for slot := 0; slot < len(g.Party.Members) && slot < 4; slot++ {
 		m := g.Party.Members[slot]
+		isLow := m.IsAlive() && m.MaxHP > 0 && m.HP*4 <= m.MaxHP
 		var fg string
 		if !m.IsAlive() {
 			fg = "slate"
 		} else if slot == g.Party.Selected {
 			fg = "gold-bright"
-		} else if m.MaxHP > 0 && m.HP*4 <= m.MaxHP {
+		} else if isLow {
 			fg = "red-bright"
 		} else {
 			fg = "gray-1"
@@ -216,7 +263,11 @@ func (g *Game) Render() Frame {
 		if !m.IsAlive() {
 			line1 = fmt.Sprintf("%d %s (fallen)", slot+1, m.Name)
 		} else {
-			line1 = fmt.Sprintf("%d %s %d/%d", slot+1, m.Name, m.HP, m.MaxHP)
+			if isLow {
+				line1 = fmt.Sprintf("!%d %s %d/%d", slot+1, m.Name, m.HP, m.MaxHP)
+			} else {
+				line1 = fmt.Sprintf("%d %s %d/%d", slot+1, m.Name, m.HP, m.MaxHP)
+			}
 		}
 		classFriendly := FriendlyID(m.Class)
 		raceFriendly := ""
@@ -243,8 +294,19 @@ func (g *Game) Render() Frame {
 		}
 		t1, t2 := buildTalentLines(m.Talents)
 		statsLine := fmt.Sprintf("  ATK %d-%d | DEF %d | MDEF %d", m.ATK[0], m.ATK[1], m.DEF, m.MDEF)
-		panel = append(panel, line1, statsLine, line2, t1, t2)
-		panelFG = append(panelFG, fg, classFG, classFG, classFG, classFG)
+		statusLine := "  "
+		if statusBand != "" {
+			statusLine = "  " + statusBand
+			if len(statusLine) > panelWrap {
+				if panelWrap > 5 {
+					statusLine = statusLine[:panelWrap-3] + "..."
+				} else {
+					statusLine = statusLine[:panelWrap]
+				}
+			}
+		}
+		panel = append(panel, line1, statsLine, line2, t1, t2, statusLine)
+		panelFG = append(panelFG, fg, classFG, classFG, classFG, classFG, "gray-2")
 	}
 	potionCounts := map[string]int{}
 	scrollCounts := map[string]int{}
@@ -358,32 +420,51 @@ func (g *Game) Render() Frame {
 	panel = append(panel, potionLines...)
 	panel = append(panel, scrollLines...)
 	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1")
-	for len(panel) < 26 {
+	// Panel capacity: 4 members *6 =24 + 6 inv =30 (was 26 with 5 per member). Keep 30, truncate with (+N more) handled above.
+	for len(panel) < 30 {
 		panel = append(panel, "")
 		panelFG = append(panelFG, "gray-1")
 	}
-	if len(panel) > 26 {
-		panel = panel[:26]
-		panelFG = panelFG[:26]
+	if len(panel) > 30 {
+		panel = panel[:30]
+		panelFG = panelFG[:30]
 	}
-	// Status - Floor | Food | Carry | Level/XP | Gold | Score (no Turn, no HP, no Seed)
-	// Panel below map (status bar) shows Carry as "Carry C/M" in gold; Food is capitalized as "Food" not "FOOD".
+	// Status - Floor | Light | Aware | Food | Carry (+pre-warning) | Level/XP | Gold | Score
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
+	lightStr := fmt.Sprintf("Light %d", g.Party.BestLight())
+	aware := ""
+	if g.Party.HasRogue() || g.Party.HasWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard {
+		aware = "Aware"
+	}
 	foodStr := fmt.Sprintf("Food %d %s", g.Food, g.HungerState())
 	carryMax := g.Party.CarryCapacity()
 	carryUsed := g.Party.CarryUsed()
 	carryStr := fmt.Sprintf("Carry %d/%d", carryUsed, carryMax)
+	if carryMax > 0 {
+		if carryUsed >= carryMax {
+			carryStr += " FULL!"
+		} else if carryUsed+1 >= carryMax {
+			carryStr += " !near full"
+		} else if carryUsed+2 >= carryMax {
+			carryStr += " near full"
+		}
+	}
 	levelStr := fmt.Sprintf("Level %d XP %d/%d", g.Level, g.XP, g.XPToNext)
 	goldStr := fmt.Sprintf("Gold %d", g.Gold)
 	scoreStr := fmt.Sprintf("Score %d", g.CalculateScore())
-	status := fmt.Sprintf("%s | %s | %s | %s | %s | %s", floorStr, foodStr, carryStr, levelStr, goldStr, scoreStr)
+	var status string
+	if aware != "" {
+		status = fmt.Sprintf("%s | %s %s | %s | %s | %s | %s | %s", floorStr, lightStr, aware, foodStr, carryStr, levelStr, goldStr, scoreStr)
+	} else {
+		status = fmt.Sprintf("%s | %s | %s | %s | %s | %s | %s", floorStr, lightStr, foodStr, carryStr, levelStr, goldStr, scoreStr)
+	}
 	logLines := make([]string, t.Layout.LogLines)
 	for i := range logLines {
 		logLines[i] = ""
 	}
 	copy(logLines[max(0, len(logLines)-len(g.Log)):], g.Log)
 
-	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u(menu+cursor)  Throw:t(menu+cursor)  Stairs:>/ <  Quit:Esc  Help:?"
+	hints := "Move: numpad/arrows/hjkl  Wait:5/./Space  q/w/e/r: select  g: pickup/feature  Rest:z  Use:u  Throw:t  Stairs:>/<  Help:?"
 	if g.UsePending.Active {
 		hints = "Use: move cursor, Enter to use, Esc to cancel"
 	} else if g.ThrowPending.Active {
@@ -414,11 +495,52 @@ func (g *Game) Render() Frame {
 		}
 	} else if f := g.featureAt(g.Party.Pos); f != nil {
 		if f.IsFountain() {
-			hints = "Fountain: g to drink  |  Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Help:?"
+			hints = "Fountain: g to drink  |  Move: numpad/arrow/hjkl  Wait:5/./Space  Rest:z  Help:?"
 		} else if f.IsMerchant() {
-			hints = "Merchant: g to browse  |  Move: numpad/arrow/hjkl  Wait:5/.  Help:?"
+			hints = "Merchant: g to browse  |  Move: numpad/arrow/hjkl  Wait:5/./Space  Help:?"
 		} else if f.IsForge() {
-			hints = "Forge: g to use (u also)  |  Move: numpad/arrow/hjkl  Wait:5/."
+			costStr := ""
+			ct := f.CostType
+			if ct == "" {
+				ct = "gold"
+			}
+			cost := f.Cost
+			if cost == 0 {
+				if ct == "food" {
+					cost = 50
+				} else {
+					cost = 25
+				}
+			}
+			if f.Cost == 0 {
+				costStr = " (free - 0 " + ct + ")"
+			} else {
+				costStr = fmt.Sprintf(" (%d %s)", cost, ct)
+			}
+			hints = fmt.Sprintf("Forge: g to use%s (u also)  |  Move: numpad/arrow/hjkl  Wait:5/./Space", costStr)
+		} else if f.IsVault() {
+			if f.Locked {
+				if g.Party.HasRogue() || g.Party.HasWizard() || g.Wizard {
+					hints = fmt.Sprintf("Vault: g to loot %d gold%s  |  Move: numpad/arrow/hjkl  Help:?", f.Treasure, map[bool]string{true: " (trapped)", false: ""}[f.Trapped])
+				} else {
+					hints = "Vault: locked - need rogue or wizard  |  Move: numpad/arrow/hjkl  Help:?"
+				}
+			} else {
+				hints = fmt.Sprintf("Vault: g to loot %d gold%s  |  Move: numpad/arrow/hjkl  Help:?", f.Treasure, map[bool]string{true: " (trapped)", false: ""}[f.Trapped])
+			}
+		} else if f.IsPitfall() {
+			aware := !f.Hidden || g.Party.HasRogue() || g.Party.HasWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard
+			if f.Hidden && !aware {
+				hints = "Pitfall: hidden (step carefully)  |  Move: numpad/arrow/hjkl  Help:?"
+			} else if f.Hidden && aware {
+				hints = "Pitfall: hidden but you are Aware (spotted)  |  Move: numpad/arrow/hjkl  Help:?"
+			} else {
+				hints = "Pitfall: obvious one-way drop  |  Move: numpad/arrow/hjkl  Help:?"
+			}
+		} else if f.IsDen() {
+			hints = fmt.Sprintf("Den: %d monsters lurk  g to approach?  |  Move: numpad/arrow/hjkl  Help:?", f.MonsterCount)
+		} else if f.IsShrine() {
+			hints = "Shrine: g to pray (+)  |  Move: numpad/arrow/hjkl  Wait:5/./Space  Help:?"
 		}
 	}
 	return Frame{
@@ -957,16 +1079,17 @@ func (g *Game) RenderHelpOverlay() Frame {
 		{"PILGRIM'S TEMPLE - HELP", "gold-bright"},
 		{"", "bg"},
 		{"q / w / e / r  - select member 1-4 (free)", "gray-1"},
-		{"Move: arrows, numpad 1-9, hjkl + y u b n", "gray-1"},
+		{"Move: arrows, numpad 1-9, hjkl + y b n + 9 (NE)", "gray-1"},
+		{"  y=up-left(7) 9=up-right  b=down-left(1) n=down-right(3)  u=use", "gray-2"},
 		{"5 / . / Space  - wait 1 turn", "gray-1"},
 		{"z / Z  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", "gray-1"},
-		{"g  - contextual use: pickup, or on fountain/merchant/forge (press g)", "gray-1"},
+		{"g  - contextual use: pickup, or on fountain/merchant/forge/vault/shrine/pitfall", "gray-1"},
 		{"u/U - use menu (potions/scrolls) -> cursor targeting (gamble on enemies)", "gray-1"},
 		{"t  - throw potion (menu + cursor)  -- use cursor also for potions/scrolls", "gray-1"},
 		{"v  - look: move cursor, v/Enter/Esc to examine", "gray-1"},
 		{"> / <  - stairs down / up", "gray-1"},
 		{"?  - help (this overlay)", "gold"},
-		{"Esc - quit to menu   ] - wizard menu", "gray-1"},
+		{"Esc - quit to menu", "gray-1"},
 		{"", "bg"},
 		{"Rest: z heals each living member 15 HP over 10 turns;", "gray-2"},
 		{"world advances; ends early if foe appears or hunger ticks.", "gray-2"},
@@ -990,8 +1113,8 @@ func (g *Game) RenderHelpOverlay() Frame {
 	// Draw border box around lines (optional subtle frame)
 	status := fmt.Sprintf("Help | Seed %d | Floor %d/%d", g.Seed, g.Floor+1, t.Floors)
 	hints := "Esc / Enter / ? : close help  (no turn consumed)"
-	panel := []string{"", "Commands", "q/w/e/r select", "arrows/hjkl move", "5/. wait  z rest", "g contextual (pickup/fountain/merchant/forge)", "u use(menu)  t throw  v look  >/< stairs", "? help  Esc quit", "] wizard"}
-	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1"}
+	panel := []string{"", "Commands", "q/w/e/r select", "arrows/hjkl move", "5/./Space wait  z rest", "g contextual (pickup/fountain/merchant/forge/vault/shrine/pitfall)", "u use(menu)  t throw  v look  >/< stairs", "? help  Esc quit"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1"}
 	for len(panel) < 12 {
 		panel = append(panel, "")
 		panelFG = append(panelFG, "gray-1")
@@ -1000,7 +1123,7 @@ func (g *Game) RenderHelpOverlay() Frame {
 }
 
 // RenderHelpOverlayTuning is a standalone variant used by frontends that hold only tuning (e.g. menu help).
-func RenderHelpOverlay(tuning Tuning) Frame {
+func RenderHelpOverlayTuning(tuning Tuning) Frame {
 	// Build a minimal game stub so the overlay can still show tuning info.
 	g := &Game{Tuning: tuning, Seed: 0, Food: tuning.Food.StartClock, Level: 1, XPToNext: 100, Floor: 0}
 	if g.Food == 0 {

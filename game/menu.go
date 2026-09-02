@@ -33,13 +33,32 @@ func LoadClasses() ([]ClassInfo, error) {
 
 var MainMenuOptions = []string{"New Game", "Scores", "Exit"}
 
+// GetMainMenuOptions returns menu entries, adding "Load game" when a save exists.
+func GetMainMenuOptions() []string {
+	if HasSave() {
+		return []string{"New Game", "Scores", "Exit", "Load game"}
+	}
+	return MainMenuOptions
+}
+
 type MainMenuState struct {
 	Selected int
 }
 
 func (m *MainMenuState) Move(dir int) {
-	n := len(MainMenuOptions)
+	opts := GetMainMenuOptions()
+	n := len(opts)
+	if n == 0 {
+		return
+	}
 	m.Selected = (m.Selected + dir + n) % n
+	// Clamp in case HasSave changed between moves.
+	if m.Selected >= n {
+		m.Selected = n - 1
+	}
+	if m.Selected < 0 {
+		m.Selected = 0
+	}
 }
 
 type CharSelectState struct {
@@ -169,8 +188,11 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 		}
 		names += fmt.Sprintf("%s (%s)", m.Name, m.Class)
 	}
-	g.Logf("Party: %s", names)
 	g.Logf("You stand at the temple threshold.")
+	// First-20-turns micro-tutorial: one-time on floor 0 Turn 0
+	if g.Floor == 0 && g.Turn == 0 {
+		g.Logf("Move 8/2/4/6 or arrows/hjkl, 5/. or Space to wait, q/w/e/r pick member, g pick up, ? for help.")
+	}
 	g.UpdateFOV()
 	return g
 }
@@ -217,6 +239,9 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 	}
 	g.Logf("Party: %s", names)
 	g.Logf("You stand at the temple threshold.")
+	if g.Floor == 0 && g.Turn == 0 {
+		g.Logf("Move 8/2/4/6 or arrows/hjkl, 5/. or Space to wait, q/w/e/r pick member, g pick up, ? for help.")
+	}
 	g.UpdateFOV()
 	return g
 }
@@ -234,7 +259,7 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 	sub := "Roguetemple's Fortnight 2"
 	drawCentered(cells, w, h/2-4, title, "gold-bright")
 	drawCentered(cells, w, h/2-3, sub, "gray-1")
-	for i, opt := range MainMenuOptions {
+	for i, opt := range GetMainMenuOptions() {
 		prefix := "  "
 		fg := "gray-1"
 		if i == selected {
@@ -249,7 +274,7 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 		panel = append(panel, "")
 	}
 	status := "Main Menu"
-	hints := "Up/Down or k/j: move  Enter: select  Esc: quit"
+	hints := "Up/Down or k/j: move  Enter: select  Esc: quit  ?: help"
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
 // RenderMainMenuWithScores loads the Scoreboard via LoadScoreboard (handles missing file/localStorage gracefully)
@@ -269,7 +294,7 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 	sub := "Roguetemple's Fortnight 2"
 	drawCentered(cells, w, h/2-4, title, "gold-bright")
 	drawCentered(cells, w, h/2-3, sub, "gray-1")
-	for i, opt := range MainMenuOptions {
+	for i, opt := range GetMainMenuOptions() {
 		prefix := "  "
 		fg := "gray-1"
 		if i == selected {
@@ -285,7 +310,7 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 		sb = &Scoreboard{}
 	}
 	entries := sb.GetHighScores(5)
-	yStart := h/2 + 1 + len(MainMenuOptions) + 1
+	yStart := h/2 + 1 + len(GetMainMenuOptions()) + 1
 	if yStart < h {
 		drawCentered(cells, w, yStart, "-- SCOREBOARD --", "gold")
 		yStart++

@@ -135,7 +135,7 @@ func (g *Game) CalculateScore() int {
 	if g.Party != nil {
 		survivors = g.Party.LivingCount()
 	}
-	escaped := g.Won
+	escaped := g.Escaped
 	return scoreForPure(floors, kills, survivors, escaped, w)
 }
 
@@ -155,7 +155,7 @@ func (g *Game) CalculateScoreWithWeights(w ScoreWeights) int {
 	if g.Party != nil {
 		survivors = g.Party.LivingCount()
 	}
-	return scoreForPure(floors, kills, survivors, g.Won, w)
+	return scoreForPure(floors, kills, survivors, g.Escaped, w)
 }
 // depthReached computes DepthReached as max(g.Floor+1, max VisitedFloors+1).
 func (g *Game) depthReached() int {

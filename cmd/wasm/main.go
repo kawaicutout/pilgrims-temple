@@ -61,6 +61,7 @@ const (
 	stateMerchant
 	stateShrine
 	stateScores
+	stateMenuHelp
 )
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -131,6 +132,7 @@ const (
 		} else if g.Won {
 			statusDiv.Set("textContent", "VICTORY! Seed "+itoa(g.Seed)+" - refresh to play again.")
 		} else if g.Over {
+				_ = game.DeleteSave()
 			statusDiv.Set("textContent", "YOU DIED. Seed "+itoa(g.Seed)+" - refresh to play again.")
 		} else if g.LevelUpPending != nil {
 			frame2 := g.RenderLevelUp()
@@ -195,6 +197,12 @@ const (
 	}
 	renderMenu()
 
+	js.Global().Get("window").Call("addEventListener", "beforeunload", js.FuncOf(func(this js.Value, args []js.Value) any {
+		if g != nil && !g.Over {
+			_ = game.Save(g)
+		}
+		return nil
+	}))
 	var keyHandler js.Func
 	keyHandler = js.FuncOf(func(this js.Value, args []js.Value) any {
 		e := args[0]
@@ -215,8 +223,13 @@ const (
 				menu.Move(1)
 				renderMenu()
 			case game.KeyEnter:
-				switch menu.Selected {
-				case 0:
+				opts := game.GetMainMenuOptions() // HasSave gated
+				if menu.Selected < 0 || menu.Selected >= len(opts) {
+					break
+				}
+				opt := opts[menu.Selected]
+				switch opt {
+				case "New Game":
 					var err error
 					cs, err = game.NewCharSelect()
 					if err != nil {
@@ -224,17 +237,36 @@ const (
 					}
 					state = stateCharSelect
 					renderCharSelect()
-				case 1:
+				case "Scores":
 					scoresSelected = 0
 					state = stateScores
 					renderScores()
-				case 2:
+				case "Exit":
 					// Exit not applicable on web; just stay
+				case "Load game":
+					if lg, err := game.Load(); err == nil && lg != nil {
+						g = lg
+						state = statePlaying
+						renderGame()
+					}
 				}
 			case game.KeyQuit:
 				// No exit on web
+			case game.KeyHelp:
+				doc.Call("getElementById", "game").Set("innerHTML", buildHTML(game.RenderHelpOverlayTuning(tuning), tuning))
+				statusDiv.Set("innerHTML", "Help | ?/Esc to close")
+				hintsDiv.Set("innerHTML", "Esc / Enter / ? : close help")
+				state = stateMenuHelp
 			}
-		case stateScores:
+		case stateMenuHelp:
+				switch k {
+				case game.KeyQuit, game.KeyEnter, game.KeyHelp:
+					state = stateMenu
+					renderMenu()
+				default:
+					doc.Call("getElementById", "game").Set("innerHTML", buildHTML(game.RenderHelpOverlayTuning(tuning), tuning))
+				}
+			case stateScores:
 			switch k {
 			case game.KeyUp:
 				if scoresSelected > 0 {
@@ -478,10 +510,14 @@ const (
 				renderGame()
 			}
 			if g.Quit {
+				if !g.Over {
+					_ = game.Save(g)
+				}
 				state = stateMenu
 				g = nil
 				renderMenu()
 			} else if g.Over {
+				_ = game.DeleteSave()
 				if k == game.KeyQuit || k == game.KeyEnter {
 					state = stateMenu
 					g = nil
@@ -548,10 +584,14 @@ const (
 					renderLevelUp()
 				}
 				if g.Quit {
+				if !g.Over {
+					_ = game.Save(g)
+				}
 					state = stateMenu
 					g = nil
 					renderMenu()
 				} else if g.Over {
+				_ = game.DeleteSave()
 					if k == game.KeyQuit || k == game.KeyEnter {
 						state = stateMenu
 						g = nil
@@ -567,10 +607,14 @@ const (
 						renderLevelUp()
 					}
 					if g.Quit {
+				if !g.Over {
+					_ = game.Save(g)
+				}
 						state = stateMenu
 						g = nil
 						renderMenu()
 					} else if g.Over {
+				_ = game.DeleteSave()
 						if k == game.KeyQuit || k == game.KeyEnter {
 							state = stateMenu
 							g = nil
@@ -639,10 +683,14 @@ const (
 					renderLevelUp()
 				}
 				if g.Quit {
+				if !g.Over {
+					_ = game.Save(g)
+				}
 					state = stateMenu
 					g = nil
 					renderMenu()
 				} else if g.Over {
+				_ = game.DeleteSave()
 					if k == game.KeyQuit || k == game.KeyEnter {
 						state = stateMenu
 						g = nil
@@ -658,10 +706,14 @@ const (
 						renderLevelUp()
 					}
 					if g.Quit {
+				if !g.Over {
+					_ = game.Save(g)
+				}
 						state = stateMenu
 						g = nil
 						renderMenu()
 					} else if g.Over {
+				_ = game.DeleteSave()
 						if k == game.KeyQuit || k == game.KeyEnter {
 							state = stateMenu
 							g = nil
@@ -708,10 +760,14 @@ const (
 							renderLevelUp()
 						}
 						if g.Quit {
+				if !g.Over {
+					_ = game.Save(g)
+				}
 							state = stateMenu
 							g = nil
 							renderMenu()
 						} else if g.Over {
+				_ = game.DeleteSave()
 							if k == game.KeyQuit || k == game.KeyEnter {
 								state = stateMenu
 								g = nil
@@ -771,10 +827,14 @@ const (
 								renderLevelUp()
 							}
 							if g.Quit {
+				if !g.Over {
+					_ = game.Save(g)
+				}
 								state = stateMenu
 								g = nil
 								renderMenu()
 							} else if g.Over {
+				_ = game.DeleteSave()
 								if k == game.KeyQuit || k == game.KeyEnter {
 									state = stateMenu
 									g = nil
@@ -1060,7 +1120,13 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 			cell := frame.Cells[y][x]
 			col := colorForToken(cell.FG)
 			ch := string(cell.Glyph)
-			html += `<span style="color:` + col + `">` + esc(ch) + `</span>`
+			bgStyle := ""
+			if cell.BG == "cursor" {
+				bgStyle = ";background:var(--gold-bright);color:var(--bg);font-weight:bold"
+				html += `<span style="color:` + col + bgStyle + `">` + esc(ch) + `</span>`
+			} else {
+				html += `<span style="color:` + col + `">` + esc(ch) + `</span>`
+			}
 		}
 		if y < len(frame.Panel) {
 			line := frame.Panel[y]

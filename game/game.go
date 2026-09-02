@@ -723,7 +723,7 @@ func (g *Game) handleVault(f *Feature) bool {
 		return false
 	}
 	if f.Locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
-		g.Logf("Locked vault - need rogue.")
+		g.Logf("Locked vault - need rogue or wizard.")
 		return true
 	}
 	// Allow loot: give treasure gold, handle trap.
@@ -1618,7 +1618,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			}
 		}
 		if locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
-			g.Logf("The vault door is locked -- need rogue.")
+			g.Logf("The vault door is locked -- need rogue or wizard.")
 			return ActionResult{}
 		}
 		lvl.SetDoorOpen(next, true)
@@ -1792,7 +1792,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	if f := g.featureAt(next); f != nil {
 		// Vault locked check — block entry if no rogue/wizard.
 		if f.IsVault() && f.Locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
-			g.Logf("Locked vault - need rogue.")
+			g.Logf("Locked vault - need rogue or wizard.")
 			return ActionResult{}
 		}
 		// Pitfall trigger — one-way hidden/obvious, damage 2-4 if hidden & unaware.
@@ -1876,14 +1876,11 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			g.Logf("A forge glows here (%d %s to use, press g).", costVal, costStr)
 		}
 	}
-	// Check relic on final floor
+	// Check relic on final floor — claim but do not end run; escape to surface for bonus.
 	if g.Floor == g.Tuning.Floors-1 && next == g.Relic {
-		g.Over = true
-		g.Won = true
-		g.Cause = "Victory"
 		g.RelicCollected = true
-		g.Logf("You claim the relic! Victory - seed %d. Score %d.", g.Seed, g.CalculateScore())
-		g.RecordScore()
+		g.Won = false
+		g.Logf("You claim the relic — escape to surface for bonus!")
 		// Reset transition tracking so old floors feel new again.
 		g.VisitedFloors = make(map[int]bool)
 		g.TransitionFiredForLevel = make(map[int]bool)
@@ -1898,7 +1895,8 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 				}
 			}
 		}
-		g.Logf("The temple stirs: old floors repopulate. Final Score %d.", g.CalculateScore())
+		g.Logf("The temple stirs: old floors repopulate.")
+		g.EndPlayerTurn("")
 		return ActionResult{Moved: true}
 	}
 	g.EndPlayerTurn("")
@@ -1973,6 +1971,16 @@ func (g *Game) TryStairsUp() {
 		g.Logf("No stairs up here.")
 		return
 	}
+	if g.Floor == 0 && g.RelicCollected && g.Party.Pos == lvl.StairsUp {
+		g.Escaped = true
+		g.Over = true
+		g.Won = true
+		g.Cause = "Escaped"
+		g.Logf("You escape the temple with the relic! Victory - seed %d. Score %d.", g.Seed, g.CalculateScore())
+		g.RecordScore()
+		_ = DeleteSave()
+		return
+	}
 	if g.Floor == 0 {
 		g.Logf("You are at the entrance.")
 		return
@@ -2001,7 +2009,6 @@ func (g *Game) TryStairsUp() {
 func (g *Game) ApplyFloorTransition() {
 	// Biome entry feel: log evocative line on floor entry.
 	g.logBiomeEntry()
-	// On-transition talents: fire once per floor per run, reset on relic.
 	// Forage (druid): +100 food per bearer. Restoration (cleric): full heal all living members.
 	for _, m := range g.Party.Members {
 		if !m.IsAlive() {

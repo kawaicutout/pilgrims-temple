@@ -104,11 +104,20 @@ func (g *Game) TryPickup() bool {
 				remaining = append(remaining, it)
 				continue
 			}
+			hadPotion := false
+			for _, inv := range g.Party.Inventory {
+				if inv.Kind == "potion" {
+					hadPotion = true
+					break
+				}
+			}
 			g.Party.Inventory = append(g.Party.Inventory, it)
 			g.Logf("Picked up potion: %s.", it.Name)
+			if !hadPotion {
+				g.Logf("Tip: potions look like '%s' — unidentified. Use 'u' to drink (or gamble on foe), 't' to throw; ? for help.", appearanceFromItem(it))
+			}
 			// Gnome 10% instant identify first of kind
 			if g.Party.HasRace("gnome") && !IsIdentified(appearanceFromItem(it)) {
-				// check if first of kind (no other held with same appearance already identified)
 				isFirst := true
 				app := appearanceFromItem(it)
 				for _, inv := range g.Party.Inventory[:len(g.Party.Inventory)-1] {
@@ -132,7 +141,6 @@ func (g *Game) TryPickup() bool {
 			}
 		case "scroll":
 			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
-				g.Logf("Carry full - cannot pick up scroll: %s.", it.Name)
 				remaining = append(remaining, it)
 				continue
 			}

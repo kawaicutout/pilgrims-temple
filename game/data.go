@@ -18,9 +18,10 @@ type Tuning struct {
 		Height int `json:"height"`
 	} `json:"map"`
 	Layout struct {
-		MinCols  int `json:"minCols"`
-		MinRows  int `json:"minRows"`
-		LogLines int `json:"logLines"`
+		MinCols   int `json:"minCols"`
+		MinRows   int `json:"minRows"`
+		LogLines  int `json:"logLines"`
+		PanelWrap int `json:"panelWrap"`
 	} `json:"layout"`
 	Food struct {
 		PerMemberPerTurn  int      `json:"perMemberPerTurn"`

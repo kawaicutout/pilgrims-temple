@@ -134,6 +134,9 @@ func main() {
 						}
 					}
 				}
+				if cell.BG == "cursor" {
+					st = st.Reverse(true).Bold(true)
+				}
 				s.SetContent(x, y, cell.Glyph, nil, st)
 			}
 		}
@@ -235,6 +238,7 @@ func main() {
 		stateMerchant
 		stateShrine
 		stateScores
+	stateMenuHelp
 	)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -312,6 +316,8 @@ func main() {
 				if g != nil {
 					drawFrame(g.RenderShrineMenu())
 				}
+			case stateMenuHelp:
+				drawFrame(game.RenderHelpOverlayTuning(tuning))
 			}
 		case *tcell.EventKey:
 			key, code := tcellKeyToRaw(e)
@@ -344,6 +350,17 @@ func main() {
 					}
 				case game.KeyQuit:
 					return
+				case game.KeyHelp:
+					drawFrame(game.RenderHelpOverlayTuning(tuning))
+					state = stateMenuHelp
+				}
+			case stateMenuHelp:
+				switch k {
+				case game.KeyQuit, game.KeyEnter, game.KeyHelp:
+					state = stateMenu
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+				default:
+					drawFrame(game.RenderHelpOverlayTuning(tuning))
 				}
 			case stateScores:
 				switch k {

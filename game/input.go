@@ -252,6 +252,12 @@ func (g *Game) HandleKey(k Key) bool {
 	case KeyStairsUp:
 		g.TryStairsUp()
 		return true
+	case KeyQuit:
+		// Quit to menu without consuming a turn; frontend will Save if !Over.
+		if !g.Over {
+			g.Quit = true
+		}
+		return false
 	default:
 		if dir, ok := KeyToDir(k); ok {
 			g.TryMove(dir)

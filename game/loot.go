@@ -7,6 +7,52 @@ import (
 	"strings"
 )
 
+// lootPartyForVerdant is set from Game when party gains verdant to boost ration weight
+var lootPartyForVerdant *Party
+
+func lootHealBonus(p *Party) int {
+	if p != nil && p.HasTalent("blessed_hands") {
+		return 1
+	}
+	return 0
+}
+
+func hasThickSkinNegate(p *Party, rng *rand.Rand) bool {
+	if p == nil || rng == nil || !p.HasClass("barbarian") {
+		return false
+	}
+	chance := 0.30
+	if p.HasBardAlive() {
+		chance = 0.33
+	}
+	return rng.Float64() < chance
+}
+
+func hasCounterspellNegate(p *Party, rng *rand.Rand) bool {
+	if p == nil || rng == nil || !p.HasTalent("counterspell") {
+		return false
+	}
+	return rng.Float64() < 0.20
+}
+
+func scaledScroll(base int, p *Party) int {
+	mult := 1.0
+	if p != nil && p.HasClass("wizard") {
+		if p.HasBardAlive() {
+			mult *= 1.22
+		} else {
+			mult *= 1.20
+		}
+	}
+	if p != nil && p.HasTalent("resonant") {
+		mult *= 1.20
+	}
+	if mult == 1.0 {
+		return base
+	}
+	return int(float64(base) * mult)
+}
+
 // GroundItem is a pick-up on the floor. Added in M5 partial; wizard loot uses it for debug.
 type GroundItem struct {
 	Pos  Pos    `json:"pos"`
@@ -95,10 +141,13 @@ func (g *Game) TryPickup() bool {
 				}
 			}
 			f := amt * refill
+			if g.Party.HasTalent("hoarder") {
+				f += 25 * amt
+				g.Logf("Hoarder bonus +25 food.")
+			}
 			g.Food += f
 			g.FoodFloat += float64(f)
 			g.Logf("Picked up ration (+%d food).", f)
-		case "potion":
 			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
 				g.Logf("Carry full - cannot pick up potion: %s.", it.Name)
 				remaining = append(remaining, it)
@@ -372,11 +421,13 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 	case "potion":
 		switch trueType {
 		case "healing":
+			bonus := lootHealBonus(g.Party)
+			healAmt := 12 + bonus
 			if isSelf {
 				healed := 0
 				for _, m := range g.Party.Members {
 					if m.IsAlive() && m.HP < m.MaxHP {
-						m.HP += 12
+						m.HP += healAmt
 						if m.HP > m.MaxHP {
 							m.HP = m.MaxHP
 						}
@@ -384,7 +435,7 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 					}
 				}
 				if healed > 0 {
-					g.Logf("Healing potion restores 12 HP to %d members.", healed)
+					g.Logf("Healing potion restores %d HP to %d members.", healAmt, healed)
 				} else {
 					g.Logf("Healing potion: already at full health.")
 				}
@@ -392,7 +443,7 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 				healed := 0
 				for _, m := range targetEnemy.Members {
 					if m.IsAlive() && m.HP < m.MaxHP {
-						m.HP += 12
+						m.HP += healAmt
 						if m.HP > m.MaxHP {
 							m.HP = m.MaxHP
 						}
@@ -400,7 +451,7 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 					}
 				}
 				if healed > 0 {
-					g.Logf("Healing potion restores 12 HP to %d enemies (%s).", healed, targetEnemy.DisplayName())
+					g.Logf("Healing potion restores %d HP to %d enemies (%s).", healAmt, healed, targetEnemy.DisplayName())
 				} else {
 					g.Logf("Healing potion splashes on %s with no effect.", targetEnemy.DisplayName())
 				}
@@ -409,15 +460,21 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 			}
 		case "poison":
 			if isSelf {
-				_, dmg := g.Party.ApplyDamage(g.RNG, 6)
-				g.Logf("Poison potion deals %d damage!", dmg)
-				if g.Party.LivingCount() == 0 {
-					g.Over = true
-					if g.Cause == "" {
-						g.Cause = "Poison"
+				if hasThickSkinNegate(g.Party, g.RNG) {
+					g.Logf("Thick skin shrugs off poison!")
+				} else if hasCounterspellNegate(g.Party, g.RNG) {
+					g.Logf("Counterspell negates poison!")
+				} else {
+					_, dmg := g.Party.ApplyDamage(g.RNG, 6)
+					g.Logf("Poison potion deals %d damage!", dmg)
+					if g.Party.LivingCount() == 0 {
+						g.Over = true
+						if g.Cause == "" {
+							g.Cause = "Poison"
+						}
+						g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+						g.RecordScore()
 					}
-					g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
-					g.RecordScore()
 				}
 			} else if targetEnemy != nil {
 				dmgTotal := 0
@@ -471,8 +528,14 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 			}
 		case "paralysis":
 			if isSelf {
-				g.Party.ApplyStatus(StatusParalysis, 4)
-				g.Logf("Paralysis potion: you are paralyzed for 3 turns!")
+				if hasThickSkinNegate(g.Party, g.RNG) {
+					g.Logf("Thick skin shrugs off paralysis!")
+				} else if hasCounterspellNegate(g.Party, g.RNG) {
+					g.Logf("Counterspell negates paralysis!")
+				} else {
+					g.Party.ApplyStatus(StatusParalysis, 4)
+					g.Logf("Paralysis potion: you are paralyzed for 3 turns!")
+				}
 			} else if targetEnemy != nil {
 				targetEnemy.ApplyStatus(StatusParalysis, 4)
 				g.Logf("Paralysis potion: %s is paralyzed for 3 turns!", targetEnemy.DisplayName())
@@ -638,12 +701,13 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 				} else if !isSelf {
 					center = target
 				}
+				dmgBase := scaledScroll(10, g.Party)
 				for _, e := range lvl.Enemies {
 					if !e.IsAlive() {
 						continue
 					}
 					if max(abs(e.Pos.X-center.X), abs(e.Pos.Y-center.Y)) <= 2 {
-						dmg := 10
+						dmg := dmgBase
 						if e.HasStatus(StatusFireResist) {
 							dmg = (dmg * 7) / 10
 							if dmg < 1 {
@@ -668,7 +732,6 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 					}
 				}
 			}
-		case "mapping":
 			if lvl := g.CurLevel(); lvl != nil {
 				for y := range lvl.H {
 					for x := range lvl.W {
@@ -685,6 +748,7 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 					affix := GetRandomAffix(g.RNG)
 					if affix != "" {
 						m.Affixes = append(m.Affixes, affix)
+						ApplyAffixMod(m, affix)
 						g.Logf("Enchant scroll: %s gains %s.", m.Name, affix)
 					} else {
 						m.ATK[0]++
@@ -707,6 +771,7 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 					affix := GetRandomAffix(g.RNG)
 					if affix != "" {
 						m.Affixes = append(m.Affixes, affix)
+						ApplyAffixMod(m, affix)
 						g.Logf("Enchant scroll: %s gains %s!", targetEnemy.DisplayName(), affix)
 					} else {
 						m.ATK[0]++
@@ -719,7 +784,6 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 			}
 		case "confusion":
 			if isSelf || targetEnemy == nil {
-				// confusion when targeted on self (or empty) = area as before
 				if !isSelf && targetEnemy == nil {
 					// empty ground targeted: confuse enemies around target
 					affected := 0
@@ -757,10 +821,11 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 				g.Logf("Confusion scroll: %s is confused for 8 turns!", targetEnemy.DisplayName())
 			}
 		case "greater_healing":
+			healGH := scaledScroll(20, g.Party) + lootHealBonus(g.Party)
 			if isSelf || targetEnemy == nil {
 				for _, m := range g.Party.Members {
 					if m.IsAlive() {
-						m.HP += 20
+						m.HP += healGH
 						if m.HP > m.MaxHP {
 							m.HP = m.MaxHP
 						}
@@ -773,11 +838,11 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 				if g.Party.HasStatus(StatusHex) {
 					g.Party.RemoveStatus(StatusHex)
 				}
-				g.Logf("Greater healing scroll restores 20 HP to all members.")
+				g.Logf("Greater healing scroll restores %d HP to all members.", healGH)
 			} else {
 				for _, m := range targetEnemy.Members {
 					if m.IsAlive() {
-						m.HP += 20
+						m.HP += healGH
 						if m.HP > m.MaxHP {
 							m.HP = m.MaxHP
 						}
@@ -789,7 +854,7 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 				if targetEnemy.HasStatus(StatusHex) {
 					targetEnemy.RemoveStatus(StatusHex)
 				}
-				g.Logf("Greater healing scroll restores 20 HP to %s!", targetEnemy.DisplayName())
+				g.Logf("Greater healing scroll restores %d HP to %s!", healGH, targetEnemy.DisplayName())
 			}
 		case "summon":
 			if isSelf || targetEnemy == nil {
@@ -893,10 +958,11 @@ func (g *Game) TryUseItem() bool {
 	case "potion":
 		switch trueType {
 		case "healing":
+			healAmt := 12 + lootHealBonus(g.Party)
 			healed := 0
 			for _, m := range g.Party.Members {
 				if m.IsAlive() && m.HP < m.MaxHP {
-					m.HP += 12
+					m.HP += healAmt
 					if m.HP > m.MaxHP {
 						m.HP = m.MaxHP
 					}
@@ -904,20 +970,26 @@ func (g *Game) TryUseItem() bool {
 				}
 			}
 			if healed > 0 {
-				g.Logf("Healing potion restores 12 HP to %d members.", healed)
+				g.Logf("Healing potion restores %d HP to %d members.", healAmt, healed)
 			} else {
 				g.Logf("Healing potion: already at full health.")
 			}
 		case "poison":
-			_, dmg := g.Party.ApplyDamage(g.RNG, 6)
-			g.Logf("Poison potion deals %d damage!", dmg)
-			if g.Party.LivingCount() == 0 {
-				g.Over = true
-				if g.Cause == "" {
-					g.Cause = "Poison"
+			if hasThickSkinNegate(g.Party, g.RNG) {
+				g.Logf("Thick skin shrugs off poison!")
+			} else if hasCounterspellNegate(g.Party, g.RNG) {
+				g.Logf("Counterspell negates poison!")
+			} else {
+				_, dmg := g.Party.ApplyDamage(g.RNG, 6)
+				g.Logf("Poison potion deals %d damage!", dmg)
+				if g.Party.LivingCount() == 0 {
+					g.Over = true
+					if g.Cause == "" {
+						g.Cause = "Poison"
+					}
+					g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+					g.RecordScore()
 				}
-				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
-				g.RecordScore()
 			}
 		case "strength":
 			g.Party.ApplyStatus(StatusStrength, 41)
@@ -929,8 +1001,14 @@ func (g *Game) TryUseItem() bool {
 			g.Party.ApplyStatus(StatusFireResist, 61)
 			g.Logf("Fire resistance potion: +30%% fire resist for 60 turns.")
 		case "paralysis":
-			g.Party.ApplyStatus(StatusParalysis, 4)
-			g.Logf("Paralysis potion: you are paralyzed for 3 turns!")
+			if hasThickSkinNegate(g.Party, g.RNG) {
+				g.Logf("Thick skin shrugs off paralysis!")
+			} else if hasCounterspellNegate(g.Party, g.RNG) {
+				g.Logf("Counterspell negates paralysis!")
+			} else {
+				g.Party.ApplyStatus(StatusParalysis, 4)
+				g.Logf("Paralysis potion: you are paralyzed for 3 turns!")
+			}
 		case "levitation":
 			g.Party.ApplyStatus(StatusLevitation, 26)
 			g.Logf("Levitation potion: you float above traps for 25 turns.")
@@ -1010,12 +1088,13 @@ func (g *Game) TryUseItem() bool {
 		case "fireball":
 			g.Logf("Fireball scroll: flames burst around you!")
 			if lvl := g.CurLevel(); lvl != nil {
+				dmgBase := scaledScroll(10, g.Party)
 				for _, e := range lvl.Enemies {
 					if !e.IsAlive() {
 						continue
 					}
 					if max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= 2 {
-						dmg := 10
+						dmg := dmgBase
 						if e.HasStatus(StatusFireResist) {
 							dmg = (dmg * 7) / 10
 							if dmg < 1 {
@@ -1041,7 +1120,6 @@ func (g *Game) TryUseItem() bool {
 					}
 				}
 			}
-		case "mapping":
 			if lvl := g.CurLevel(); lvl != nil {
 				for y := range lvl.H {
 					for x := range lvl.W {
@@ -1057,6 +1135,7 @@ func (g *Game) TryUseItem() bool {
 				affix := GetRandomAffix(g.RNG)
 				if affix != "" {
 					m.Affixes = append(m.Affixes, affix)
+					ApplyAffixMod(m, affix)
 					g.Logf("Enchant scroll: %s gains %s.", m.Name, affix)
 				} else {
 					m.ATK[0]++
@@ -1082,9 +1161,10 @@ func (g *Game) TryUseItem() bool {
 				g.Logf("Confusion scroll: no enemies in range.")
 			}
 		case "greater_healing":
+			healGH2 := scaledScroll(20, g.Party) + lootHealBonus(g.Party)
 			for _, m := range g.Party.Members {
 				if m.IsAlive() {
-					m.HP += 20
+					m.HP += healGH2
 					if m.HP > m.MaxHP {
 						m.HP = m.MaxHP
 					}
@@ -1097,7 +1177,7 @@ func (g *Game) TryUseItem() bool {
 			if g.Party.HasStatus(StatusHex) {
 				g.Party.RemoveStatus(StatusHex)
 			}
-			g.Logf("Greater healing scroll restores 20 HP to all members.")
+			g.Logf("Greater healing scroll restores %d HP to all members.", healGH2)
 		case "summon":
 			if len(g.Party.Members) >= 4 {
 				g.Logf("Summon scroll: party is full, summon fizzles.")
@@ -1277,6 +1357,10 @@ func pickLootKind(rng *rand.Rand, floor int, biome *Biome) string {
 			} else if ft.ItemWeight(k) > 0 {
 				w *= ft.ItemWeight(k)
 			}
+		}
+		// verdant talent: extra rations find chance
+		if k == "ration" && lootPartyForVerdant != nil && lootPartyForVerdant.HasTalent("verdant") {
+			w *= 1.5
 		}
 		if w < 0 {
 			w = 0

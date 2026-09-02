@@ -54,8 +54,10 @@ type Game struct {
 	RelicCollected          bool          `json:"relicCollected"`
 	NextAmbienceTurn        int           `json:"nextAmbienceTurn"`
 	NextElfIdentifyTurn     int           `json:"nextElfIdentifyTurn"`
+	NextLorekeeperTurn      int           `json:"nextLorekeeperTurn"`
 	Merchant                MerchantState `json:"merchant"`
 	Shrine                  ShrineState   `json:"shrine"`
+	WaitRefrainActive       bool          `json:"-"`
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {
@@ -81,7 +83,7 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	g.Relic = final.StairsDown
 	g.Party = GenerateParty(rng, 1)
 	ApplyRaceBuffs(g.Party)
-	// Init elf identify ticker: 250 -50 per extra elf when >=2
+	lootPartyForVerdant = g.Party
 	if iv := ElfIdentifyInterval(g.Party); iv > 0 {
 		g.NextElfIdentifyTurn = g.Turn + iv
 	}
@@ -377,6 +379,21 @@ func (g *Game) GainXP(amount int) {
 			g.Logf("Synergy bonus +%d XP.", extra)
 		}
 	}
+	if g.Party != nil {
+		inspiringCount := 0
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && m.HasTalent("inspiring") {
+				inspiringCount++
+			}
+		}
+		if inspiringCount > 0 {
+			extra := int(float64(amount) * 0.05 * float64(inspiringCount))
+			if extra > 0 {
+				amount += extra
+				g.Logf("Inspiring bonus +%d XP.", extra)
+			}
+		}
+	}
 	g.XP += amount
 	g.Logf("Gained %d XP (total %d/%d).", amount, g.XP, g.XPToNext)
 	for g.XP >= g.XPToNext {
@@ -453,25 +470,7 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 		affixID := pick.Options[0]
 		m.Affixes = append(m.Affixes, affixID)
 		g.Logf("%s gains affix %s.", m.Name, FriendlyID(affixID))
-		switch affixID {
-		case "veteran":
-			m.ATK[0]++
-			m.ATK[1]++
-		case "hardy":
-			m.MaxHP += 3
-			m.HP += 3
-		case "keen":
-			m.ATK[0]++
-		case "stout":
-			m.DEF++
-		case "bright":
-			m.Light++
-		case "burdened":
-			if m.Carry == 0 {
-				m.Carry = 5
-			}
-			m.Carry += 3
-		}
+		ApplyAffixMod(m, affixID)
 	} else {
 		if optionIdx < 0 || optionIdx >= len(pick.Options) {
 			return
@@ -501,14 +500,31 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 			// passive: handled in EndPlayerTurn/RestBatch per 5 ticks
 		case "hoarder":
 			// passive refill bonus handled on ration use; no instant stat
+			lootPartyForVerdant = g.Party
+		case "enduring":
+			m.MaxHP += 4
+			m.HP += 4
+		case "veterans_grip":
+			m.ATK[0]++
+			m.ATK[1]++
+		case "verdant":
+			lootPartyForVerdant = g.Party
+		case "evasion", "nimble", "second_wind", "blessed_hands", "tithe":
+			fallthrough
+		case "lorekeeper", "resonant", "attuned_tag", "cleave", "ghost_step", "restful":
+			fallthrough
+		case "inspiring", "refrain", "attuned", "counterspell", "shrug", "radiant":
+			fallthrough
+		case "deitys_gift", "forage", "restoration", "iron_will", "ward", "steady_hands":
+			// wired via HasTalent branches elsewhere; no instant stat
 		}
-	}
-	g.LevelUpPending.Current++
-	if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
-		g.LevelUpPending = nil
-		g.Logf("Level up complete.")
-	} else {
-		g.LevelUpPending.Cursor = 0
+		g.LevelUpPending.Current++
+		if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
+			g.LevelUpPending = nil
+			g.Logf("Level up complete.")
+		} else {
+			g.LevelUpPending.Cursor = 0
+		}
 	}
 }
 
@@ -631,6 +647,9 @@ func (g *Game) tickFood() {
 		return
 	}
 	cost := float64(living)*float64(g.Tuning.Food.PerMemberPerTurn) - g.frugalBonus()
+	if g.Party.HasAffix("of_plenty") {
+		cost -= 0.25
+	}
 	if cost < 0 {
 		cost = 0
 	}
@@ -901,6 +920,9 @@ func (g *Game) BuySelectedMerchant(index int) bool {
 				refill = 50
 			}
 		}
+		if g.Party.HasTalent("hoarder") {
+			refill += 25
+		}
 		g.Food += refill
 		g.FoodFloat += float64(refill)
 		g.Logf("Merchant sells %s for %dg (+%d food).", w.Name, w.Price, refill)
@@ -1011,6 +1033,17 @@ func (g *Game) ExecuteShrineChoice(index int) bool {
 		m.Alive = true
 		g.Party.Members = append(g.Party.Members, m)
 		g.Party.EnsureSelection()
+		ApplyRaceBuffs(g.Party)
+		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
+			g.NextElfIdentifyTurn = g.Turn + iv
+		}
+		if g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned") {
+			interval := 50
+			if g.Party.HasBardAlive() {
+				interval = 45
+			}
+			g.NextLorekeeperTurn = g.Turn + interval
+		}
 		g.Logf("Shrine recruits %s the %s! (+)", m.Name, m.Class)
 		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
 		g.Shrine = ShrineState{}
@@ -1031,6 +1064,17 @@ func (g *Game) ExecuteShrineChoice(index int) bool {
 		m.Alive = true
 		m.HP = m.MaxHP
 		g.Party.EnsureSelection()
+		ApplyRaceBuffs(g.Party)
+		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
+			g.NextElfIdentifyTurn = g.Turn + iv
+		}
+		if g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned") {
+			interval := 50
+			if g.Party.HasBardAlive() {
+				interval = 45
+			}
+			g.NextLorekeeperTurn = g.Turn + interval
+		}
 		g.Logf("Shrine resurrects %s for free! (+)", m.Name)
 		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
 		g.Shrine = ShrineState{}
@@ -1084,6 +1128,17 @@ func (g *Game) ExecuteShrineChoice(index int) bool {
 			g.Logf("Level up pending: %d talent picks. Press Tab to choose.", len(picks))
 		}
 		g.Logf("Shrine: old level %d -> %d free blessing.", oldLevel, g.Level)
+		ApplyRaceBuffs(g.Party)
+		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
+			g.NextElfIdentifyTurn = g.Turn + iv
+		}
+		if g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned") {
+			interval := 50
+			if g.Party.HasBardAlive() {
+				interval = 45
+			}
+			g.NextLorekeeperTurn = g.Turn + interval
+		}
 		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
 		g.Shrine = ShrineState{}
 		return true
@@ -1387,6 +1442,10 @@ func (g *Game) handleFountain(f *Feature) {
 	if dh == 0 {
 		dh = o.Delta
 	}
+	// blessed_hands +1 healing
+	if dh > 0 && g.Party.HasTalent("blessed_hands") {
+		dh++
+	}
 	if dh > 0 {
 		for _, m := range g.Party.Members {
 			if m.IsAlive() {
@@ -1470,8 +1529,10 @@ func (g *Game) handleMerchant(f *Feature) {
 				refill = 50
 			}
 		}
+		if g.Party.HasTalent("hoarder") {
+			refill += 25
+		}
 		g.Food += refill
-		g.FoodFloat += float64(refill)
 		g.Logf("Merchant sells %s for %dg (+%d food).", w.Name, w.Price, refill)
 	case "potion_heal":
 		healed := 0
@@ -1518,7 +1579,47 @@ func (g *Game) handlePitfall(f *Feature) bool {
 		return false
 	}
 	// Detection: rogue/wizard or wizard mode reveal.
+	// Dwarf tremorsense extends aware radius: aware if tremorsenseRadius >= manhattan(pos,pit)
 	aware := !f.Hidden || g.Party.HasRogue() || g.Party.HasWizard() || g.Wizard
+	if f.Hidden && !aware {
+		if r := SynergyTremorsense(g.Party); r > 0 {
+			dx := g.Party.Pos.X - f.Pos.X
+			if dx < 0 {
+				dx = -dx
+			}
+			dy := g.Party.Pos.Y - f.Pos.Y
+			if dy < 0 {
+				dy = -dy
+			}
+			if dx+dy <= r {
+				aware = true
+			}
+		}
+	}
+	// attuned/attuned_tag +1 aware range, steady_hands 10% trap detect extra
+	if f.Hidden && !aware {
+		if g.Party.HasTalent("attuned") || g.Party.HasTalent("attuned_tag") {
+			dx := g.Party.Pos.X - f.Pos.X
+			if dx < 0 {
+				dx = -dx
+			}
+			dy := g.Party.Pos.Y - f.Pos.Y
+			if dy < 0 {
+				dy = -dy
+			}
+			if dx+dy <= 1+1 {
+				aware = true
+			}
+		}
+	}
+	if f.Hidden && !aware && g.Party.HasTalent("steady_hands") && g.RNG != nil && g.RNG.Float64() < 0.10 {
+		aware = true
+	}
+	// ghost_step 50% trap ignore on move when hidden & aware (also wander skip elsewhere)
+	if f.Hidden && aware && g.Party.HasTalent("ghost_step") && g.RNG != nil && g.RNG.Float64() < 0.50 {
+		g.Logf("Ghost step: you slip past the pitfall.")
+		return false
+	}
 	if f.Hidden && !aware {
 		dmg := f.Damage
 		if dmg == 0 {
@@ -1547,7 +1648,6 @@ func (g *Game) handlePitfall(f *Feature) bool {
 		g.removeFeatureAt(f.Pos, FeaturePitfall)
 		return true
 	}
-	// Obvious or detected pitfall: still one-way trigger but no surprise damage.
 	if f.Hidden && aware {
 		g.Logf("You spot a hidden pitfall and step around its edge... but the floor gives way!")
 	}
@@ -1630,6 +1730,13 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	// Stay in place (wait) if dir none - silent per UI parity
 	if dir == DirNone {
 		g.Party.Active = g.Party.Selected
+		// refrain: on wait, waiter with talent heals others (handled in EndPlayerTurn)
+		if g.Party != nil && g.Party.Active >= 0 && g.Party.Active < len(g.Party.Members) {
+			waiter := g.Party.Members[g.Party.Active]
+			if waiter.IsAlive() && waiter.HasTalent("refrain") {
+				g.WaitRefrainActive = true
+			}
+		}
 		g.EndPlayerTurn("")
 		return ActionResult{Moved: false}
 	}
@@ -2027,14 +2134,29 @@ func (g *Game) ApplyFloorTransition() {
 					healed++
 				}
 			}
+			// clear negative statuses: hex/rend/bleed/spore/poison/curse/sleep/paralysis/confusion/entangle
+			for _, mm := range g.Party.Members {
+				if mm.IsAlive() {
+					_ = mm
+				}
+			}
+			if g.Party != nil {
+				for _, sid := range []string{StatusHex, StatusRend, StatusBleed, StatusSpore, StatusPoison, StatusCurse, StatusSleep, StatusParalysis, StatusConfusion, StatusEntangle} {
+					g.Party.RemoveStatus(sid)
+				}
+			}
 			if healed > 0 {
-				g.Logf("%s restores the party to full health.", m.Name)
+				g.Logf("%s restores the party to full health and clears afflictions.", m.Name)
 			} else {
-				g.Logf("%s channels restoration (party already healthy).", m.Name)
+				g.Logf("%s channels restoration (party already healthy, afflictions cleared).", m.Name)
 			}
 			// Only one restoration proc per party per transition (avoid duplicate full-heal spam if multiple clerics).
 			break
 		}
+	}
+	// Reset second_wind per floor
+	for _, m := range g.Party.Members {
+		m.SecondWindUsed = false
 	}
 }
 func (g *Game) EndPlayerTurn(msg string) {
@@ -2149,6 +2271,40 @@ func (g *Game) EndPlayerTurn(msg string) {
 			}
 		}
 	}
+	// Cleric healers_grace HoT: +0.5 HP/tick -> +1 every 2 ticks (bard-buffed 0.55 via extra 10% chance on odd)
+	if g.Party != nil && g.Party.HasClass("cleric") {
+		hasBard := g.Party.HasBardAlive()
+		should := false
+		if g.Turn%2 == 0 {
+			should = true
+		} else if hasBard && g.RNG != nil && g.RNG.Float64() < 0.10 {
+			should = true
+		}
+		if should {
+			for _, m := range g.Party.Members {
+				if m.IsAlive() && m.HP < m.MaxHP {
+					m.HP++
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+				}
+			}
+		}
+	}
+	// Refrain on wait: waiter with refrain heals 1 to every other living member
+	if g.WaitRefrainActive {
+		// active is waiter index; heal non-active others
+		activeIdx := g.Party.Active
+		for i, m := range g.Party.Members {
+			if i != activeIdx && m.IsAlive() && m.HP < m.MaxHP {
+				m.HP++
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
+			}
+		}
+		g.WaitRefrainActive = false
+	}
 	// Elf identify ticker: every 250 ticks -50 per extra elf when >=2
 	if iv := ElfIdentifyInterval(g.Party); iv > 0 {
 		if g.NextElfIdentifyTurn == 0 {
@@ -2172,6 +2328,33 @@ func (g *Game) EndPlayerTurn(msg string) {
 		}
 	} else {
 		g.NextElfIdentifyTurn = 0
+	}
+	// Lorekeeper / attuned ticker: 1 held appearance / 50 turns (45 if bard)
+	if g.Party != nil && (g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned")) {
+		interval := 50
+		if g.Party.HasBardAlive() {
+			interval = 45
+		}
+		if g.NextLorekeeperTurn == 0 {
+			g.NextLorekeeperTurn = g.Turn + interval
+		}
+		if g.Turn >= g.NextLorekeeperTurn {
+			found := ""
+			for _, it := range g.Party.Inventory {
+				app := appearanceFromItem(it)
+				if !IsIdentified(app) {
+					found = app
+					break
+				}
+			}
+			if found != "" {
+				IdentifyOnUse(found)
+				g.Logf("Keen study identifies %s as %s.", found, friendlyTypeName(TypeForAppearance(found), "potion"))
+			}
+			g.NextLorekeeperTurn = g.Turn + interval
+		}
+	} else {
+		g.NextLorekeeperTurn = 0
 	}
 	g.applyStarvation()
 	g.MaybeTickAmbience()
@@ -2251,6 +2434,25 @@ func (g *Game) EnemyTurn() {
 			}
 			attackerName := e.MemberDisplayName(e.Active)
 			g.Logf("%s hits %s for %d.", attackerName, defender, actual)
+			// of_thorns / of_martyr thorns return 1 on hit (attacker takes 1)
+			if hitIdx >= 0 && hitIdx < len(g.Party.Members) && actual > 0 {
+				defMem := g.Party.Members[hitIdx]
+				if defMem.HasAffix("of_thorns") || (defMem.HasAffix("of_martyr") && defMem.Class == "paladin") {
+					if e.Members[e.Active].IsAlive() {
+						e.Members[e.Active].HP -= 1
+						if e.Members[e.Active].HP <= 0 {
+							e.Members[e.Active].HP = 0
+							e.Members[e.Active].Alive = false
+						}
+						g.Logf("Thorns return 1 damage to %s!", attackerName)
+						if !e.IsAlive() {
+							g.Logf("%s collapses from thorns!", e.DisplayName())
+							g.AddKill()
+							continue
+						}
+					}
+				}
+			}
 			if atk.EffectChance > 0 {
 				if g.RNG.Float64() < atk.EffectChance {
 					effect := atk.Effect
@@ -2453,20 +2655,24 @@ func (g *Game) EnemyTurn() {
 				}
 			}
 		} else {
-			// Wander cardinal
-			dirs := []Dir{DirN, DirS, DirW, DirE}
-			d := dirs[g.RNG.IntN(len(dirs))]
-			nxt := e.Pos.Add(d)
-			if lvl.Walkable(nxt) && nxt != g.Party.Pos {
-				coll := false
-				for _, o := range lvl.Enemies {
-					if o != e && o.IsAlive() && o.Pos == nxt {
-						coll = true
-						break
+			// Wander cardinal — ghost_step skips wander roll
+			if g.Party.HasTalent("ghost_step") {
+				// no wander
+			} else {
+				dirs := []Dir{DirN, DirS, DirW, DirE}
+				d := dirs[g.RNG.IntN(len(dirs))]
+				nxt := e.Pos.Add(d)
+				if lvl.Walkable(nxt) && nxt != g.Party.Pos {
+					coll := false
+					for _, o := range lvl.Enemies {
+						if o != e && o.IsAlive() && o.Pos == nxt {
+							coll = true
+							break
+						}
 					}
-				}
-				if !coll {
-					e.Pos = nxt
+					if !coll {
+						e.Pos = nxt
+					}
 				}
 			}
 		}

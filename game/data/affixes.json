@@ -12,7 +12,7 @@
   "suffixes": [
     { "id": "of_wrath",    "name": "of Wrath",    "desc": "+2 damage when sole survivor (1 living member)", "trigger": "sole_survivor" },
     { "id": "of_warding",  "name": "of Warding",  "desc": "5% to negate magic damage",                    "trigger": "on_magic_hit" },
-    { "id": "of_hollow",   "name": "of the Hollow","desc": "+5 HP but −1 light radius",                  "trigger": "passive_mixed" },
+    { "id": "of_hollow",   "name": "of the Hollow","desc": "+5 HP but −1 light radius",                  "trigger": "passive_mixed", "mod": { "maxHP": 5, "light": -1 } },
     { "id": "of_thorns",   "name": "of Thorns",   "desc": "Return 1 damage on being hit",               "trigger": "on_hit" },
     { "id": "of_plenty",   "name": "of Plenty",   "desc": "Food tick −0.25 while active",               "trigger": "while_active" },
     { "id": "of_mending",  "name": "of Mending",  "desc": "+1 HP per rest batch",                        "trigger": "on_rest" },

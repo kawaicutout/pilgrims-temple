@@ -268,7 +268,6 @@ func ensureAffixDescCache() {
 	}
 }
 
-// GetTalentDesc returns "Name - Desc" for a talent id, falling back to friendly ID.
 func GetTalentDesc(id string) string {
 	ensureTalentDescCache()
 	if e, ok := talentDescMap[id]; ok {
@@ -298,4 +297,120 @@ func GetAffixDesc(id string) string {
 		}
 	}
 	return FriendlyID(id)
+}
+
+// ApplyAffixMod applies affix mod generically by reading affixes.json mod object.
+// Prefix mods are stat bonuses: attack, maxHP, defense, light, carry, dodge (ignored).
+// Suffix passive_mixed of_hollow (+5 HP -1 light) also handled here.
+func ApplyAffixMod(m *Member, affixID string) {
+	if m == nil || affixID == "" {
+		return
+	}
+	b, err := RawJSON("affixes.json")
+	if err != nil {
+		return
+	}
+	var ad struct {
+		Prefixes []struct {
+			ID  string `json:"id"`
+			Mod struct {
+				Attack  *int     `json:"attack"`
+				MaxHP   *int     `json:"maxHP"`
+				Defense *int     `json:"defense"`
+				Light   *int     `json:"light"`
+				Carry   *int     `json:"carry"`
+				Dodge   *float64 `json:"dodge"`
+			} `json:"mod"`
+		} `json:"prefixes"`
+		Suffixes []struct {
+			ID  string `json:"id"`
+			Mod *struct {
+				Attack  *int     `json:"attack"`
+				MaxHP   *int     `json:"maxHP"`
+				Defense *int     `json:"defense"`
+				Light   *int     `json:"light"`
+				Carry   *int     `json:"carry"`
+				Dodge   *float64 `json:"dodge"`
+			} `json:"mod"`
+		} `json:"suffixes"`
+	}
+	if err := json.Unmarshal(b, &ad); err != nil {
+		return
+	}
+	applyMod := func(mod struct {
+		Attack  *int     `json:"attack"`
+		MaxHP   *int     `json:"maxHP"`
+		Defense *int     `json:"defense"`
+		Light   *int     `json:"light"`
+		Carry   *int     `json:"carry"`
+		Dodge   *float64 `json:"dodge"`
+	}) {
+		if mod.Attack != nil {
+			m.ATK[0] += *mod.Attack
+			m.ATK[1] += *mod.Attack
+		}
+		if mod.MaxHP != nil {
+			m.MaxHP += *mod.MaxHP
+			m.HP += *mod.MaxHP
+			if m.HP > m.MaxHP {
+				m.HP = m.MaxHP
+			}
+		}
+		if mod.Defense != nil {
+			m.DEF += *mod.Defense
+		}
+		if mod.Light != nil {
+			m.Light += *mod.Light
+		}
+		if mod.Carry != nil {
+			if m.Carry == 0 {
+				m.Carry = 5
+			}
+			m.Carry += *mod.Carry
+		}
+	}
+	for _, p := range ad.Prefixes {
+		if p.ID == affixID {
+			applyMod(p.Mod)
+			return
+		}
+	}
+	for _, s := range ad.Suffixes {
+		if s.ID == affixID && s.Mod != nil {
+			applyMod(*s.Mod)
+			return
+		}
+	}
+	// fallback hardcoded for of_hollow etc if mod missing in JSON
+	switch affixID {
+	case "of_hollow":
+		m.MaxHP += 5
+		m.HP += 5
+		if m.HP > m.MaxHP {
+			m.HP = m.MaxHP
+		}
+		m.Light--
+		if m.Light < 0 {
+			m.Light = 0
+		}
+	case "veteran":
+		m.ATK[0] += 2
+		m.ATK[1] += 2
+	case "hardy":
+		m.MaxHP += 3
+		m.HP += 3
+	case "keen":
+		m.ATK[0]++
+	case "stout":
+		m.DEF++
+	case "bright":
+		m.Light++
+	case "burdened":
+		if m.Carry == 0 {
+			m.Carry = 5
+		}
+		m.Carry += 3
+	case "of_warding", "of_wrath", "of_thorns", "of_plenty", "of_mending", "of_martyr", "nimble":
+		// no immediate stat, handled via triggers
+	}
 }

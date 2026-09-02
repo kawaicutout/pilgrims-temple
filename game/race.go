@@ -190,12 +190,14 @@ func RaceCount(p *Party, raceID string) int {
 // It is idempotent: repeated calls adjust by delta so stats don't double-stack.
 // Character buffs are assumed already applied at generation; this only handles party/synergy.
 // Call after GenerateParty, NewGame, and LevelUp.
+// Bard chorus (+1 ATK/DEF to non-bard) is handled here as well via AppliedBard, non-stacking.
 func ApplyRaceBuffs(party *Party) {
 	if party == nil || len(party.Members) == 0 {
 		return
 	}
 	LoadRaces()
 	counts := raceCount(party)
+	hasBard := party.HasBardAlive()
 	// distinct races present among living
 	distinct := map[string]bool{}
 	for raceID, cnt := range counts {
@@ -221,6 +223,12 @@ func ApplyRaceBuffs(party *Party) {
 			continue
 		}
 		nrace := normalizeRaceID(m.Race)
+		// desired bard chorus for this member: +1 ATK/DEF to non-bard living members, non-stacking, stored in AppliedBard
+		var desiredBard Buff
+		if hasBard && m.Class != "bard" {
+			desiredBard.ATK = 1
+			desiredBard.DEF = 1
+		}
 		// desired synergy for this member
 		var desiredSynergy SynergyBuff
 		// generic synergy from data if threshold met
@@ -238,29 +246,17 @@ func ApplyRaceBuffs(party *Party) {
 			} else {
 				desiredSynergy.ATK = 0
 			}
-			// keep other synergy fields from generic if any (but half_orc has none)
 		case "human", "elf", "dwarf", "halfling", "gnome", "troll":
-			// no synergy stat bonuses beyond party; ensure no ATK etc from generic fallback
-			// preserve only if explicitly set, but for our fallback they are zero
-			// we already set desiredSynergy via generic; for these races we zero out unless needed
-			// To avoid accidental HP from generic threshold, clear if race not half_orc
-			// Actually human/elf/dwarf etc fallback synergy has no HP/ATK, so it's fine
 		}
-		// For non-half_orc, ensure ATK synergy not spuriously set via generic when threshold not met? Already handled.
-		// Special: if race is half_orc and counts>=2 we want only ATK bonus, not other fields
 		if nrace == "half_orc" && counts[nrace] >= 2 {
-			// override to only ATK
 			desiredSynergy.HP = 0
 			desiredSynergy.DEF = 0
 			desiredSynergy.MDEF = 0
 			desiredSynergy.Light = 0
 			desiredSynergy.Carry = 0
 			desiredSynergy.XPBonus = 0
-		} else if nrace != "half_orc" {
-			// for other races, null out synergy ATK unless generic provided? Our fallback generics have 0 ATK, so fine
 		}
-
-		// delta for party buff (aggregate is same for all members, but we track per-member AppliedParty)
+		// deltas for party/synergy/bard
 		deltaParty := Buff{
 			HP:    totalParty.HP - m.AppliedParty.HP,
 			ATK:   totalParty.ATK - m.AppliedParty.ATK,
@@ -277,9 +273,17 @@ func ApplyRaceBuffs(party *Party) {
 			Light: desiredSynergy.Light - m.AppliedSynergy.Light,
 			Carry: desiredSynergy.Carry - m.AppliedSynergy.Carry,
 		}
+		deltaBard := Buff{
+			HP:    desiredBard.HP - m.AppliedBard.HP,
+			ATK:   desiredBard.ATK - m.AppliedBard.ATK,
+			DEF:   desiredBard.DEF - m.AppliedBard.DEF,
+			MDEF:  desiredBard.MDEF - m.AppliedBard.MDEF,
+			Light: desiredBard.Light - m.AppliedBard.Light,
+			Carry: desiredBard.Carry - m.AppliedBard.Carry,
+		}
 		// apply deltas
-		if deltaParty.HP != 0 || deltaSynergy.HP != 0 {
-			dhp := deltaParty.HP + deltaSynergy.HP
+		if deltaParty.HP != 0 || deltaSynergy.HP != 0 || deltaBard.HP != 0 {
+			dhp := deltaParty.HP + deltaSynergy.HP + deltaBard.HP
 			m.MaxHP += dhp
 			m.HP += dhp
 			if m.HP > m.MaxHP {
@@ -289,24 +293,23 @@ func ApplyRaceBuffs(party *Party) {
 				m.HP = 0
 			}
 		}
-		if deltaParty.ATK != 0 || deltaSynergy.ATK != 0 {
-			da := deltaParty.ATK + deltaSynergy.ATK
+		if deltaParty.ATK != 0 || deltaSynergy.ATK != 0 || deltaBard.ATK != 0 {
+			da := deltaParty.ATK + deltaSynergy.ATK + deltaBard.ATK
 			m.ATK[0] += da
 			m.ATK[1] += da
 		}
-		if deltaParty.DEF != 0 || deltaSynergy.DEF != 0 {
-			m.DEF += deltaParty.DEF + deltaSynergy.DEF
+		if deltaParty.DEF != 0 || deltaSynergy.DEF != 0 || deltaBard.DEF != 0 {
+			m.DEF += deltaParty.DEF + deltaSynergy.DEF + deltaBard.DEF
 		}
-		if deltaParty.MDEF != 0 || deltaSynergy.MDEF != 0 {
-			m.MDEF += deltaParty.MDEF + deltaSynergy.MDEF
+		if deltaParty.MDEF != 0 || deltaSynergy.MDEF != 0 || deltaBard.MDEF != 0 {
+			m.MDEF += deltaParty.MDEF + deltaSynergy.MDEF + deltaBard.MDEF
 		}
-		if deltaParty.Light != 0 || deltaSynergy.Light != 0 {
-			m.Light += deltaParty.Light + deltaSynergy.Light
+		if deltaParty.Light != 0 || deltaSynergy.Light != 0 || deltaBard.Light != 0 {
+			m.Light += deltaParty.Light + deltaSynergy.Light + deltaBard.Light
 		}
-		if deltaParty.Carry != 0 || deltaSynergy.Carry != 0 {
-			m.Carry += deltaParty.Carry + deltaSynergy.Carry
+		if deltaParty.Carry != 0 || deltaSynergy.Carry != 0 || deltaBard.Carry != 0 {
+			m.Carry += deltaParty.Carry + deltaSynergy.Carry + deltaBard.Carry
 		}
-		// store applied
 		m.AppliedParty = totalParty
 		m.AppliedSynergy = Buff{
 			HP:    desiredSynergy.HP,
@@ -315,6 +318,13 @@ func ApplyRaceBuffs(party *Party) {
 			MDEF:  desiredSynergy.MDEF,
 			Light: desiredSynergy.Light,
 			Carry: desiredSynergy.Carry,
+		}
+		m.AppliedBard = desiredBard
+	}
+	// Clean dead members' AppliedBard so they don't retain stale bonuses on resurrect
+	for _, m := range party.Members {
+		if !m.IsAlive() && (m.AppliedBard.ATK != 0 || m.AppliedBard.DEF != 0) {
+			// keep stored but will be overwritten on next alive ApplyRaceBuffs; no stat delta while dead
 		}
 	}
 }

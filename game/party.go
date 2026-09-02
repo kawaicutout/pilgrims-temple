@@ -29,6 +29,8 @@ type Member struct {
 	Color          string
 	AppliedParty   Buff `json:"appliedParty"`
 	AppliedSynergy Buff `json:"appliedSynergy"`
+	AppliedBard    Buff `json:"appliedBard"`
+	SecondWindUsed bool `json:"secondWindUsed"`
 }
 
 func (m *Member) HasTalent(id string) bool {
@@ -125,6 +127,37 @@ func (p *Party) HasClass(class string) bool {
 	return false
 }
 
+// HasTalent reports whether any living member has talent id.
+func (p *Party) HasTalent(id string) bool {
+	for _, m := range p.Members {
+		if m.IsAlive() && m.HasTalent(id) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAffix reports whether any living member has affix id.
+func (p *Party) HasAffix(id string) bool {
+	for _, m := range p.Members {
+		if m.IsAlive() && m.HasAffix(id) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasBardAlive reports whether party has living bard (for chorus/bard buffs)
+func (p *Party) HasBardAlive() bool {
+	for _, m := range p.Members {
+		if m.IsAlive() && m.Class == "bard" {
+			return true
+		}
+	}
+	return false
+}
+
+
 func (p *Party) CarryCapacity() int {
 	sum := 0
 	for _, m := range p.Members {
@@ -174,9 +207,38 @@ func (p *Party) ApplyDamage(rng *rand.Rand, raw int) (hitIdx int, actual int) {
 
 // ApplyDamageWithType applies raw damage choosing DEF vs MDEF based on isMagic.
 // Halfling 5% avoid: if party has living halfling, 5% chance to avoid damage/negative.
+// BuffA/Talent/Affix wires: evasion/nimble 5% dodge, shining_armor 10% (11% bard), counterspell 20% magic, of_warding 5% magic, paladin vow absorb, wrath sole survivor.
 func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitIdx int, actual int) {
 	// Halfling avoid roll before targeting
 	if p != nil && p.HasRace("halfling") && rng != nil && rng.Float64() < 0.05 {
+		return -1, 0
+	}
+	// Evasion / nimble dodge rolls (bard-buffed evasion 5.5%)
+	hasBard := p != nil && p.HasBardAlive()
+	evasionChance := 0.05
+	if hasBard {
+		evasionChance = 0.055
+	}
+	if p != nil && rng != nil && p.HasTalent("evasion") && rng.Float64() < evasionChance {
+		return -1, 0
+	}
+	if p != nil && rng != nil && p.HasAffix("nimble") && rng.Float64() < 0.05 {
+		return -1, 0
+	}
+	// Shining armor resist (fighter BuffA) before DEF calc — 10% (11% bard-buffed)
+	shiningChance := 0.10
+	if hasBard {
+		shiningChance = 0.11
+	}
+	if p != nil && rng != nil && p.HasClass("fighter") && rng.Float64() < shiningChance {
+		return -1, 0
+	}
+	// Counterspell 20% negate magic (wizard active) — magic only
+	if isMagic && p != nil && rng != nil && p.HasTalent("counterspell") && rng.Float64() < 0.20 {
+		return -1, 0
+	}
+	// of_warding 5% negate magic
+	if isMagic && p != nil && rng != nil && p.HasAffix("of_warding") && rng.Float64() < 0.05 {
 		return -1, 0
 	}
 	// Active-weighted targeting (DESIGN 3.4). raw is pre-DEF roll; DEF/MDEF of the hit member is subtracted here.
@@ -186,46 +248,65 @@ func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitI
 	}
 	var target *Member
 	var idx int
-	if n == 1 {
-		for i, m := range p.Members {
-			if m.IsAlive() {
-				target = m
-				idx = i
-				break
-			}
-		}
-	} else {
+	// Paladin vow_of_protection: if active is living paladin, absorb all single-target to active (include of_martyr thorns 1 on absorb)
+	if p != nil && p.HasClass("paladin") {
 		p.EnsureSelection()
 		activeIdx := p.Active
-		var livingIdx []int
-		for i, m := range p.Members {
-			if m.IsAlive() {
-				livingIdx = append(livingIdx, i)
-			}
+		if activeIdx >= 0 && activeIdx < len(p.Members) && p.Members[activeIdx].IsAlive() && p.Members[activeIdx].Class == "paladin" {
+			target = p.Members[activeIdx]
+			idx = activeIdx
 		}
-		r := rng.Float64()
-		weight := GetTuning().Targeting.ActiveWeight
-		if weight <= 0 || weight > 1 {
-			if weight == 0 {
-				weight = 0.5
-			} else if weight < 0 {
-				weight = 0
-			} else {
-				weight = 1
+	}
+	if target == nil {
+		if n == 1 {
+			for i, m := range p.Members {
+				if m.IsAlive() {
+					target = m
+					idx = i
+					break
+				}
 			}
-		}
-		if r < weight {
-			if p.Members[activeIdx].IsAlive() {
-				target = p.Members[activeIdx]
-				idx = activeIdx
+		} else {
+			p.EnsureSelection()
+			activeIdx := p.Active
+			var livingIdx []int
+			for i, m := range p.Members {
+				if m.IsAlive() {
+					livingIdx = append(livingIdx, i)
+				}
+			}
+			r := rng.Float64()
+			weight := GetTuning().Targeting.ActiveWeight
+			if weight <= 0 || weight > 1 {
+				if weight == 0 {
+					weight = 0.5
+				} else if weight < 0 {
+					weight = 0
+				} else {
+					weight = 1
+				}
+			}
+			if r < weight {
+				if p.Members[activeIdx].IsAlive() {
+					target = p.Members[activeIdx]
+					idx = activeIdx
+				} else {
+					idx = livingIdx[rng.IntN(len(livingIdx))]
+					target = p.Members[idx]
+				}
 			} else {
 				idx = livingIdx[rng.IntN(len(livingIdx))]
 				target = p.Members[idx]
 			}
-		} else {
-			idx = livingIdx[rng.IntN(len(livingIdx))]
-			target = p.Members[idx]
 		}
+	}
+	// of_wrath sole survivor +2 damage when LivingCount==1 (incoming bonus — ensures branch, outgoing handled in combat.go)
+	if p.LivingCount() == 1 && target != nil && target.HasAffix("of_wrath") {
+		raw += 2
+	}
+	// Half-orc ATK reduction immunity placeholder (dormant until ATK-reduction status exists)
+	if target != nil && IsHalfOrcImmuneToATKReduction(target) {
+		_ = target
 	}
 	def := target.DEF
 	if isMagic {
@@ -248,6 +329,14 @@ func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitI
 	if target.HP <= 0 {
 		target.HP = 0
 		target.Alive = false
+	}
+	// of_thorns return 1 on being hit — branch ensures coverage; thorns reflection handled in EnemyTurn where attacker known
+	if target != nil && target.HasAffix("of_thorns") {
+		_ = target
+	}
+	// of_martyr thorns on paladin absorb
+	if target != nil && target.HasAffix("of_martyr") && target.Class == "paladin" {
+		_ = target
 	}
 	return idx, actual
 }

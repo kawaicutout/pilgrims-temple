@@ -2,7 +2,8 @@
   "notes": "Pilgrim's Temple — class roster. Each class starts with Buff A. Buff B and Active are talent picks (DESIGN 5.3, pool defined in talents.json). Bard's Chorus (+1 ATK/DEF) buffs every Buff A by ~10% while a bard lives; multiple bards do not stack. hitDice drives HP (10+3*HD at level 1, +1 HD per level). attack/defense/magicDefense are base values used for party generation.",
   "bardRule": {
     "chorus": "Bard passive: +1 to attack and defense attributes of every other living member. While any bard lives, each Buff A effect is 10% more effective (rounded favourably). Multiple bards do not stack.",
-    "appliesTo": "BuffA"
+    "appliesTo": "BuffA",
+    "factor": 0.10
   },
   "classes": [
     {

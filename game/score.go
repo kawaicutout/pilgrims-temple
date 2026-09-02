@@ -53,8 +53,25 @@ func (g *Game) AddKill() {
 		delete(killStore, g)
 	}
 	g.Kills++
+	// tithe +1 gold on kill if any bearer has tithe
+	if g.Party != nil && g.Party.HasTalent("tithe") {
+		g.Gold++
+	}
+	// second_wind once per floor heal 6 on kill
+	if g.Party != nil {
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && m.HasTalent("second_wind") && !m.SecondWindUsed {
+				m.HP += 6
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
+				m.SecondWindUsed = true
+				g.Logf("%s second wind: +6 HP.", m.Name)
+				break
+			}
+		}
+	}
 }
-
 // AddKills increments by n.
 func (g *Game) AddKills(n int) {
 	if n <= 0 {

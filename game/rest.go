@@ -18,6 +18,17 @@ func RestBatch(g *Game) int {
 	if healPerBatch <= 0 {
 		healPerBatch = 15
 	}
+	if g.Party.HasTalent("restful") {
+		healPerBatch += 3
+	}
+	if g.Party.HasAffix("of_mending") {
+		healPerBatch += 1
+	}
+	// blessed_hands +1 healing per rest heal batch? Apply as +1 per heal tick
+	blessedBonus := 0
+	if g.Party.HasTalent("blessed_hands") {
+		blessedBonus = 1
+	}
 	base := healPerBatch / batchTurns
 	rem := healPerBatch % batchTurns
 
@@ -53,6 +64,7 @@ func RestBatch(g *Game) int {
 		if completed < rem {
 			heal++
 		}
+		heal += blessedBonus
 		if heal > 0 {
 			for _, m := range g.Party.Members {
 				if m.IsAlive() && m.HP < m.MaxHP {
@@ -63,7 +75,6 @@ func RestBatch(g *Game) int {
 				}
 			}
 		}
-		// Endurance talent during rest: +1 per 5 turn ticks (same as EndPlayerTurn)
 		if g.Turn%5 == 0 {
 			for _, m := range g.Party.Members {
 				if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
@@ -93,6 +104,51 @@ func RestBatch(g *Game) int {
 					g.Logf("Elven keen senses identify %s as %s.", found, friendlyTypeName(TypeForAppearance(found), "potion"))
 				}
 				g.NextElfIdentifyTurn = g.Turn + iv
+			}
+		}
+		// Cleric healers_grace HoT during rest: same as EndPlayerTurn
+		if g.Party != nil && g.Party.HasClass("cleric") {
+			hasBard := g.Party.HasBardAlive()
+			should := false
+			if g.Turn%2 == 0 {
+				should = true
+			} else if hasBard && g.RNG != nil && g.RNG.Float64() < 0.10 {
+				should = true
+			}
+			if should {
+				for _, m := range g.Party.Members {
+					if m.IsAlive() && m.HP < m.MaxHP {
+						m.HP++
+						if m.HP > m.MaxHP {
+							m.HP = m.MaxHP
+						}
+					}
+				}
+			}
+		}
+		// Lorekeeper / attuned ticker during rest
+		if g.Party != nil && (g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned")) {
+			interval := 50
+			if g.Party.HasBardAlive() {
+				interval = 45
+			}
+			if g.NextLorekeeperTurn == 0 {
+				g.NextLorekeeperTurn = g.Turn + interval
+			}
+			if g.Turn >= g.NextLorekeeperTurn {
+				found := ""
+				for _, it := range g.Party.Inventory {
+					app := appearanceFromItem(it)
+					if !IsIdentified(app) {
+						found = app
+						break
+					}
+				}
+				if found != "" {
+					IdentifyOnUse(found)
+					g.Logf("Keen study identifies %s as %s.", found, friendlyTypeName(TypeForAppearance(found), "potion"))
+				}
+				g.NextLorekeeperTurn = g.Turn + interval
 			}
 		}
 

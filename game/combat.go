@@ -37,6 +37,11 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 	party.EnsureSelection()
 	enemy.EnsureActive()
 	atk := party.Members[party.Active]
+	// veterans_grip +1 dmg fighter BuffB per bearer with talent
+	extraGrip := 0
+	if atk.HasTalent("veterans_grip") {
+		extraGrip = 1
+	}
 	// Pick target in enemy party active-weighted
 	hitIdx = pickEnemyTarget(rng, enemy)
 	if hitIdx < 0 {
@@ -44,8 +49,23 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 	}
 	target := enemy.Members[hitIdx]
 	isMagic := atk.DamageType == "magic"
-	dmg = RollRaw(rng, atk.ATK[0], atk.ATK[1])
+	dmg = RollRaw(rng, atk.ATK[0]+extraGrip, atk.ATK[1]+extraGrip)
 	if party.HasStatus(StatusStrength) {
+		dmg += 2
+	}
+	// radiant +50% vs undead (check enemy ID contains undead/skeleton/zombie/ghost)
+	isUndead := false
+	if target != nil {
+		idLower := target.Class
+		if containsUndead(idLower) {
+			isUndead = true
+		}
+	}
+	if isUndead && atk.HasTalent("radiant") {
+		dmg = (dmg * 3) / 2
+	}
+	// of_wrath sole survivor +2 outgoing when LivingCount==1 and attacker has affix
+	if party.LivingCount() == 1 && atk.HasAffix("of_wrath") {
 		dmg += 2
 	}
 	// Apply DEF or MDEF of target, with enemy hex/bless/curse.
@@ -71,9 +91,54 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 		target.HP = 0
 		target.Alive = false
 		killed = true
-		// EnsureActive will be called next turn
+	}
+	// deitys_gift heal 2 on attack
+	if atk.HasTalent("deitys_gift") && atk.IsAlive() && atk.HP < atk.MaxHP {
+		atk.HP += 2
+		if atk.HP > atk.MaxHP {
+			atk.HP = atk.MaxHP
+		}
+	}
+	// shrug 20% clear one negative status from self on attack
+	if atk.HasTalent("shrug") && rng != nil && rng.Float64() < 0.20 {
+		for _, sid := range []string{StatusHex, StatusRend, StatusBleed, StatusSpore, StatusPoison, StatusCurse, StatusParalysis, StatusConfusion, StatusEntangle, StatusSleep} {
+			if party.HasStatus(sid) {
+				party.RemoveStatus(sid)
+				break
+			}
+		}
+	}
+	// cleave overflow on kill: if HasTalent("cleave") and killed then 2 dmg to every other member on tile
+	if killed && atk.HasTalent("cleave") {
+		for i, m := range enemy.Members {
+			if i != hitIdx && m.IsAlive() {
+				m.HP -= 2
+				if m.HP <= 0 {
+					m.HP = 0
+					m.Alive = false
+				}
+			}
+		}
 	}
 	return dmg, hitIdx, killed
+}
+
+func containsUndead(id string) bool {
+	low := id
+	// simple contains check
+	if len(low) >= 6 {
+		for _, kw := range []string{"undead", "skeleton", "zombie", "ghost", "ghoul", "wraith", "lich"} {
+			if len(kw) > len(low) {
+				continue
+			}
+			for i := 0; i <= len(low)-len(kw); i++ {
+				if low[i:i+len(kw)] == kw {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // pickEnemyTarget selects a living member of enemy party to hit, active-weighted.

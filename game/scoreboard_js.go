@@ -64,6 +64,9 @@ func LoadScoreboard() (*Scoreboard, error) {
 
 // SaveScoreboard writes scoreboard to localStorage.
 func SaveScoreboard(sb *Scoreboard) error {
+	if HasModifiedData() {
+		return nil
+	}
 	if sb == nil {
 		sb = &Scoreboard{}
 	}

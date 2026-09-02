@@ -377,11 +377,15 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 	}
 	pick := g.LevelUpPending.Picks[pickIdx]
 	if pick.IsAffix {
-		m := g.Party.Members[pick.MemberIdx]
-		affixID := pick.Options[0]
-		m.Affixes = append(m.Affixes, affixID)
-		g.Logf("%s gains affix %s.", m.Name, FriendlyID(affixID))
-		ApplyAffixMod(m, affixID)
+		if len(pick.Options) == 0 {
+			g.Logf("Affix pick has no options; skipping.")
+		} else {
+			m := g.Party.Members[pick.MemberIdx]
+			affixID := pick.Options[0]
+			m.Affixes = append(m.Affixes, affixID)
+			g.Logf("%s gains affix %s.", m.Name, FriendlyID(affixID))
+			ApplyAffixMod(m, affixID)
+		}
 	} else {
 		if optionIdx < 0 || optionIdx >= len(pick.Options) {
 			return
@@ -429,13 +433,13 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 		case "deitys_gift", "forage", "restoration", "iron_will", "ward", "steady_hands":
 			// wired via HasTalent branches elsewhere; no instant stat
 		}
-		g.LevelUpPending.Current++
-		if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
-			g.LevelUpPending = nil
-			g.Logf("Level up complete.")
-		} else {
-			g.LevelUpPending.Cursor = 0
-		}
+	}
+	g.LevelUpPending.Current++
+	if g.LevelUpPending.Current >= len(g.LevelUpPending.Picks) {
+		g.LevelUpPending = nil
+		g.Logf("Level up complete.")
+	} else {
+		g.LevelUpPending.Cursor = 0
 	}
 }
 

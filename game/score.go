@@ -233,6 +233,12 @@ func (g *Game) RecordScore() {
 	if g == nil {
 		return
 	}
+	if g.Wizard {
+		return
+	}
+	if HasModifiedData() {
+		return
+	}
 	entry := g.buildScoreEntry()
 	sb, err := loadScoreboardRaw()
 	if err != nil || sb == nil {

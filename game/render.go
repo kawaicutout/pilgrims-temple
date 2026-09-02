@@ -597,22 +597,26 @@ func (g *Game) RenderLevelUp() Frame {
 	drawCentered(cells, w, 2, title, "gold-bright")
 	if pick.IsAffix {
 		drawCentered(cells, w, 4, "Gain affix:", "gray-1")
-		opt := pick.Options[0]
-		desc := GetAffixDesc(opt)
-		if desc == opt {
-			if alt := GetTalentDesc(opt); alt != opt {
-				desc = alt
+		if len(pick.Options) == 0 {
+			drawCentered(cells, w, 6, "> (no affix)", "gray-2")
+		} else {
+			opt := pick.Options[0]
+			desc := GetAffixDesc(opt)
+			if desc == opt {
+				if alt := GetTalentDesc(opt); alt != opt {
+					desc = alt
+				}
 			}
+			text := opt
+			if desc != opt {
+				text = desc
+			}
+			line := fmt.Sprintf("> %s", text)
+			if len([]rune(line)) > w-2 {
+				line = string([]rune(line)[:w-2])
+			}
+			drawCentered(cells, w, 6, line, "gold")
 		}
-		text := opt
-		if desc != opt {
-			text = desc
-		}
-		line := fmt.Sprintf("> %s", text)
-		if len([]rune(line)) > w-2 {
-			line = string([]rune(line)[:w-2])
-		}
-		drawCentered(cells, w, 6, line, "gold")
 	} else {
 		drawCentered(cells, w, 4, fmt.Sprintf("%s (%s) choose talent:", pick.MemberName, pick.Class), "gray-1")
 		cursor := g.LevelUpPending.Cursor

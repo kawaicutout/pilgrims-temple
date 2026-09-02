@@ -390,6 +390,50 @@ const (
 	var keyHandler js.Func
 	keyHandler = js.FuncOf(func(this js.Value, args []js.Value) any {
 		e := args[0]
+		// Allow normal typing when an editor control is focused: do not intercept keys.
+		if !doc.IsNull() && !doc.IsUndefined() {
+			active := doc.Get("activeElement")
+			if !active.IsNull() && !active.IsUndefined() {
+				tagVal := active.Get("tagName")
+				if !tagVal.IsNull() && !tagVal.IsUndefined() {
+					tag := strings.ToUpper(tagVal.String())
+					if tag == "INPUT" || tag == "TEXTAREA" || tag == "SELECT" {
+						return nil
+					}
+				}
+				ce := active.Get("isContentEditable")
+				if !ce.IsNull() && !ce.IsUndefined() && ce.Truthy() {
+					return nil
+				}
+				idVal := active.Get("id")
+				if !idVal.IsNull() && !idVal.IsUndefined() {
+					id := idVal.String()
+					if id == "editArea" || id == "editSelect" || id == "dataZip" {
+						return nil
+					}
+				}
+				editorEl := doc.Call("getElementById", "editor")
+				if !editorEl.IsNull() && !editorEl.IsUndefined() {
+					cls := editorEl.Get("classList")
+					if !cls.IsNull() && !cls.IsUndefined() && cls.Call("contains", "open").Bool() {
+						containsFn := editorEl.Get("contains")
+						if !containsFn.IsUndefined() {
+							if editorEl.Call("contains", active).Bool() {
+								return nil
+							}
+						} else {
+							closestFn := active.Get("closest")
+							if !closestFn.IsUndefined() {
+								res := active.Call("closest", "#editor")
+								if !res.IsNull() && !res.IsUndefined() {
+									return nil
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 		key := e.Get("key").String()
 		code := e.Get("code").String()
 		k := game.NormalizeKey(key, code)

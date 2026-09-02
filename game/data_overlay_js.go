@@ -2,7 +2,10 @@
 
 package game
 
-import "syscall/js"
+import (
+	"strings"
+	"syscall/js"
+)
 
 func overlayJSON(name string) ([]byte, bool) {
 	ls := js.Global().Get("localStorage")
@@ -18,4 +21,22 @@ func overlayJSON(name string) ([]byte, bool) {
 		return nil, false
 	}
 	return []byte(s), true
+}
+
+func HasModifiedData() bool {
+	ls := js.Global().Get("localStorage")
+	if ls.IsNull() || ls.IsUndefined() {
+		return false
+	}
+	n := ls.Get("length").Int()
+	for i := 0; i < n; i++ {
+		k := ls.Call("key", i)
+		if k.IsNull() || k.IsUndefined() {
+			continue
+		}
+		if strings.HasPrefix(k.String(), "data:") {
+			return true
+		}
+	}
+	return false
 }

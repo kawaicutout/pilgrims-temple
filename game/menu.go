@@ -247,7 +247,7 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 }
 
 func RenderMainMenu(tuning Tuning, selected int) Frame {
-	w, h := tuning.Map.Width, tuning.Map.Height
+	w, h := tuning.Layout.MinCols, tuning.Layout.MinRows
 	cells := make([][]Cell, h)
 	for y := range h {
 		cells[y] = make([]Cell, w)
@@ -256,7 +256,7 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 		}
 	}
 	title := "PILGRIM'S TEMPLE"
-	drawCentered(cells, w, h/2-3, title, "gold-bright")
+	drawCentered(cells, w, h/2-4, title, "gold-bright")
 	for i, opt := range GetMainMenuOptions() {
 		prefix := "  "
 		fg := "gray-1"
@@ -265,13 +265,13 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 			fg = "gold-bright"
 		}
 		line := prefix + opt
-		drawCentered(cells, w, h/2+1+i, line, fg)
+		drawCentered(cells, w, h/2-1+i, line, fg)
 	}
 	panel := []string{}
 	for len(panel) < 12 {
 		panel = append(panel, "")
 	}
-	status := "Main Menu"
+	status := ""
 	hints := ""
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
@@ -357,7 +357,7 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 	for len(panel) < 12 {
 		panel = append(panel, "")
 	}
-	status := "Main Menu"
+	status := ""
 	hints := ""
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
@@ -365,7 +365,7 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 // RenderScoresScreen renders the scrolling scoreboard for the Scores menu option.
 // Shows all entries sorted by score descending, scrollable via selected index.
 func RenderScoresScreen(tuning Tuning, selected int) Frame {
-	w, h := tuning.Map.Width, tuning.Map.Height
+	w, h := tuning.Layout.MinCols, tuning.Layout.MinRows
 	cells := make([][]Cell, h)
 	for y := range h {
 		cells[y] = make([]Cell, w)
@@ -508,17 +508,13 @@ func RenderScoresScreen(tuning Tuning, selected int) Frame {
 				drawString(cells, 1, y+3, line4, fg)
 			}
 		}
-		if len(entries) > perPage {
-			more := fmt.Sprintf("(%d/%d)", selected+1, len(entries))
-			drawCentered(cells, w, h-2, more, "gray-2")
-		}
 	}
-	panel := []string{"", "Scores", fmt.Sprintf("%d entries", len(entries)), "Enter/Esc: back", "Up/Down: scroll"}
+	panel := []string{}
 	for len(panel) < 12 {
 		panel = append(panel, "")
 	}
-	status := "Scores"
-	hints := "Up/Down or k/j: scroll  Enter/Esc: back to menu"
+	status := ""
+	hints := ""
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
 

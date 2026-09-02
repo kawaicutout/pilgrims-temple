@@ -1012,251 +1012,263 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 	}
 	l.BiomeID = biome.ID
 	l.Floor = floor
-	// Clear any prior state (in case of re-generation).
-	l.Enemies = nil
-	l.Features = nil
-	l.Litter = nil
-	l.Items = nil
-	// Branch generation.
-	switch biome.GenerationMethod {
-	case "cavern":
-		l.generateCavern(rng, floor)
-	default:
-		l.generateRooms(rng, floor)
-	}
-	// Ensure stairs are placed (both generators do, but double-check).
-	if !l.InBounds(l.StairsUp) || !l.InBounds(l.StairsDown) {
-		// Fallback: place stairs on walkable tiles.
-		var walks []Pos
-		for y := range l.H {
-			for x := range l.W {
-				p := Pos{x, y}
-				if l.At(p) == TileFloor {
-					walks = append(walks, p)
-				}
-			}
-		}
-		if len(walks) >= 2 {
-			l.StairsUp = walks[0]
-			l.Tiles[l.StairsUp.Y][l.StairsUp.X] = TileStairsUp
-			l.StairsDown = walks[len(walks)-1]
-			l.Tiles[l.StairsDown.Y][l.StairsDown.X] = TileStairsDown
-		}
-	}
-	// Ensure connectivity: if stairs unreachable via tiles alone, carve emergency corridor.
-	if !stairsReachableViaBFS(l) {
-		// Carve straight L corridor ignoring litter (litter not yet placed).
-		ax, ay := l.StairsUp.X, l.StairsUp.Y
-		bx, by := l.StairsDown.X, l.StairsDown.Y
-		if rng.IntN(2) == 0 {
-			for x := min(ax, bx); x <= max(ax, bx); x++ {
-				p := Pos{x, ay}
-				if l.InBounds(p) {
-					l.Tiles[p.Y][p.X] = TileFloor
-				}
-			}
-			for y := min(ay, by); y <= max(ay, by); y++ {
-				p := Pos{bx, y}
-				if l.InBounds(p) {
-					l.Tiles[p.Y][p.X] = TileFloor
-				}
+	for attempt := 0; attempt < 50; attempt++ {
+		if attempt == 0 {
+			// Clear any prior state (in case of re-generation).
+			l.Enemies = nil
+			l.Features = nil
+			l.Litter = nil
+			l.Items = nil
+			if l.Doors == nil {
+				l.Doors = make(map[Pos]bool)
 			}
 		} else {
-			for y := min(ay, by); y <= max(ay, by); y++ {
-				p := Pos{ax, y}
-				if l.InBounds(p) {
-					l.Tiles[p.Y][p.X] = TileFloor
+			// Redo: clear tiles to walls, reset collections, continue rng sequence (do not reseed)
+			for y := range l.H {
+				for x := range l.W {
+					l.Tiles[y][x] = TileWall
 				}
 			}
-			for x := min(ax, bx); x <= max(ax, bx); x++ {
-				p := Pos{x, by}
-				if l.InBounds(p) {
-					l.Tiles[p.Y][p.X] = TileFloor
+			l.Enemies = nil
+			l.Features = nil
+			l.Litter = nil
+			l.Items = nil
+			l.Doors = make(map[Pos]bool)
+		}
+		// Branch generation (deterministic, continues rng sequence)
+		switch biome.GenerationMethod {
+		case "cavern":
+			l.generateCavern(rng, floor)
+		default:
+			l.generateRooms(rng, floor)
+		}
+		// Ensure stairs are placed (both generators do, but double-check).
+		if !l.InBounds(l.StairsUp) || !l.InBounds(l.StairsDown) {
+			var walks []Pos
+			for y := range l.H {
+				for x := range l.W {
+					p := Pos{x, y}
+					if l.At(p) == TileFloor {
+						walks = append(walks, p)
+					}
 				}
+			}
+			if len(walks) >= 2 {
+				l.StairsUp = walks[0]
+				l.Tiles[l.StairsUp.Y][l.StairsUp.X] = TileStairsUp
+				l.StairsDown = walks[len(walks)-1]
+				l.Tiles[l.StairsDown.Y][l.StairsDown.X] = TileStairsDown
 			}
 		}
-		// Re-assert stairs tiles.
-		l.Tiles[l.StairsUp.Y][l.StairsUp.X] = TileStairsUp
-		l.Tiles[l.StairsDown.Y][l.StairsDown.X] = TileStairsDown
-		// Re-enforce vault walls after emergency corridor (which may have carved through vault).
-		for _, vf := range l.Features {
-			if !vf.IsVault() {
-				continue
-			}
-			c := vf.Pos
-			var door Pos
-			bestDist := 1000
-			foundDoor := false
-			for y := 0; y < l.H; y++ {
-				for x := 0; x < l.W; x++ {
-					p := Pos{x, y}
-					if l.At(p) != TileDoor {
-						continue
+		// Ensure connectivity: if stairs unreachable via tiles alone, carve emergency corridor.
+		if !stairsReachableViaBFS(l) {
+			ax, ay := l.StairsUp.X, l.StairsUp.Y
+			bx, by := l.StairsDown.X, l.StairsDown.Y
+			if rng.IntN(2) == 0 {
+				for x := min(ax, bx); x <= max(ax, bx); x++ {
+					p := Pos{x, ay}
+					if l.InBounds(p) {
+						l.Tiles[p.Y][p.X] = TileFloor
 					}
-					dx := p.X - c.X
-					if dx < 0 {
-						dx = -dx
+				}
+				for y := min(ay, by); y <= max(ay, by); y++ {
+					p := Pos{bx, y}
+					if l.InBounds(p) {
+						l.Tiles[p.Y][p.X] = TileFloor
 					}
-					dy := p.Y - c.Y
-					if dy < 0 {
-						dy = -dy
+				}
+			} else {
+				for y := min(ay, by); y <= max(ay, by); y++ {
+					p := Pos{ax, y}
+					if l.InBounds(p) {
+						l.Tiles[p.Y][p.X] = TileFloor
 					}
-					d := dx + dy
-					if d < bestDist && d <= 6 {
-						bestDist = d
-						door = p
-						foundDoor = true
+				}
+				for x := min(ax, bx); x <= max(ax, bx); x++ {
+					p := Pos{x, by}
+					if l.InBounds(p) {
+						l.Tiles[p.Y][p.X] = TileFloor
 					}
 				}
 			}
-			if !foundDoor {
-				// Vault door missing — rebuild 7x7 vault around center to ensure walls/door exist.
-				ow, oh := 7, 7
-				ox := c.X - ow/2
-				oy := c.Y - oh/2
-				if ox < 1 {
-					ox = 1
+			l.Tiles[l.StairsUp.Y][l.StairsUp.X] = TileStairsUp
+			l.Tiles[l.StairsDown.Y][l.StairsDown.X] = TileStairsDown
+			// Re-enforce vault walls after emergency corridor (which may have carved through vault).
+			for _, vf := range l.Features {
+				if !vf.IsVault() {
+					continue
 				}
-				if oy < 1 {
-					oy = 1
-				}
-				if ox+ow >= l.W {
-					ox = l.W - ow - 1
-				}
-				if oy+oh >= l.H {
-					oy = l.H - oh - 1
-				}
-				door = Pos{ox + ow/2, oy + oh - 1}
-				for yy := oy; yy < oy+oh; yy++ {
-					for xx := ox; xx < ox+ow; xx++ {
-						isPerim := xx == ox || xx == ox+ow-1 || yy == oy || yy == oy+oh-1
-						p := Pos{xx, yy}
-						if p == door {
-							l.Tiles[yy][xx] = TileDoor
-							if l.Doors == nil {
-								l.Doors = make(map[Pos]bool)
-							}
-							l.Doors[p] = false
+				c := vf.Pos
+				var door Pos
+				bestDist := 1000
+				foundDoor := false
+				for y := 0; y < l.H; y++ {
+					for x := 0; x < l.W; x++ {
+						p := Pos{x, y}
+						if l.At(p) != TileDoor {
 							continue
 						}
-						if isPerim {
+						dx := p.X - c.X
+						if dx < 0 {
+							dx = -dx
+						}
+						dy := p.Y - c.Y
+						if dy < 0 {
+							dy = -dy
+						}
+						d := dx + dy
+						if d < bestDist && d <= 6 {
+							bestDist = d
+							door = p
+							foundDoor = true
+						}
+					}
+				}
+				if !foundDoor {
+					ow, oh := 7, 7
+					ox := c.X - ow/2
+					oy := c.Y - oh/2
+					if ox < 1 {
+						ox = 1
+					}
+					if oy < 1 {
+						oy = 1
+					}
+					if ox+ow >= l.W {
+						ox = l.W - ow - 1
+					}
+					if oy+oh >= l.H {
+						oy = l.H - oh - 1
+					}
+					door = Pos{ox + ow/2, oy + oh - 1}
+					for yy := oy; yy < oy+oh; yy++ {
+						for xx := ox; xx < ox+ow; xx++ {
+							isPerim := xx == ox || xx == ox+ow-1 || yy == oy || yy == oy+oh-1
+							p := Pos{xx, yy}
+							if p == door {
+								l.Tiles[yy][xx] = TileDoor
+								if l.Doors == nil {
+									l.Doors = make(map[Pos]bool)
+								}
+								l.Doors[p] = false
+								continue
+							}
+							if isPerim {
+								l.Tiles[yy][xx] = TileWall
+								if l.Doors != nil {
+									delete(l.Doors, p)
+								}
+							} else {
+								l.Tiles[yy][xx] = TileFloor
+							}
+						}
+					}
+					continue
+				}
+				left := c.X
+				for left >= 0 {
+					t := l.At(Pos{left, c.Y})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					left--
+				}
+				right := c.X
+				for right < l.W {
+					t := l.At(Pos{right, c.Y})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					right++
+				}
+				top := c.Y
+				for top >= 0 {
+					t := l.At(Pos{c.X, top})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					top--
+				}
+				bottom := c.Y
+				for bottom < l.H {
+					t := l.At(Pos{c.X, bottom})
+					if t == TileWall || t == TileDoor {
+						break
+					}
+					bottom++
+				}
+				outerW := right - left + 1
+				outerH := bottom - top + 1
+				if outerW < 7 || outerW > 9 || outerH < 7 || outerH > 9 {
+					dx := door.X - c.X
+					dy := door.Y - c.Y
+					ow, oh := 7, 7
+					var ox, oy int
+					if dy < 0 && -dy > dx && -dy > -dx {
+						ox = door.X - ow/2
+						oy = door.Y
+					} else if dy > 0 && dy > dx && dy > -dx {
+						ox = door.X - ow/2
+						oy = door.Y - oh + 1
+					} else if dx < 0 {
+						ox = door.X
+						oy = door.Y - oh/2
+					} else {
+						ox = door.X - ow + 1
+						oy = door.Y - oh/2
+					}
+					if ox < 1 {
+						ox = 1
+					}
+					if oy < 1 {
+						oy = 1
+					}
+					if ox+ow >= l.W {
+						ox = l.W - ow - 1
+					}
+					if oy+oh >= l.H {
+						oy = l.H - oh - 1
+					}
+					left = ox
+					right = ox + ow - 1
+					top = oy
+					bottom = oy + oh - 1
+				}
+				for yy := top; yy <= bottom; yy++ {
+					for xx := left; xx <= right; xx++ {
+						isPerim := xx == left || xx == right || yy == top || yy == bottom
+						if !isPerim {
+							continue
+						}
+						p := Pos{xx, yy}
+						if p == door {
+							if l.At(p) != TileDoor {
+								l.Tiles[yy][xx] = TileDoor
+								if l.Doors == nil {
+									l.Doors = make(map[Pos]bool)
+								}
+								l.Doors[p] = false
+							}
+							continue
+						}
+						if l.At(p) != TileWall {
 							l.Tiles[yy][xx] = TileWall
 							if l.Doors != nil {
 								delete(l.Doors, p)
 							}
-						} else {
+						}
+					}
+				}
+				for yy := top + 1; yy < bottom; yy++ {
+					for xx := left + 1; xx < right; xx++ {
+						if l.At(Pos{xx, yy}) != TileFloor {
 							l.Tiles[yy][xx] = TileFloor
 						}
 					}
 				}
-				continue
-			}
-			// Find outer by scanning from center to wall/door
-			left := c.X
-			for left >= 0 {
-				t := l.At(Pos{left, c.Y})
-				if t == TileWall || t == TileDoor {
-					break
-				}
-				left--
-			}
-			right := c.X
-			for right < l.W {
-				t := l.At(Pos{right, c.Y})
-				if t == TileWall || t == TileDoor {
-					break
-				}
-				right++
-			}
-			top := c.Y
-			for top >= 0 {
-				t := l.At(Pos{c.X, top})
-				if t == TileWall || t == TileDoor {
-					break
-				}
-				top--
-			}
-			bottom := c.Y
-			for bottom < l.H {
-				t := l.At(Pos{c.X, bottom})
-				if t == TileWall || t == TileDoor {
-					break
-				}
-				bottom++
-			}
-			outerW := right - left + 1
-			outerH := bottom - top + 1
-			if outerW < 7 || outerW > 9 || outerH < 7 || outerH > 9 {
-				// Fallback to 7x7 around door
-				dx := door.X - c.X
-				dy := door.Y - c.Y
-				ow, oh := 7, 7
-				var ox, oy int
-				if dy < 0 && -dy > dx && -dy > -dx {
-					ox = door.X - ow/2
-					oy = door.Y
-				} else if dy > 0 && dy > dx && dy > -dx {
-					ox = door.X - ow/2
-					oy = door.Y - oh + 1
-				} else if dx < 0 {
-					ox = door.X
-					oy = door.Y - oh/2
-				} else {
-					ox = door.X - ow + 1
-					oy = door.Y - oh/2
-				}
-				if ox < 1 {
-					ox = 1
-				}
-				if oy < 1 {
-					oy = 1
-				}
-				if ox+ow >= l.W {
-					ox = l.W - ow - 1
-				}
-				if oy+oh >= l.H {
-					oy = l.H - oh - 1
-				}
-				left = ox
-				right = ox + ow - 1
-				top = oy
-				bottom = oy + oh - 1
-			}
-			for yy := top; yy <= bottom; yy++ {
-				for xx := left; xx <= right; xx++ {
-					isPerim := xx == left || xx == right || yy == top || yy == bottom
-					if !isPerim {
-						continue
-					}
-					p := Pos{xx, yy}
-					if p == door {
-						if l.At(p) != TileDoor {
-							l.Tiles[yy][xx] = TileDoor
-							if l.Doors == nil {
-								l.Doors = make(map[Pos]bool)
-							}
-							l.Doors[p] = false
-						}
-						continue
-					}
-					if l.At(p) != TileWall {
-						l.Tiles[yy][xx] = TileWall
-						if l.Doors != nil {
-							delete(l.Doors, p)
-						}
-					}
-				}
-			}
-			for yy := top + 1; yy < bottom; yy++ {
-				for xx := left + 1; xx < right; xx++ {
-					if l.At(Pos{xx, yy}) != TileFloor {
-						l.Tiles[yy][xx] = TileFloor
-					}
-				}
 			}
 		}
-	}
-	// Vault re-enforce outside emergency corridor as well (always)
+// Vault re-enforce outside emergency corridor as well (always)
 	for _, vf := range l.Features {
 		if !vf.IsVault() {
 			continue
@@ -1786,11 +1798,78 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 			}
 		}
 	}
-	// Debug helper
+		// Final walkability check with deterministic retry
+		if AssertLevelHasExit(l) {
+			break
+		}
+		if attempt == 0 {
+			fmt.Printf("WARN: floor %d exit not reachable after guarantee (biome %s up %v down %v)\n", floor, biome.ID, l.StairsUp, l.StairsDown)
+		}
+		dumpLevelGeometry(l)
+		if attempt == 49 {
+			panic(fmt.Sprintf("GenerateWithBiome floor %d failed to guarantee exit after 50 attempts (up %v down %v) biome %s", floor, l.StairsUp, l.StairsDown, biome.ID))
+		}
+	}
 	_ = fmt.Sprintf("biome %s floor %d", biome.ID, floor)
 }
 
-// isWallForDoor reports whether pos is a wall or out of bounds (treated as wall for door width checks).
+
+// dumpLevelGeometry prints level geometry for debugging walkability failures.
+func dumpLevelGeometry(l *Level) {
+	if l == nil {
+		fmt.Printf("dumpLevelGeometry: nil level\n")
+		return
+	}
+	fmt.Printf("=== Level dump W=%d H=%d StairsUp=%v StairsDown=%v Biome=%s Floor=%d ===\n", l.W, l.H, l.StairsUp, l.StairsDown, l.BiomeID, l.Floor)
+	counts := map[Tile]int{}
+	for y := 0; y < l.H; y++ {
+		for x := 0; x < l.W; x++ {
+			counts[l.Tiles[y][x]]++
+		}
+	}
+	fmt.Printf("Tile counts: wall=%d floor=%d door=%d up=%d down=%d total=%d\n", counts[TileWall], counts[TileFloor], counts[TileDoor], counts[TileStairsUp], counts[TileStairsDown], l.W*l.H)
+	fmt.Printf("Features (%d):\n", len(l.Features))
+	for i, f := range l.Features {
+		fmt.Printf("  %d: type=%s pos=%v locked=%v treasure=%d trapped=%v\n", i, f.Type, f.Pos, f.Locked, f.Treasure, f.Trapped)
+	}
+	fmt.Printf("Doors (%d):\n", len(l.Doors))
+	for p, open := range l.Doors {
+		fmt.Printf("  %v open=%v tile=%v\n", p, open, l.At(p))
+	}
+	vaultSet := map[Pos]bool{}
+	for _, f := range l.Features {
+		if f.IsVault() {
+			vaultSet[f.Pos] = true
+		}
+	}
+	for y := 0; y < l.H; y++ {
+		row := make([]rune, l.W)
+		for x := 0; x < l.W; x++ {
+			p := Pos{x, y}
+			if vaultSet[p] {
+				row[x] = '?'
+				continue
+			}
+			t := l.Tiles[y][x]
+			switch t {
+			case TileWall:
+				row[x] = '#'
+			case TileFloor:
+				row[x] = '.'
+			case TileDoor:
+				row[x] = '+'
+			case TileStairsUp:
+				row[x] = '<'
+			case TileStairsDown:
+				row[x] = '>'
+			default:
+				row[x] = ' '
+			}
+		}
+		fmt.Printf("%s\n", string(row))
+	}
+}
+
 func isWallForDoor(l *Level, p Pos) bool {
 	if !l.InBounds(p) {
 		return true
@@ -1883,6 +1962,9 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 	for range attempts {
 		w := 5 + rng.IntN(7) // 5-11
 		h := 4 + rng.IntN(5) // 4-8
+		if l.W-w-2 <= 0 || l.H-h-2 <= 0 {
+			continue
+		}
 		x := 1 + rng.IntN(l.W-w-2)
 		y := 1 + rng.IntN(l.H-h-2)
 		r := rect{x, y, w, h}
@@ -1923,16 +2005,32 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 		by := b.y + b.h/2
 		if rng.IntN(2) == 0 {
 			for x := min(ax, bx); x <= max(ax, bx); x++ {
+				p := Pos{x, ay}
+				if !l.InBounds(p) {
+					continue
+				}
 				l.Tiles[ay][x] = TileFloor
 			}
 			for y := min(ay, by); y <= max(ay, by); y++ {
+				p := Pos{bx, y}
+				if !l.InBounds(p) {
+					continue
+				}
 				l.Tiles[y][bx] = TileFloor
 			}
 		} else {
 			for y := min(ay, by); y <= max(ay, by); y++ {
+				p := Pos{ax, y}
+				if !l.InBounds(p) {
+					continue
+				}
 				l.Tiles[y][ax] = TileFloor
 			}
 			for x := min(ax, bx); x <= max(ax, bx); x++ {
+				p := Pos{x, by}
+				if !l.InBounds(p) {
+					continue
+				}
 				l.Tiles[by][x] = TileFloor
 			}
 		}
@@ -1951,6 +2049,9 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 	}
 	trySpecialRoom := func(w, h int) (rect, Pos, bool) {
 		for range 40 {
+			if l.W-w-2 <= 0 || l.H-h-2 <= 0 {
+				return rect{}, Pos{}, false
+			}
 			x := 1 + rng.IntN(l.W-w-2)
 			y := 1 + rng.IntN(l.H-h-2)
 			r := rect{x, y, w, h}
@@ -2071,6 +2172,25 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 		}
 		ox := 1 + rng.IntN(maxOx)
 		oy := 1 + rng.IntN(maxOy)
+		// Clamp to [1, W-ow-1] and [1, H-oh-1]
+		if ox < 1 {
+			ox = 1
+		}
+		if oy < 1 {
+			oy = 1
+		}
+		if ox+ow >= l.W {
+			ox = l.W - ow - 1
+			if ox < 1 {
+				ox = 1
+			}
+		}
+		if oy+oh >= l.H {
+			oy = l.H - oh - 1
+			if oy < 1 {
+				oy = 1
+			}
+		}
 		outer := rect{ox, oy, ow, oh}
 		if overlaps(outer) {
 			continue
@@ -2284,7 +2404,28 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 		vw, vh := 5, 5
 		ox, oy := 5, 5
 		ow, oh := 7, 7
-		if ox+ow < l.W && oy+oh < l.H {
+		// Clamp ox,oy to [1, W-ow-1] and [1, H-oh-1] with max(1,min) logic
+		if l.W > ow+1 && l.H > oh+1 {
+			if ox < 1 {
+				ox = 1
+			}
+			if oy < 1 {
+				oy = 1
+			}
+			if ox+ow >= l.W {
+				ox = l.W - ow - 1
+				if ox < 1 {
+					ox = 1
+				}
+			}
+			if oy+oh >= l.H {
+				oy = l.H - oh - 1
+				if oy < 1 {
+					oy = 1
+				}
+			}
+		}
+		if ox+ow < l.W && oy+oh < l.H && ox >= 1 && oy >= 1 {
 			for yy := oy; yy < oy+oh; yy++ {
 				for xx := ox; xx < ox+ow; xx++ {
 					isPerim := xx == ox || xx == ox+ow-1 || yy == oy || yy == oy+oh-1

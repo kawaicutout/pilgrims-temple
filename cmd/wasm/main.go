@@ -60,6 +60,7 @@ const (
 	stateThrowCursor
 	stateMerchant
 	stateShrine
+	stateScores
 )
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -71,10 +72,17 @@ const (
 	wizardRemoveIdx := 0
 	useSelected := 0
 	throwSelected := 0
+	scoresSelected := 0
 	renderMenu := func() {
-		frame := game.RenderMainMenuWithScores(tuning, menu.Selected)
+		frame := game.RenderMainMenu(tuning, menu.Selected)
 		html := buildHTML(frame, tuning)
-		html += buildScoreboardHTML()
+		gameDiv.Set("innerHTML", html)
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderScores := func() {
+		frame := game.RenderScoresScreen(tuning, scoresSelected)
+		html := buildHTML(frame, tuning)
 		gameDiv.Set("innerHTML", html)
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -217,13 +225,30 @@ const (
 					state = stateCharSelect
 					renderCharSelect()
 				case 1:
-					// Scores placeholder
-					renderMenu()
+					scoresSelected = 0
+					state = stateScores
+					renderScores()
 				case 2:
 					// Exit not applicable on web; just stay
 				}
 			case game.KeyQuit:
 				// No exit on web
+			}
+		case stateScores:
+			switch k {
+			case game.KeyUp:
+				if scoresSelected > 0 {
+					scoresSelected--
+				}
+				renderScores()
+			case game.KeyDown:
+				if sb, err := game.LoadScoreboard(); err == nil && sb != nil && scoresSelected < len(sb.Entries)-1 {
+					scoresSelected++
+				}
+				renderScores()
+			case game.KeyEnter, game.KeyQuit:
+				state = stateMenu
+				renderMenu()
 			}
 		case stateCharSelect:
 			if cs == nil {

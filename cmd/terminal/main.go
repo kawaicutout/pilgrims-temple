@@ -234,6 +234,7 @@ func main() {
 		stateThrowCursor
 		stateMerchant
 		stateShrine
+		stateScores
 	)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -245,7 +246,8 @@ func main() {
 	wizardRemoveIdx := 0
 	useSelected := 0
 	throwSelected := 0
-	drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+	scoresSelected := 0
+	drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 	for {
 		ev := s.PollEvent()
 		switch e := ev.(type) {
@@ -253,7 +255,9 @@ func main() {
 			s.Sync()
 			switch state {
 			case stateMenu:
-				drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+				drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+			case stateScores:
+				drawFrame(game.RenderScoresScreen(tuning, scoresSelected))
 			case stateCharSelect:
 				if cs != nil {
 					drawFrame(game.RenderCharSelect(tuning, cs))
@@ -317,10 +321,10 @@ func main() {
 				switch k {
 				case game.KeyUp:
 					menu.Move(-1)
-					drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 				case game.KeyDown:
 					menu.Move(1)
-					drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 				case game.KeyEnter:
 					switch menu.Selected {
 					case 0: // New Game
@@ -331,19 +335,39 @@ func main() {
 						}
 						state = stateCharSelect
 						drawFrame(game.RenderCharSelect(tuning, cs))
-					case 1: // Scores placeholder
-						// Show scores as log in menu? For now just stay
-						drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+					case 1: // Scores
+						scoresSelected = 0
+						state = stateScores
+						drawFrame(game.RenderScoresScreen(tuning, scoresSelected))
 					case 2: // Exit
 						return
 					}
 				case game.KeyQuit:
 					return
 				}
+			case stateScores:
+				switch k {
+				case game.KeyUp:
+					if scoresSelected > 0 {
+						scoresSelected--
+					}
+					drawFrame(game.RenderScoresScreen(tuning, scoresSelected))
+				case game.KeyDown:
+					if sb, err := game.LoadScoreboard(); err == nil && sb != nil && scoresSelected < len(sb.Entries)-1 {
+						scoresSelected++
+					} else if sb != nil && len(sb.Entries) == 0 {
+					} else if err != nil {
+						scoresSelected++
+					}
+					drawFrame(game.RenderScoresScreen(tuning, scoresSelected))
+				case game.KeyEnter, game.KeyQuit:
+					state = stateMenu
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+				}
 			case stateCharSelect:
 				if cs == nil {
 					state = stateMenu
-					drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					break
 				}
 				switch k {
@@ -376,7 +400,7 @@ func main() {
 				case game.KeyQuit:
 					if cs.Back() {
 						state = stateMenu
-						drawFrame(game.RenderMainMenuWithScores(tuning, menu.Selected))
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					} else {
 						drawFrame(game.RenderCharSelect(tuning, cs))
 					}

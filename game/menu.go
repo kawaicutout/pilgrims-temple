@@ -220,12 +220,40 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 }
 
 func RenderMainMenu(tuning Tuning, selected int) Frame {
-	return RenderMainMenuWithScores(tuning, selected)
+	w, h := tuning.Map.Width, tuning.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	title := "PILGRIM'S TEMPLE"
+	sub := "Roguetemple's Fortnight 2"
+	drawCentered(cells, w, h/2-4, title, "gold-bright")
+	drawCentered(cells, w, h/2-3, sub, "gray-1")
+	for i, opt := range MainMenuOptions {
+		prefix := "  "
+		fg := "gray-1"
+		if i == selected {
+			prefix = "> "
+			fg = "gold-bright"
+		}
+		line := prefix + opt
+		drawCentered(cells, w, h/2+1+i, line, fg)
+	}
+	panel := []string{"", "Pilgrim's Temple", "Select: Up/Down  Enter", "Esc: Quit"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+	}
+	status := "Main Menu"
+	hints := "Up/Down or k/j: move  Enter: select  Esc: quit"
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
-
 // RenderMainMenuWithScores loads the Scoreboard via LoadScoreboard (handles missing file/localStorage gracefully)
 // and renders recent entries (top 5 by score descending) with columns: Rank, Score, PartyLevel, Gold, Depth, Seed, Victory/Cause, Members summary.
 // Keeps existing menu options above scores and uses available map width for scoreboard footer.
+// Deprecated: use RenderScoresScreen for the dedicated scores view; main menu now shows no scores.
 func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 	w, h := tuning.Map.Width, tuning.Map.Height
 	cells := make([][]Cell, h)
@@ -312,6 +340,96 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 	}
 	status := "Main Menu"
 	hints := "Up/Down or k/j: move  Enter: select  Esc: quit"
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+
+// RenderScoresScreen renders the scrolling scoreboard for the Scores menu option.
+// Shows all entries sorted by score descending, scrollable via selected index.
+func RenderScoresScreen(tuning Tuning, selected int) Frame {
+	w, h := tuning.Map.Width, tuning.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	sb, err := LoadScoreboard()
+	if err != nil || sb == nil {
+		sb = &Scoreboard{}
+	}
+	entries := sb.GetHighScores(len(sb.Entries))
+	if len(entries) == 0 {
+		entries = sb.Entries
+	}
+	drawCentered(cells, w, 2, "SCOREBOARD", "gold-bright")
+	if len(entries) == 0 {
+		drawCentered(cells, w, h/2, "No scores yet — survive the temple!", "gray-1")
+	} else {
+		if selected < 0 {
+			selected = 0
+		}
+		if selected >= len(entries) {
+			selected = len(entries) - 1
+		}
+		header := " # Score Lv Gold Depth Seed       Result     Members"
+		if len(header) > w-2 {
+			header = header[:w-2]
+		}
+		drawString(cells, 1, 4, header, "gray-2")
+		maxRows := h - 7
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		start := 0
+		if len(entries) > maxRows {
+			start = selected - maxRows/2
+			if start < 0 {
+				start = 0
+			}
+			if start+maxRows > len(entries) {
+				start = len(entries) - maxRows
+			}
+		}
+		end := start + maxRows
+		if end > len(entries) {
+			end = len(entries)
+		}
+		for i := start; i < end; i++ {
+			e := entries[i]
+			result := e.CauseOfDeath
+			if e.Victory {
+				result = "Victory"
+			}
+			if result == "" {
+				result = "Unknown"
+			}
+			members := MembersSummary(e)
+			line := fmt.Sprintf("%2d. %5d Lv%d G%d D%d S%d %-10s %s", i+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached, e.Seed, result, members)
+			if len(line) > w-2 {
+				line = line[:w-5] + "..."
+			}
+			fg := "gray-1"
+			if e.Victory {
+				fg = "gold-bright"
+			}
+			if i == selected {
+				fg = "gold-bright"
+				line = "> " + line[2:]
+			}
+			drawString(cells, 1, 5+(i-start), line, fg)
+		}
+		if len(entries) > maxRows {
+			more := fmt.Sprintf("(%d/%d)", selected+1, len(entries))
+			drawCentered(cells, w, h-3, more, "gray-2")
+		}
+	}
+	panel := []string{"", "Scores", fmt.Sprintf("%d entries", len(entries)), "Enter/Esc: back", "Up/Down: scroll"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+	}
+	status := "Scores"
+	hints := "Up/Down or k/j: scroll  Enter/Esc: back to menu"
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
 

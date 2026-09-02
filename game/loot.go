@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"math/rand/v2"
+	"strings"
 )
 
 // GroundItem is a pick-up on the floor. Added in M5 partial; wizard loot uses it for debug.
@@ -85,15 +86,25 @@ func (g *Game) TryPickup() bool {
 			if amt <= 0 {
 				amt = 1
 			}
-			// Rations are food? Add food directly for now (50 per ration)
 			f := amt * 50
 			g.Food += f
 			g.FoodFloat += float64(f)
 			g.Logf("Picked up ration (+%d food).", f)
 		case "potion":
+			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
+				g.Logf("Carry full - cannot pick up potion: %s.", it.Name)
+				remaining = append(remaining, it)
+				continue
+			}
+			g.Party.Inventory = append(g.Party.Inventory, it)
 			g.Logf("Picked up potion: %s.", it.Name)
-			// TODO: add to inventory when inventory exists
 		case "scroll":
+			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
+				g.Logf("Carry full - cannot pick up scroll: %s.", it.Name)
+				remaining = append(remaining, it)
+				continue
+			}
+			g.Party.Inventory = append(g.Party.Inventory, it)
 			g.Logf("Picked up scroll: %s.", it.Name)
 		default:
 			g.Logf("Picked up %s.", it.Name)
@@ -105,6 +116,230 @@ func (g *Game) TryPickup() bool {
 		g.Logf("Nothing to pick up.")
 	}
 	return picked
+}
+
+// appearanceFromItem returns the appearance token for a potion/scroll item
+// by stripping the kind suffix from its Name.
+func appearanceFromItem(it GroundItem) string {
+	if it.Kind == "potion" && strings.HasSuffix(it.Name, " potion") {
+		return strings.TrimSuffix(it.Name, " potion")
+	}
+	if it.Kind == "scroll" && strings.HasSuffix(it.Name, " scroll") {
+		return strings.TrimSuffix(it.Name, " scroll")
+	}
+	// Fallback: derive from ID mapping if Name not in expected form
+	if it.Kind == "potion" || it.Kind == "scroll" {
+		if app := AppearanceForType(it.ID); app != "" {
+			return app
+		}
+	}
+	return it.Name
+}
+
+// friendlyTypeName returns display name for a typeID.
+func friendlyTypeName(typeID, kind string) string {
+	if kind == "potion" {
+		_, types := loadPotionData()
+		for _, t := range types {
+			if t.ID == typeID {
+				return t.Name
+			}
+		}
+		for _, t := range fallbackPotionTypes {
+			if t.ID == typeID {
+				return t.Name
+			}
+		}
+	}
+	if kind == "scroll" {
+		_, types := loadScrollData()
+		for _, t := range types {
+			if t.ID == typeID {
+				return t.Name
+			}
+		}
+		for _, t := range fallbackScrollTypes {
+			if t.ID == typeID {
+				return t.Name
+			}
+		}
+	}
+	if typeID != "" {
+		return strings.Title(typeID)
+	}
+	return "unknown"
+}
+
+// TryUseItem consumes the first available potion/scroll in inventory,
+// identifies its appearance, applies its effect, and advances a turn.
+// Returns true if an item was consumed.
+func (g *Game) TryUseItem() bool {
+	if g.Party == nil || len(g.Party.Inventory) == 0 {
+		g.Logf("No potions or scrolls to use.")
+		return false
+	}
+	// Prefer potions first, else first scroll/other.
+	idx := -1
+	for i, it := range g.Party.Inventory {
+		if it.Kind == "potion" {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		idx = 0
+	}
+	it := g.Party.Inventory[idx]
+	// Remove from inventory
+	g.Party.Inventory = append(g.Party.Inventory[:idx], g.Party.Inventory[idx+1:]...)
+	appearance := appearanceFromItem(it)
+	trueType := TypeForAppearance(appearance)
+	if trueType == "" {
+		trueType = it.ID
+	}
+	newlyIdentified := IdentifyOnUse(appearance)
+	typeName := friendlyTypeName(trueType, it.Kind)
+	if newlyIdentified {
+		g.Logf("Used %s - identified as %s!", appearance, typeName)
+	} else if IsIdentified(appearance) {
+		g.Logf("Used %s (%s).", appearance, typeName)
+	} else {
+		g.Logf("Used %s.", it.Name)
+	}
+	// Apply effect based on true type
+	switch it.Kind {
+	case "potion":
+		switch trueType {
+		case "healing":
+			healed := 0
+			for _, m := range g.Party.Members {
+				if m.IsAlive() && m.HP < m.MaxHP {
+					m.HP += 12
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+					healed++
+				}
+			}
+			if healed > 0 {
+				g.Logf("Healing potion restores 12 HP to %d members.", healed)
+			} else {
+				g.Logf("Healing potion: already at full health.")
+			}
+		case "poison":
+			_, dmg := g.Party.ApplyDamage(g.RNG, 6)
+			g.Logf("Poison potion deals %d damage!", dmg)
+			if g.Party.LivingCount() == 0 {
+				g.Over = true
+				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+			}
+		case "strength":
+			members := g.Party.LivingMembers()
+			if len(members) > 0 {
+				m := members[g.RNG.IntN(len(members))]
+				m.ATK[0] += 2
+				m.ATK[1] += 2
+				g.Logf("Strength potion: %s gains +2 ATK.", m.Name)
+			}
+		case "invisibility":
+			g.Logf("Invisibility potion: you fade from sight briefly.")
+		case "fire_resist":
+			g.Logf("Fire resistance potion: you feel resistant to flame.")
+		case "paralysis":
+			g.Logf("Paralysis potion: you are paralyzed briefly!")
+		case "levitation":
+			g.Logf("Levitation potion: you float above traps.")
+		case "enlightenment":
+			g.Logf("Enlightenment potion: your mind expands.")
+		default:
+			g.Logf("Potion effect: %s.", typeName)
+		}
+	case "scroll":
+		switch trueType {
+		case "identify":
+			// Identify another random unidentified held appearance if any
+			found := ""
+			for _, inv := range g.Party.Inventory {
+				app := appearanceFromItem(inv)
+				if !IsIdentified(app) {
+					found = app
+					break
+				}
+			}
+			if found != "" {
+				IdentifyOnUse(found)
+				g.Logf("Identify scroll reveals %s as %s.", found, friendlyTypeName(TypeForAppearance(found), "potion"))
+			} else {
+				g.Logf("Identify scroll: nothing left to identify.")
+			}
+		case "teleport":
+			if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
+				// Find random walkable tile
+				var cands []Pos
+				for y := range lvl.H {
+					for x := range lvl.W {
+						p := Pos{x, y}
+						if lvl.Walkable(p) {
+							cands = append(cands, p)
+						}
+					}
+				}
+				if len(cands) > 0 {
+					g.Party.Pos = cands[g.RNG.IntN(len(cands))]
+					g.Logf("Teleport scroll: you vanish to a new location.")
+					g.UpdateFOV()
+				}
+			}
+		case "fireball":
+			g.Logf("Fireball scroll: flames burst around you!")
+			if lvl := g.CurLevel(); lvl != nil {
+				for _, e := range lvl.Enemies {
+					if !e.IsAlive() {
+						continue
+					}
+					if max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= 2 {
+						for _, m := range e.Members {
+							if m.IsAlive() {
+								m.HP -= 10
+								if m.HP <= 0 {
+									m.HP = 0
+									m.Alive = false
+								}
+							}
+						}
+						if !e.IsAlive() {
+							g.Logf("Fireball slays %s!", e.DisplayName())
+						}
+					}
+				}
+			}
+		case "mapping":
+			if lvl := g.CurLevel(); lvl != nil {
+				for y := range lvl.H {
+					for x := range lvl.W {
+						lvl.Seen[y][x] = true
+					}
+				}
+				g.Logf("Mapping scroll reveals the floor.")
+			}
+		case "greater_healing":
+			for _, m := range g.Party.Members {
+				if m.IsAlive() {
+					m.HP += 20
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+				}
+			}
+			g.Logf("Greater healing scroll restores 20 HP to all members.")
+		default:
+			g.Logf("Scroll effect: %s.", typeName)
+		}
+	default:
+		g.Logf("Used %s: %s.", it.Name, typeName)
+	}
+	g.EndPlayerTurn("")
+	return true
 }
 
 // pickLootKind selects a loot kind weighted by WorldConfig + floor theme + depth.

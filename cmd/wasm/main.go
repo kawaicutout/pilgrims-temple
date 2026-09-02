@@ -138,7 +138,7 @@ const (
 		code := e.Get("code").String()
 		k := game.NormalizeKey(key, code)
 		switch k {
-		case game.KeyUp, game.KeyDown, game.KeyLeft, game.KeyRight, game.KeyUpLeft, game.KeyUpRight, game.KeyDownLeft, game.KeyDownRight, game.KeyWait:
+		case game.KeyUp, game.KeyDown, game.KeyLeft, game.KeyRight, game.KeyUpLeft, game.KeyUpRight, game.KeyDownLeft, game.KeyDownRight, game.KeyWait, game.KeyRest, game.KeyUse:
 			e.Call("preventDefault")
 		}
 		switch state {

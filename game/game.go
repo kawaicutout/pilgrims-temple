@@ -42,6 +42,7 @@ type Game struct {
 
 func NewGame(seed int64, tuning Tuning) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
+	InitIdentificationSeed(seed)
 	g := &Game{
 		Seed: seed, RNG: rng, Tuning: tuning,
 		Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1,
@@ -110,19 +111,7 @@ type TalentPick struct {
 }
 
 func (g *Game) xpForNext() int {
-	base := g.Tuning.LevelUp.XPBase
-	if base == 0 {
-		base = 100
-	}
-	factor := g.Tuning.LevelUp.XPFactor
-	if factor == 0 {
-		factor = 1.5
-	}
-	xp := float64(base)
-	for i := 1; i < g.Level; i++ {
-		xp *= factor
-	}
-	return int(xp + 0.5)
+	return 100 + 50*(g.Level-1)
 }
 
 func (g *Game) GainXP(amount int) {
@@ -461,9 +450,9 @@ func (g *Game) handleVault(f *Feature) bool {
 	return false
 }
 
-func (g *Game) handleForge(f *Feature) {
+func (g *Game) handleForge(f *Feature) bool {
 	if f == nil || !f.IsForge() {
-		return
+		return false
 	}
 	ct := f.CostType
 	if ct == "" {
@@ -480,13 +469,13 @@ func (g *Game) handleForge(f *Feature) {
 	if ct == "gold" {
 		if g.Gold < cost {
 			g.Logf("Forge needs %d gold to improve gear (you have %d).", cost, g.Gold)
-			return
+			return false
 		}
 		g.Gold -= cost
 		// Improve random living member ATK or DEF.
 		members := g.Party.LivingMembers()
 		if len(members) == 0 {
-			return
+			return false
 		}
 		m := members[g.RNG.IntN(len(members))]
 		if g.RNG.IntN(2) == 0 {
@@ -500,7 +489,7 @@ func (g *Game) handleForge(f *Feature) {
 	} else { // food
 		if g.Food < cost {
 			g.Logf("Forge needs %d food to stoke (you have %d).", cost, g.Food)
-			return
+			return false
 		}
 		g.Food -= cost
 		g.FoodFloat -= float64(cost)
@@ -509,7 +498,7 @@ func (g *Game) handleForge(f *Feature) {
 		}
 		members := g.Party.LivingMembers()
 		if len(members) == 0 {
-			return
+			return false
 		}
 		m := members[g.RNG.IntN(len(members))]
 		if g.RNG.IntN(2) == 0 {
@@ -522,6 +511,20 @@ func (g *Game) handleForge(f *Feature) {
 		}
 	}
 	g.removeFeatureAt(f.Pos, FeatureForge)
+	return true
+}
+
+// TryUseForge attempts deliberate use of a forge at the party's current position.
+// Returns true if a forge was present and successfully used (cost deducted, stats bumped).
+func (g *Game) TryUseForge() bool {
+	f := g.featureAt(g.Party.Pos)
+	if f == nil || !f.IsForge() {
+		return false
+	}
+	// Copy to avoid alias issues after removal.
+	ff := *f
+	used := g.handleForge(&ff)
+	return used
 }
 
 func (g *Game) handleDen(f *Feature) {
@@ -533,7 +536,122 @@ func (g *Game) handleDen(f *Feature) {
 		cnt = 3
 	}
 	g.Logf("Den ahead -- %d monsters guard this lair!", cnt)
-	// Den remains as marker; not removed on warning (optional)
+	// Den remains as marker; not removed on warning (spawn handled by TickDens)
+}
+
+// TickDens spawns 1-2 monsters from each den when player within radius 3.
+// Uses level-appropriate enemy generation (pickEnemyForFloor + buildMemberFromEntry)
+// and decrements MonsterCount individually. Den removed when count reaches 0.
+func (g *Game) TickDens() {
+	lvl := g.CurLevel()
+	if lvl == nil || g.Party == nil || g.RNG == nil {
+		return
+	}
+	for i := range lvl.Features {
+		f := &lvl.Features[i]
+		if f.Type != FeatureDen {
+			continue
+		}
+		if f.MonsterCount <= 0 {
+			continue
+		}
+		dx := g.Party.Pos.X - f.Pos.X
+		if dx < 0 {
+			dx = -dx
+		}
+		dy := g.Party.Pos.Y - f.Pos.Y
+		if dy < 0 {
+			dy = -dy
+		}
+		if max(dx, dy) > 3 {
+			continue
+		}
+		remaining := f.MonsterCount
+		spawnN := 1 + g.RNG.IntN(2)
+		if spawnN > remaining {
+			spawnN = remaining
+		}
+		for range spawnN {
+			var spawnPos Pos
+			found := false
+			for range 20 {
+				dx2 := g.RNG.IntN(5) - 2
+				dy2 := g.RNG.IntN(5) - 2
+				cand := Pos{f.Pos.X + dx2, f.Pos.Y + dy2}
+				if cand == lvl.StairsUp || cand == lvl.StairsDown || cand == f.Pos || cand == g.Party.Pos {
+					continue
+				}
+				if !lvl.InBounds(cand) || !lvl.Walkable(cand) {
+					continue
+				}
+				occupied := false
+				for _, e := range lvl.Enemies {
+					if e != nil && e.Pos == cand {
+						occupied = true
+						break
+					}
+				}
+				if occupied {
+					continue
+				}
+				blocked := false
+				for _, feat := range lvl.Features {
+					if feat.Pos == cand && feat.Type != FeatureDen {
+						blocked = true
+						break
+					}
+				}
+				if blocked {
+					continue
+				}
+				spawnPos = cand
+				found = true
+				break
+			}
+			if !found {
+				for _, d := range AllDirs {
+					cand := f.Pos.Add(d)
+					if lvl.Walkable(cand) && cand != lvl.StairsUp && cand != lvl.StairsDown && cand != g.Party.Pos {
+						occupied := false
+						for _, e := range lvl.Enemies {
+							if e != nil && e.Pos == cand {
+								occupied = true
+								break
+							}
+						}
+						if !occupied {
+							spawnPos = cand
+							found = true
+							break
+						}
+					}
+				}
+				if !found {
+					spawnPos = f.Pos
+				}
+			}
+			entry := pickEnemyForFloor(g.RNG, g.Floor)
+			mem := buildMemberFromEntry(entry, g.RNG, g.Floor)
+			ep := &EnemyParty{Pos: spawnPos, Members: []*Member{mem}, Active: 0}
+			lvl.Enemies = append(lvl.Enemies, ep)
+			g.Logf("Den stirs -- %s emerges!", mem.Name)
+		}
+		f.MonsterCount -= spawnN
+		if f.MonsterCount <= 0 {
+			g.Logf("Den emptied.")
+		} else {
+			g.Logf("Den has %d monsters remaining.", f.MonsterCount)
+		}
+	}
+	// Remove empty dens.
+	dst := lvl.Features[:0]
+	for _, feat := range lvl.Features {
+		if feat.Type == FeatureDen && feat.MonsterCount <= 0 {
+			continue
+		}
+		dst = append(dst, feat)
+	}
+	lvl.Features = dst
 }
 
 func (g *Game) handleShrine(f *Feature) {
@@ -974,7 +1092,8 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	// Move - silent (log reserved for combat/stairs/ambience)
 	g.Party.Pos = next
 	g.Party.Active = g.Party.Selected
-	// Post-move feature interactions: Vault loot, Forge cost, Den warning, Shrine, Fountain, Merchant.
+	// Post-move feature interactions: Vault loot, Den warning, Shrine, Fountain, Merchant.
+	// Forge is deliberate-use only (press g/u on forge tile to trigger).
 	if f := g.featureAt(next); f != nil {
 		if f.IsVault() {
 			// Vault already passed locked check; claim treasure.
@@ -982,9 +1101,6 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			vf := *f
 			// Clear blocking check duplicate — handleVault does treasure/trap + removal.
 			g.handleVault(&vf)
-		} else if f.IsForge() {
-			ff := *f
-			g.handleForge(&ff)
 		} else if f.IsDen() {
 			g.handleDen(f)
 		} else if f.IsShrine() {
@@ -1184,6 +1300,7 @@ func (g *Game) EnemyTurn() {
 	if g.Over {
 		return
 	}
+	g.TickDens()
 	lvl := g.CurLevel()
 	for _, e := range lvl.Enemies {
 		if !e.IsAlive() {

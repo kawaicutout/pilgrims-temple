@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -177,9 +178,53 @@ func (g *Game) Render() Frame {
 		panel = append(panel, "")
 		panelFG = append(panelFG, "gray-1")
 	}
-	// Inventory placeholders — Carry is shown in status bar / panel below map, not side panel
-	panel = append(panel, "Potions:", "  (none)", "Scrolls:", "  (none)")
-	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1")
+	// Inventory - grouped by appearance, showing identified names when known
+	potionCounts := map[string]int{}
+	scrollCounts := map[string]int{}
+	for _, it := range g.Party.Inventory {
+		app := appearanceFromItem(it)
+		if it.Kind == "potion" {
+			potionCounts[app]++
+		} else if it.Kind == "scroll" {
+			scrollCounts[app]++
+		}
+	}
+	buildInvLine := func(header string, counts map[string]int, kind string) string {
+		if len(counts) == 0 {
+			return header + " (none)"
+		}
+		keys := make([]string, 0, len(counts))
+		for k := range counts {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var parts []string
+		for _, app := range keys {
+			cnt := counts[app]
+			display := app
+			if IsIdentified(app) {
+				if tid, ok := Knowledge[app]; ok && tid != "" {
+					display = friendlyTypeName(tid, kind)
+				} else if tid := TypeForAppearance(app); tid != "" {
+					display = friendlyTypeName(tid, kind)
+				}
+			}
+			if cnt > 1 {
+				parts = append(parts, fmt.Sprintf("%s (x%d)", display, cnt))
+			} else {
+				parts = append(parts, display)
+			}
+		}
+		line := header + " " + strings.Join(parts, ", ")
+		if len(line) > 30 {
+			line = line[:27] + "..."
+		}
+		return line
+	}
+	potionsLine := buildInvLine("Potions:", potionCounts, "potion")
+	scrollsLine := buildInvLine("Scrolls:", scrollCounts, "scroll")
+	panel = append(panel, potionsLine, scrollsLine)
+	panelFG = append(panelFG, "gray-1", "gray-1")
 	// Status - Floor | Food | Carry | Level/XP | Gold (no Turn, no HP, no Seed)
 	// Panel below map (status bar) shows Carry as "Carry C/M" in gold; Food is capitalized as "Food" not "FOOD".
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
@@ -197,7 +242,7 @@ func (g *Game) Render() Frame {
 	}
 	copy(logLines[max(0, len(logLines)-len(g.Log)):], g.Log)
 
-	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Stairs:>/ <  Quit:Esc  Help:?"
+	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u  Stairs:>/ <  Quit:Esc  Help:?"
 	if g.Quit {
 		hints = "Quit to menu. Seed " + fmt.Sprint(g.Seed) + " - Esc again or close window"
 	} else if g.Over {
@@ -349,18 +394,18 @@ func (g *Game) RenderHelpOverlay() Frame {
 		{"q / w / e / r  - select member 1-4 (free)", "gray-1"},
 		{"Move: arrows, numpad 1-9, hjkl + y u b n", "gray-1"},
 		{"5 / . / Space  - wait 1 turn", "gray-1"},
-		{"R  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", "gray-1"},
+		{"z / Z  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", "gray-1"},
+		{"g  - pickup  u  - use potion/scroll", "gray-1"},
 		{"v  - look: move cursor, v/Enter/Esc to examine", "gray-1"},
 		{"> / <  - stairs down / up", "gray-1"},
 		{"?  - help (this overlay)", "gold"},
 		{"Esc - quit to menu   ] - wizard menu", "gray-1"},
 		{"", "bg"},
-		{"Rest: R heals each living member 15 HP over 10 turns;", "gray-2"},
+		{"Rest: z heals each living member 15 HP over 10 turns;", "gray-2"},
 		{"world advances; ends early if foe appears or hunger ticks.", "gray-2"},
 		{"", "bg"},
 		{fmt.Sprintf("Seed %d | Food %d (%s) | Lvl %d XP %d/%d | Floor %d/%d | Turn %d", g.Seed, g.Food, g.HungerState(), g.Level, g.XP, g.XPToNext, g.Floor+1, t.Floors, g.Turn), "gold"},
 	}
-	// Center vertically
 	startY := (h - len(lines)) / 2
 	if startY < 1 {
 		startY = 1
@@ -378,7 +423,7 @@ func (g *Game) RenderHelpOverlay() Frame {
 	// Draw border box around lines (optional subtle frame)
 	status := fmt.Sprintf("Help | Seed %d | Floor %d/%d", g.Seed, g.Floor+1, t.Floors)
 	hints := "Esc / Enter / ? : close help  (no turn consumed)"
-	panel := []string{"", "Commands", "q/w/e/r select", "arrows/hjkl move", "5/. wait  R rest", "v look  >/< stairs", "? help  Esc quit", "] wizard"}
+	panel := []string{"", "Commands", "q/w/e/r select", "arrows/hjkl move", "5/. wait  z rest", "g pickup  u use", "v look  >/< stairs", "? help  Esc quit", "] wizard"}
 	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1"}
 	for len(panel) < 12 {
 		panel = append(panel, "")

@@ -55,6 +55,7 @@ type Party struct {
 	// Selected is UI cursor (q/w/e/r), free. Active is last actor.
 	Selected int
 	Active   int
+	Inventory []GroundItem `json:"inventory"`
 }
 
 func (p *Party) LivingCount() int {
@@ -133,12 +134,12 @@ func (p *Party) CarryCapacity() int {
 	}
 	return sum
 }
-
-// CarryUsed is sum of inventory weight. No floor-item loot is currently
-// spawned/consumed, so this returns 0; when potions/scrolls counting is
-// implemented it should sum held item counts.
+// CarryUsed is sum of inventory weight (1 per potion/scroll).
 func (p *Party) CarryUsed() int {
-	return 0
+	if p == nil {
+		return 0
+	}
+	return len(p.Inventory)
 }
 
 func (p *Party) EnsureSelection() {

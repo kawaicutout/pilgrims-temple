@@ -89,6 +89,7 @@ func (cs *CharSelectState) Done() bool { return len(cs.Picks) == 2 }
 
 func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
+	InitIdentificationSeed(seed)
 	g := &Game{
 		Seed: seed, RNG: rng, Tuning: tuning,
 		Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1,

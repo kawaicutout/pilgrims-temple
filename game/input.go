@@ -11,6 +11,7 @@ const (
 	KeyDownLeft   Key = "downleft"
 	KeyDownRight  Key = "downright"
 	KeyWait       Key = "wait"
+	KeyRest       Key = "rest"
 	KeyStairsDown Key = "stairs_down"
 	KeyStairsUp   Key = "stairs_up"
 	KeyQuit       Key = "quit"
@@ -18,6 +19,7 @@ const (
 	KeyEnter      Key = "enter"
 	KeyLook       Key = "look"
 	KeyPickup     Key = "pickup"
+	KeyUse        Key = "use"
 	KeySelect1    Key = "select1"
 	KeySelect2    Key = "select2"
 	KeySelect3    Key = "select3"
@@ -48,7 +50,6 @@ func KeyToDir(k Key) (Dir, bool) {
 		return DirNone, false
 	}
 }
-
 func (g *Game) HandleKey(k Key) bool {
 	// Help can be invoked even in look mode.
 	if k == KeyHelp {
@@ -94,9 +95,23 @@ func (g *Game) HandleKey(k Key) bool {
 		desc := Examine(g, g.Look.Cursor)
 		g.Logf("%s", desc)
 		return false
+	case KeyRest:
+		RestBatch(g)
+		return true
 	case KeyPickup:
+		if g.TryUseForge() {
+			g.EndPlayerTurn("")
+			return true
+		}
 		g.TryPickup()
 		g.EndPlayerTurn("")
+		return true
+	case KeyUse:
+		if g.TryUseForge() {
+			g.EndPlayerTurn("")
+			return true
+		}
+		g.TryUseItem()
 		return true
 	case KeyQuit:
 		g.Logf("Quit to menu. Seed %d saved.", g.Seed)
@@ -115,7 +130,6 @@ func (g *Game) HandleKey(k Key) bool {
 	}
 	return false
 }
-
 func NormalizeKey(raw string, code string) Key {
 	switch code {
 	case "Numpad8", "Digit8", "ArrowUp":
@@ -136,6 +150,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyDownRight
 	case "Numpad5", "Digit5":
 		return KeyWait
+	case "KeyZ":
+		return KeyRest
 	case "Escape":
 		return KeyQuit
 	case "Enter":
@@ -154,14 +170,18 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyRight
 	case "7", "y", "Y":
 		return KeyUpLeft
-	case "9", "u", "U":
+	case "9", "U":
 		return KeyUpRight
+	case "u":
+		return KeyUse
 	case "1", "b", "B":
 		return KeyDownLeft
 	case "3", "n", "N":
 		return KeyDownRight
 	case "5", ".", " ", "Space":
 		return KeyWait
+	case "z", "Z":
+		return KeyRest
 	case ">":
 		return KeyStairsDown
 	case "<":

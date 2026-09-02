@@ -608,7 +608,8 @@ func MaybeSpawnFeatures(lvl *Level, floor int, rng *rand.Rand) []Feature {
 			out = append(out, Feature{Pos: p, Type: FeatureForge, CostType: ct, Cost: cost})
 		}
 	}
-	// Den — 3-5 monsters in one room (feature marks center, enemies spawned nearby).
+	// Den — 3-5 monsters deferred spawn: feature stores remaining count, no immediate enemies.
+	// Spawn is handled over time by Game.TickDens when player within radius 3.
 	if rng.Float64() < cfg.Dens.Rate {
 		if p, ok := nextPos(); ok {
 			mn := cfg.Dens.MonsterMin
@@ -624,80 +625,6 @@ func MaybeSpawnFeatures(lvl *Level, floor int, rng *rand.Rand) []Feature {
 			}
 			count := mn + rng.IntN(mx-mn+1)
 			out = append(out, Feature{Pos: p, Type: FeatureDen, MonsterCount: count})
-			// Spawn den pack: 3-5 enemies clustered around den center.
-			// Use existing enemy pool helper if available; otherwise fallback to simple.
-			for i := range count {
-				// Find nearby free tile near p (within 2 steps).
-				var ep Pos
-				found := false
-				for tries := range 20 {
-					dx := rng.IntN(5) - 2
-					dy := rng.IntN(5) - 2
-					cand := Pos{p.X + dx, p.Y + dy}
-					if cand == lvl.StairsUp || cand == lvl.StairsDown || cand == p {
-						continue
-					}
-					if !lvl.InBounds(cand) || !lvl.Walkable(cand) {
-						continue
-					}
-					// Avoid feature positions and existing enemies.
-					if used[cand] {
-						continue
-					}
-					occupied := false
-					for _, e := range lvl.Enemies {
-						if e != nil && e.Pos == cand {
-							occupied = true
-							break
-						}
-					}
-					if occupied {
-						continue
-					}
-					// also avoid already placed den pack positions in this loop
-					coll := false
-					for j := range i {
-						_ = j
-						// linear scan of candidates already used by pack handled via used map
-					}
-					if tries < 20 {
-						ep = cand
-						found = true
-						break
-					}
-					_ = coll
-				}
-				if !found {
-					ep = p // fallback: stack on den (will be offset by combat)
-					// Try to jitter
-					for _, d := range AllDirs {
-						cand := p.Add(d)
-						if lvl.Walkable(cand) && cand != lvl.StairsUp && cand != lvl.StairsDown {
-							ep = cand
-							break
-						}
-					}
-				}
-				used[ep] = true
-				// Create single-member party for den (pack = multiple single parties).
-				entry := pickEnemyForFloor(rng, floor)
-				hp := 6 + floor*2 + rng.IntN(4)
-				if entry.Regen {
-					hp += 4
-				}
-				atkMin := 2 + floor
-				atkMax := atkMin + 2 + rng.IntN(2)
-				mem := &Member{
-					Name: entry.Name, Class: entry.ID,
-					HP: hp, MaxHP: hp,
-					ATK:   [2]int{atkMin, atkMax},
-					Alive: true, DamageType: entry.DamageType,
-					Effect: entry.Effect, EffectChance: entry.EffectChance,
-					Regen: entry.Regen, XP: entry.XP, Color: entry.Color,
-				}
-				epParty := &EnemyParty{Pos: ep, Members: []*Member{mem}, Active: 0}
-				lvl.Enemies = append(lvl.Enemies, epParty)
-			}
 		}
 	}
 	// Pitfall — tile feature, hidden vs obvious, damage 2-4.

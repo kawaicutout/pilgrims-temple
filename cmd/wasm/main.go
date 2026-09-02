@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"syscall/js"
 	"time"
@@ -71,8 +72,10 @@ const (
 	useSelected := 0
 	throwSelected := 0
 	renderMenu := func() {
-		frame := game.RenderMainMenu(tuning, menu.Selected)
-		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		frame := game.RenderMainMenuWithScores(tuning, menu.Selected)
+		html := buildHTML(frame, tuning)
+		html += buildScoreboardHTML()
+		gameDiv.Set("innerHTML", html)
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
 	}
@@ -1087,6 +1090,56 @@ func buildLogHTML(lines []string) string {
 			html += esc(line) + "<br>"
 		}
 	}
+	return html
+}
+
+func buildScoreboardHTML() string {
+	sb, err := game.LoadScoreboard()
+	if err != nil || sb == nil || len(sb.Entries) == 0 {
+		return `<div style="margin-top:12px;padding:8px 12px;border:1px solid var(--gray-2);color:var(--gray-1);font-family:var(--font-monospace);max-width:800px">No scores yet — survive the temple!</div>`
+	}
+	entries := sb.GetHighScores(5)
+	if len(entries) == 0 {
+		return `<div style="margin-top:12px;padding:8px 12px;border:1px solid var(--gray-2);color:var(--gray-1);font-family:var(--font-monospace);max-width:800px">No scores yet — survive the temple!</div>`
+	}
+	esc := func(s string) string {
+		out := ""
+		for _, ch := range s {
+			switch ch {
+			case '&':
+				out += "&amp;"
+			case '<':
+				out += "&lt;"
+			case '>':
+				out += "&gt;"
+			case '"':
+				out += "&quot;"
+			default:
+				out += string(ch)
+			}
+		}
+		return out
+	}
+	html := `<div style="margin-top:12px;max-width:900px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--font-monospace);font-size:13px">`
+	html += `<thead><tr style="color:var(--gold);text-align:left;border-bottom:1px solid var(--gray-2)">`
+	html += `<th style="padding:4px 8px">#</th><th style="padding:4px 8px">Score</th><th style="padding:4px 8px">Lv</th><th style="padding:4px 8px">Gold</th><th style="padding:4px 8px">Depth</th><th style="padding:4px 8px">Seed</th><th style="padding:4px 8px">Result</th><th style="padding:4px 8px">Members</th>`
+	html += `</tr></thead><tbody>`
+	for i, e := range entries {
+		result := e.CauseOfDeath
+		if e.Victory {
+			result = "Victory"
+		}
+		if result == "" {
+			result = "Unknown"
+		}
+		members := esc(game.MembersSummary(e))
+		rowColor := "var(--gray-1)"
+		if e.Victory {
+			rowColor = "var(--gold-bright)"
+		}
+		html += fmt.Sprintf(`<tr style="color:%s;border-bottom:1px solid rgba(255,255,255,0.06)"><td style="padding:4px 8px">%d</td><td style="padding:4px 8px">%d</td><td style="padding:4px 8px">%d</td><td style="padding:4px 8px">%d</td><td style="padding:4px 8px">%d</td><td style="padding:4px 8px">%d</td><td style="padding:4px 8px">%s</td><td style="padding:4px 8px">%s</td></tr>`, rowColor, i+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached, e.Seed, esc(result), members)
+	}
+	html += `</tbody></table></div>`
 	return html
 }
 

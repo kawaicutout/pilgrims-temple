@@ -220,6 +220,13 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 }
 
 func RenderMainMenu(tuning Tuning, selected int) Frame {
+	return RenderMainMenuWithScores(tuning, selected)
+}
+
+// RenderMainMenuWithScores loads the Scoreboard via LoadScoreboard (handles missing file/localStorage gracefully)
+// and renders recent entries (top 5 by score descending) with columns: Rank, Score, PartyLevel, Gold, Depth, Seed, Victory/Cause, Members summary.
+// Keeps existing menu options above scores and uses available map width for scoreboard footer.
+func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 	w, h := tuning.Map.Width, tuning.Map.Height
 	cells := make([][]Cell, h)
 	for y := range h {
@@ -242,7 +249,64 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 		line := prefix + opt
 		drawCentered(cells, w, h/2+1+i, line, fg)
 	}
+	// Scoreboard footer below menu choices, using available map width.
+	sb, err := LoadScoreboard()
+	if err != nil || sb == nil {
+		sb = &Scoreboard{}
+	}
+	entries := sb.GetHighScores(5)
+	yStart := h/2 + 1 + len(MainMenuOptions) + 1
+	if yStart < h {
+		drawCentered(cells, w, yStart, "-- SCOREBOARD --", "gold")
+		yStart++
+	}
+	if len(entries) == 0 {
+		if yStart < h {
+			msg := "No scores yet \u2014 survive the temple!"
+			if len(msg) > w-2 {
+				msg = msg[:w-5] + "..."
+			}
+			drawCentered(cells, w, yStart, msg, "gray-1")
+		}
+	} else {
+		// Header
+		if yStart < h {
+			header := " # Score Lv Gold Depth Seed       Result     Members"
+			if len(header) > w-2 {
+				header = header[:w-2]
+			}
+			drawString(cells, 1, yStart, header, "gray-2")
+			yStart++
+		}
+		for idx, e := range entries {
+			y := yStart + idx
+			if y >= h {
+				break
+			}
+			result := e.CauseOfDeath
+			if e.Victory {
+				result = "Victory"
+			}
+			if result == "" {
+				result = "Unknown"
+			}
+			members := MembersSummary(e)
+			line := fmt.Sprintf("%2d. %5d Lv%d G%d D%d S%d %-10s %s", idx+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached, e.Seed, result, members)
+			if len(line) > w-2 {
+				line = line[:w-5] + "..."
+			}
+			fg := "gray-1"
+			if e.Victory {
+				fg = "gold-bright"
+			}
+			drawString(cells, 1, y, line, fg)
+		}
+	}
 	panel := []string{"", "Pilgrim's Temple", "Select: Up/Down  Enter", "Esc: Quit"}
+	// Also show score count in panel if space.
+	if len(entries) > 0 {
+		panel = append(panel, fmt.Sprintf("Scores: %d", len(sb.Entries)))
+	}
 	for len(panel) < 12 {
 		panel = append(panel, "")
 	}

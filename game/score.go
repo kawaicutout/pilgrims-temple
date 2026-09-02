@@ -211,12 +211,13 @@ func (g *Game) buildScoreEntry() ScoreEntry {
 
 // RecordScore builds a ScoreEntry and appends it to the persisted scoreboard.
 // It is idempotent per call; callers should ensure they only invoke once per game-over.
+// It loads the raw scoreboard (unsorted) to preserve chronological insertion order.
 func (g *Game) RecordScore() {
 	if g == nil {
 		return
 	}
 	entry := g.buildScoreEntry()
-	sb, err := LoadScoreboard()
+	sb, err := loadScoreboardRaw()
 	if err != nil || sb == nil {
 		sb = &Scoreboard{}
 	}

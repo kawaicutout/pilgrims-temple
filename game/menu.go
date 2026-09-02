@@ -372,17 +372,12 @@ func RenderScoresScreen(tuning Tuning, selected int) Frame {
 		if selected >= len(entries) {
 			selected = len(entries) - 1
 		}
-		header := " #  Score   Lv  Gold  Depth  Seed"
-		if len(header) > w-2 {
-			header = header[:w-2]
+		// 4 lines per entry: reserve h-6 rows for entries (title at 2, blank at 3).
+		maxRows := h - 6
+		if maxRows < 4 {
+			maxRows = 4
 		}
-		drawString(cells, 1, 4, header, "gray-2")
-		// Reserve h-7 rows for entries; two lines per entry.
-		maxRows := h - 7
-		if maxRows < 2 {
-			maxRows = 2
-		}
-		perPage := maxRows / 2
+		perPage := maxRows / 4
 		if perPage < 1 {
 			perPage = 1
 		}
@@ -402,40 +397,86 @@ func RenderScoresScreen(tuning Tuning, selected int) Frame {
 		}
 		for i := start; i < end; i++ {
 			e := entries[i]
-			result := e.CauseOfDeath
+			cause := e.CauseOfDeath
 			if e.Victory {
-				result = "Victory"
+				cause = "Victory"
 			}
-			if result == "" {
-				result = "Unknown"
+			if cause == "" {
+				cause = "Unknown"
 			}
-			members := MembersSummary(e)
-			line1 := fmt.Sprintf("%2d. %5d  Lv%-2d  G%-3d  D%-2d  S%d", i+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached, e.Seed)
+			line1 := fmt.Sprintf("Run %d | Score %d | Lv %d | G%d | D%d", i+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached)
 			if len(line1) > w-2 {
 				line1 = line1[:w-5] + "..."
 			}
-			line2 := fmt.Sprintf("    %s — %s", result, members)
+			line2 := fmt.Sprintf("Seed %d | %s", e.Seed, cause)
 			if len(line2) > w-2 {
 				line2 = line2[:w-5] + "..."
+			}
+			memberStr := func(idx int) string {
+				if idx < 0 || idx >= len(e.Members) {
+					return ""
+				}
+				m := e.Members[idx]
+				// Title-case class for display.
+				cls := strings.Title(m.Class)
+				if m.Name != "" {
+					return fmt.Sprintf("%s %s", m.Name, cls)
+				}
+				return cls
+			}
+			s0 := memberStr(0)
+			s1 := memberStr(1)
+			s2 := memberStr(2)
+			s3 := memberStr(3)
+			line3 := ""
+			if s0 != "" && s1 != "" {
+				line3 = fmt.Sprintf("%s | %s", s0, s1)
+			} else if s0 != "" {
+				line3 = s0
+			} else if s1 != "" {
+				line3 = s1
+			}
+			if len(line3) > w-2 {
+				line3 = line3[:w-5] + "..."
+			}
+			line4 := ""
+			if s2 != "" && s3 != "" {
+				line4 = fmt.Sprintf("%s | %s", s2, s3)
+			} else if s2 != "" {
+				line4 = s2
+			} else if s3 != "" {
+				line4 = s3
+			}
+			if len(line4) > w-2 {
+				line4 = line4[:w-5] + "..."
 			}
 			fg := "gray-1"
 			if e.Victory {
 				fg = "gold-bright"
 			}
-			y := 5 + (i-start)*2
-			if y+1 >= h-2 {
+			y := 4 + (i-start)*4
+			if y+3 >= h-2 {
 				break
 			}
 			if i == selected {
 				fg = "gold-bright"
-				line1 = "> " + line1[2:]
+				line1 = "> " + line1
+				if len(line1) > w-2 {
+					line1 = line1[:w-5] + "..."
+				}
 			}
 			drawString(cells, 1, y, line1, fg)
 			drawString(cells, 1, y+1, line2, fg)
+			if line3 != "" {
+				drawString(cells, 1, y+2, line3, fg)
+			}
+			if line4 != "" {
+				drawString(cells, 1, y+3, line4, fg)
+			}
 		}
 		if len(entries) > perPage {
 			more := fmt.Sprintf("(%d/%d)", selected+1, len(entries))
-			drawCentered(cells, w, h-3, more, "gray-2")
+			drawCentered(cells, w, h-2, more, "gray-2")
 		}
 	}
 	panel := []string{"", "Scores", fmt.Sprintf("%d entries", len(entries)), "Enter/Esc: back", "Up/Down: scroll"}

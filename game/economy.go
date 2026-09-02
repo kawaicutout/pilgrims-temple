@@ -73,23 +73,17 @@ func loadMerchants() []Ware {
 	if merchantsCache != nil {
 		return merchantsCache
 	}
-	b, err := dataFS.ReadFile("data/merchants.json")
+	b, err := RawJSON("merchants.json")
 	if err != nil {
-		merchantsCache = []Ware{
-			{ID: "ration", Price: 25, Name: "Ration"},
-			{ID: "potion_heal", Price: 40, Name: "Healing Draught"},
-			{ID: "scroll_upgrade", Price: 75, Name: "Scroll of Might"},
-		}
-		return merchantsCache
+		panic("merchants.json missing — single source required: " + err.Error())
 	}
 	var mf merchantsFile
 	if err := json.Unmarshal(b, &mf); err != nil || len(mf.Wares) == 0 {
-		merchantsCache = []Ware{
-			{ID: "ration", Price: 25, Name: "Ration"},
-			{ID: "potion_heal", Price: 40, Name: "Healing Draught"},
-			{ID: "scroll_upgrade", Price: 75, Name: "Scroll of Might"},
+		preview := b
+		if len(preview) > 200 {
+			preview = preview[:200]
 		}
-		return merchantsCache
+		panic("merchants.json invalid or empty — single source required: " + string(preview))
 	}
 	merchantsCache = mf.Wares
 	return merchantsCache

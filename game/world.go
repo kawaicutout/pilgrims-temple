@@ -68,24 +68,17 @@ func (ft FloorTheme) ItemWeight(kind string) float64 {
 
 // EnemyScaling controls party size distribution per depth.
 // Lone is probability of a lone (size 1) party; 0.7 at floor 0 -> 0.2 at floor 7.
+// Canonical key is "lone" only — aliases loneByFloor/loneChance were removed per H20; use lone.
 type EnemyScaling struct {
-	Lone        []float64 `json:"lone"`
-	LoneByFloor []float64 `json:"loneByFloor"`
-	LoneChance  []float64 `json:"loneChance"`
+	Lone []float64 `json:"lone"`
 }
 
-// effectiveLone returns the backing slice (tries Lone, then aliases, then fallback).
+// effectiveLone returns the backing slice (hard error if missing).
 func (e EnemyScaling) effectiveLone() []float64 {
-	if len(e.Lone) > 0 {
-		return e.Lone
+	if len(e.Lone) == 0 {
+		panic("world.json: enemyScaling.lone missing or empty — single source required")
 	}
-	if len(e.LoneByFloor) > 0 {
-		return e.LoneByFloor
-	}
-	if len(e.LoneChance) > 0 {
-		return e.LoneChance
-	}
-	return fallbackWorldConfig().EnemyScaling.Lone
+	return e.Lone
 }
 
 // WorldConfig holds pacing tables loaded from world.json.
@@ -158,48 +151,13 @@ var (
 	worldHasCache    bool
 )
 
-func fallbackFloorThemes() []FloorTheme {
-	return []FloorTheme{
-		{ID: "crypt", Name: "Crypt", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "▓"}, FloorGlyphVariants: []string{".", "·", "·"}, Color: "#6a7a7a", Tint: "#6a7a7a", EnemyWeights: map[string]float64{"goblin": 1.1, "orc": 0.8, "kobold": 0.6, "rat": 1.0, "troll": 0.15}, ItemWeights: map[string]float64{"potion": 1.0, "scroll": 0.9, "ration": 1.2, "gold": 1.0}},
-		{ID: "ossuary", Name: "Ossuary", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "▒"}, FloorGlyphVariants: []string{".", "·", "⋅"}, Color: "#8a7a6a", Tint: "#8a7a6a", EnemyWeights: map[string]float64{"goblin": 0.9, "orc": 1.0, "kobold": 0.7, "rat": 0.9, "troll": 0.2}, ItemWeights: map[string]float64{"potion": 1.1, "scroll": 1.0, "ration": 1.0, "gold": 1.1}},
-		{ID: "fungal", Name: "Fungal Grove", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "♣"}, FloorGlyphVariants: []string{".", "·", ","}, Color: "#5a7a5a", Tint: "#5a7a5a", EnemyWeights: map[string]float64{"goblin": 0.8, "orc": 0.7, "kobold": 1.2, "rat": 1.3, "troll": 0.4}, ItemWeights: map[string]float64{"potion": 1.2, "scroll": 0.8, "ration": 1.1, "gold": 0.9}},
-		{ID: "flooded", Name: "Flooded Vault", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "≈"}, FloorGlyphVariants: []string{".", "·", "~"}, Color: "#5a6a7a", Tint: "#5a6a7a", EnemyWeights: map[string]float64{"goblin": 0.7, "orc": 0.9, "kobold": 1.1, "rat": 0.8, "troll": 0.5}, ItemWeights: map[string]float64{"potion": 1.0, "scroll": 1.1, "ration": 0.9, "gold": 1.0}},
-		{ID: "sanctum", Name: "Sanctum", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "▓"}, FloorGlyphVariants: []string{".", "·", "⋅"}, Color: "#7a7a6a", Tint: "#7a7a6a", EnemyWeights: map[string]float64{"goblin": 0.8, "orc": 1.1, "kobold": 0.9, "rat": 0.6, "troll": 0.55}, ItemWeights: map[string]float64{"potion": 0.9, "scroll": 1.2, "ration": 0.9, "gold": 1.2}},
-		{ID: "cinder", Name: "Cinder Chapel", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "▒"}, FloorGlyphVariants: []string{".", "·", "`"}, Color: "#7a6a6a", Tint: "#7a6a6a", EnemyWeights: map[string]float64{"goblin": 0.6, "orc": 1.2, "kobold": 1.0, "rat": 0.5, "troll": 0.7}, ItemWeights: map[string]float64{"potion": 0.9, "scroll": 1.0, "ration": 0.8, "gold": 1.3}},
-		{ID: "infernal", Name: "Infernal Depths", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "▓"}, FloorGlyphVariants: []string{".", "·", "⋅"}, Color: "#7a5a5a", Tint: "#7a5a5a", EnemyWeights: map[string]float64{"goblin": 0.5, "orc": 1.0, "kobold": 1.1, "rat": 0.4, "troll": 0.85}, ItemWeights: map[string]float64{"potion": 0.8, "scroll": 1.1, "ration": 0.7, "gold": 1.1}},
-		{ID: "abyssal", Name: "Abyssal Void", WallGlyph: "#", FloorGlyph: ".", WallGlyphVariants: []string{"#", "#", "█"}, FloorGlyphVariants: []string{".", "·", " "}, Color: "#5a5a6a", Tint: "#5a5a6a", EnemyWeights: map[string]float64{"goblin": 0.4, "orc": 0.8, "kobold": 1.3, "rat": 0.3, "troll": 1.0}, ItemWeights: map[string]float64{"potion": 0.8, "scroll": 1.3, "ration": 0.6, "gold": 1.0}},
-	}
-}
-
-func fallbackWorldConfig() WorldConfig {
-	return WorldConfig{
-		RecruitmentRate:         0.3,
-		RecruitmentRatePerFloor: []float64{0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3},
-		EnemyScaling: EnemyScaling{
-			Lone: []float64{0.7, 0.6, 0.5, 0.4, 0.32, 0.26, 0.22, 0.2},
-		},
-		ItemWeighting: map[string][]float64{
-			"potion": {1.0, 1.0, 1.1, 1.1, 1.0, 0.9, 0.9, 0.8},
-			"scroll": {0.8, 0.9, 1.0, 1.0, 1.1, 1.1, 1.0, 1.0},
-			"ration": {1.2, 1.1, 1.0, 1.0, 0.9, 0.9, 0.8, 0.7},
-			"gold":   {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
-		},
-		ItemWeights: map[string][]float64{
-			"potion": {1.0, 1.0, 1.1, 1.1, 1.0, 0.9, 0.9, 0.8},
-			"scroll": {0.8, 0.9, 1.0, 1.0, 1.1, 1.1, 1.0, 1.0},
-			"ration": {1.2, 1.1, 1.0, 1.0, 0.9, 0.9, 0.8, 0.7},
-			"gold":   {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
-		},
-	}
-}
-
-// LoadFloorThemes returns all floor themes (cached via sync.Once, fallback on error).
+// LoadFloorThemes returns all floor themes (cached via sync.Once, hard error if missing).
+// Single source: game/data/floorThemes.json via RawJSON (which may overlay localStorage in wasm).
 func LoadFloorThemes() []FloorTheme {
 	floorThemesOnce.Do(func() {
 		b, err := RawJSON("floorThemes.json")
 		if err != nil {
-			floorThemesCache = fallbackFloorThemes()
-			return
+			panic("floorThemes.json missing — single source required: " + err.Error())
 		}
 		var f floorThemesFile
 		if err := json.Unmarshal(b, &f); err == nil && len(f.Themes) == 8 {
@@ -215,42 +173,35 @@ func LoadFloorThemes() []FloorTheme {
 			floorThemesCache = arr
 			return
 		}
-		floorThemesCache = fallbackFloorThemes()
+		preview := b
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+		panic("floorThemes.json invalid — single source required: " + string(preview))
 	})
 	out := make([]FloorTheme, len(floorThemesCache))
 	copy(out, floorThemesCache)
 	return out
 }
-
-// LoadWorldConfig returns world pacing config (cached via sync.Once, fallback on error).
 func LoadWorldConfig() WorldConfig {
 	worldOnce.Do(func() {
 		b, err := RawJSON("world.json")
 		if err != nil {
-			worldCache = fallbackWorldConfig()
-			worldHasCache = true
-			return
+			panic("world.json missing — single source required: " + err.Error())
 		}
 		var w WorldConfig
 		if err := json.Unmarshal(b, &w); err != nil {
-			worldCache = fallbackWorldConfig()
-			worldHasCache = true
-			return
+			panic("world.json invalid — single source required: " + err.Error())
 		}
-		// Validate: must have 8-length lone array and recruitment.
-		if len(w.EnemyScaling.effectiveLone()) < 8 && len(w.EnemyScaling.Lone) == 0 && len(w.EnemyScaling.LoneByFloor) == 0 && len(w.EnemyScaling.LoneChance) == 0 {
-			fb := fallbackWorldConfig()
-			w.EnemyScaling = fb.EnemyScaling
+		// Validate: must have lone array and recruitment.
+		if len(w.EnemyScaling.Lone) == 0 {
+			panic("world.json: enemyScaling.lone missing or empty — single source required")
 		}
 		if w.RecruitmentRate == 0 && len(w.RecruitmentRatePerFloor) == 0 {
-			fb := fallbackWorldConfig()
-			w.RecruitmentRate = fb.RecruitmentRate
-			w.RecruitmentRatePerFloor = fb.RecruitmentRatePerFloor
+			panic("world.json: recruitmentRate missing — single source required")
 		}
 		if len(w.ItemWeighting) == 0 && len(w.ItemWeights) == 0 {
-			fb := fallbackWorldConfig()
-			w.ItemWeighting = fb.ItemWeighting
-			w.ItemWeights = fb.ItemWeights
+			panic("world.json: itemWeighting/itemWeights missing — single source required")
 		}
 		// Ensure both maps populated for callers using either key.
 		if len(w.ItemWeighting) == 0 && len(w.ItemWeights) > 0 {
@@ -270,7 +221,7 @@ func LoadWorldConfig() WorldConfig {
 func GetFloorTheme(floor int) *FloorTheme {
 	themes := LoadFloorThemes()
 	if len(themes) == 0 {
-		themes = fallbackFloorThemes()
+		panic("floorThemes.json empty — single source required")
 	}
 	if floor < 0 {
 		floor = 0

@@ -77,6 +77,9 @@ func (f Feature) IsForge() bool   { return f.Type == FeatureForge }
 func (f Feature) IsDen() bool     { return f.Type == FeatureDen }
 func (f Feature) IsPitfall() bool { return f.Type == FeaturePitfall }
 
+// HasType reports whether f is of given type (DUP-12 unified).
+func (f Feature) HasType(typ FeatureType) bool { return f.Type == typ }
+
 func (f Feature) AsVault() Vault {
 	return Vault{Pos: f.Pos, Locked: f.Locked, Treasure: f.Treasure, Trapped: f.Trapped}
 }
@@ -133,48 +136,39 @@ func IsForgeFeature(f Feature) bool   { return f.IsForge() }
 func IsDenFeature(f Feature) bool     { return f.IsDen() }
 func IsPitfallFeature(f Feature) bool { return f.IsPitfall() }
 
+var glyphMap = map[FeatureType]rune{
+	FeatureMerchant: 'M',
+	FeatureFountain: '&',
+	FeatureShrine: '_',
+	FeatureVault: '$',
+	FeatureForge: 'F',
+	FeatureDen: 'D',
+	FeaturePitfall: '^',
+}
+var colorMap = map[FeatureType]string{
+	FeatureMerchant: "gold",
+	FeatureFountain: "slate",
+	FeatureShrine: "gold-bright",
+	FeatureVault: "gold-bright",
+	FeatureForge: "gold",
+	FeatureDen: "red-bright",
+	FeaturePitfall: "gray-1",
+}
+
 // Glyph returns the map glyph for the feature type.
 func (f Feature) Glyph() rune {
-	switch f.Type {
-	case FeatureMerchant:
-		return 'M'
-	case FeatureFountain:
-		return '&'
-	case FeatureShrine:
-		return '_'
-	case FeatureVault:
-		return '$'
-	case FeatureForge:
-		return 'F'
-	case FeatureDen:
-		return 'D'
-	case FeaturePitfall:
-		return '^'
-	default:
-		return '?'
+	if g, ok := glyphMap[f.Type]; ok {
+		return g
 	}
+	return '?'
 }
 
 // Color returns the FG token for the feature.
 func (f Feature) Color() string {
-	switch f.Type {
-	case FeatureMerchant:
-		return "gold"
-	case FeatureFountain:
-		return "slate"
-	case FeatureShrine:
-		return "gold-bright"
-	case FeatureVault:
-		return "gold-bright"
-	case FeatureForge:
-		return "gold"
-	case FeatureDen:
-		return "red-bright"
-	case FeaturePitfall:
-		return "gray-1"
-	default:
-		return "fg"
+	if c, ok := colorMap[f.Type]; ok {
+		return c
 	}
+	return "fg"
 }
 
 // ---------------------------------------------------------------------------
@@ -229,35 +223,13 @@ func loadFeaturesConfig() FeaturesConfig {
 		return *featuresCache
 	}
 	cfg := FeaturesConfig{}
-	// Defaults matching spec: merchants scarce 0.15, fountains 0.2, shrines 0.25
-	// New features: vault 0.12 locked, forge 0.1 gold, den 0.12 3-5, pitfall 0.1 hidden 0.5 dmg 2-4
-	cfg.Merchants.Rate = 0.15
-	cfg.Merchants.Scarce = true
-	cfg.Fountains.Rate = 0.2
-	cfg.Shrines.Rate = 0.25
-	cfg.Vaults.Rate = 0.12
-	cfg.Vaults.Locked = true
-	cfg.Vaults.TreasureMin = 25
-	cfg.Vaults.TreasureMax = 80
-	cfg.Vaults.TrappedChance = 0.2
-	cfg.Forges.Rate = 0.1
-	cfg.Forges.CostType = "gold"
-	cfg.Forges.GoldCost = 25
-	cfg.Forges.FoodCost = 50
-	cfg.Dens.Rate = 0.12
-	cfg.Dens.MonsterMin = 3
-	cfg.Dens.MonsterMax = 5
-	cfg.Pitfalls.Rate = 0.1
-	cfg.Pitfalls.HiddenChance = 0.5
-	cfg.Pitfalls.DamageMin = 2
-	cfg.Pitfalls.DamageMax = 4
+	// Defaults for optional missing fields (not fallback table) — single source is features.json.
+	// If file missing, hard error; defaults only fill zero missing fields after JSON merge.
 
-	b, err := dataFS.ReadFile("data/features.json")
+	b, err := RawJSON("features.json")
 	if err != nil {
-		featuresCache = &cfg
-		return cfg
+		panic("features.json missing — single source required: " + err.Error())
 	}
-	// Try object form first.
 	var raw featuresConfig
 	if err := json.Unmarshal(b, &raw); err == nil {
 		// Merge non-zero rates; keep defaults for missing/zero where file omits.
@@ -364,7 +336,7 @@ func loadFeaturesConfig() FeaturesConfig {
 		featuresCache = &cfg
 		return cfg
 	}
-	// Fallback: try flat map of rates
+	// Fallback: try flat map of rates — if object parse failed but flat succeeded, use it.
 	var flat map[string]float64
 	if err := json.Unmarshal(b, &flat); err == nil {
 		if v, ok := flat["merchantRate"]; ok {
@@ -379,9 +351,14 @@ func loadFeaturesConfig() FeaturesConfig {
 		if v, ok := flat["merchants"]; ok {
 			cfg.Merchants.Rate = v
 		}
+		featuresCache = &cfg
+		return cfg
 	}
-	featuresCache = &cfg
-	return cfg
+	preview := b
+	if len(preview) > 200 {
+		preview = preview[:200]
+	}
+	panic("features.json invalid — single source required: " + string(preview))
 }
 
 // GetFeaturesConfig returns a copy of the tunable feature rates.
@@ -411,25 +388,17 @@ func loadFountains() []FountainOutcome {
 	if fountainsCache != nil {
 		return fountainsCache
 	}
-	b, err := dataFS.ReadFile("data/fountains.json")
+	b, err := RawJSON("fountains.json")
 	if err != nil {
-		fountainsCache = []FountainOutcome{
-			{ID: "heal", Name: "Healing Waters", DeltaHP: 10, Delta: 10, Desc: "Refreshing waters restore 10 HP"},
-			{ID: "poison", Name: "Tainted Waters", DeltaHP: -5, Delta: -5, Desc: "Foul waters sicken you for 5 damage"},
-			{ID: "blessing", Name: "Blessed Spring", DeltaHP: 5, Delta: 5, Effect: "bless", Desc: "Blessed waters restore 5 HP and grant a brief boon"},
-			{ID: "curse", Name: "Cursed Pool", DeltaHP: -2, Delta: -2, Effect: "curse", Desc: "Cursed waters drain 2 HP and weaken you"},
-		}
-		return fountainsCache
+		panic("fountains.json missing — single source required: " + err.Error())
 	}
 	var ff fountainsFile
 	if err := json.Unmarshal(b, &ff); err != nil || len(ff.Outcomes) == 0 {
-		fountainsCache = []FountainOutcome{
-			{ID: "heal", Name: "Healing Waters", DeltaHP: 10, Delta: 10, Desc: "Refreshing waters restore 10 HP"},
-			{ID: "poison", Name: "Tainted Waters", DeltaHP: -5, Delta: -5, Desc: "Foul waters sicken you for 5 damage"},
-			{ID: "blessing", Name: "Blessed Spring", DeltaHP: 5, Delta: 5, Effect: "bless", Desc: "Blessed waters restore 5 HP"},
-			{ID: "curse", Name: "Cursed Pool", DeltaHP: -2, Delta: -2, Effect: "curse", Desc: "Cursed waters drain 2 HP"},
+		preview := b
+		if len(preview) > 200 {
+			preview = preview[:200]
 		}
-		return fountainsCache
+		panic("fountains.json invalid or empty — single source required: " + string(preview))
 	}
 	fountainsCache = ff.Outcomes
 	return fountainsCache

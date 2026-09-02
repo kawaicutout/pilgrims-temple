@@ -29,6 +29,54 @@ type SynergyBuff struct {
 	Carry     int     `json:"carry"`
 	XPBonus   float64 `json:"xpBonus"`
 }
+// buffByID unifies small Buff tables (veteran/hardy) and half-orc synergy for DUP-06.
+var buffByID = map[string]Buff{
+	"veteran":   {ATK: 2},
+	"hardy":     {HP: 3},
+	"keen":      {ATK: 1},
+	"stout":     {DEF: 1},
+	"bright":    {Light: 1},
+	"burdened":  {Carry: 3},
+	"of_hollow": {HP: 5, Light: -1},
+	"half_orc":  {ATK: 1},
+}
+
+// AddBuff applies Buff b to Member m in one place.
+func (m *Member) AddBuff(b Buff) {
+	if b.HP != 0 {
+		m.MaxHP += b.HP
+		m.HP += b.HP
+		if m.HP > m.MaxHP {
+			m.HP = m.MaxHP
+		}
+		if m.HP < 0 {
+			m.HP = 0
+		}
+	}
+	if b.ATK != 0 {
+		m.ATK[0] += b.ATK
+		m.ATK[1] += b.ATK
+	}
+	if b.DEF != 0 {
+		m.DEF += b.DEF
+	}
+	if b.MDEF != 0 {
+		m.MDEF += b.MDEF
+	}
+	if b.Light != 0 {
+		m.Light += b.Light
+		if m.Light < 0 {
+			m.Light = 0
+		}
+	}
+	if b.Carry != 0 {
+		if m.Carry == 0 {
+			m.Carry = 5
+		}
+		m.Carry += b.Carry
+	}
+}
+
 
 // Race defines a playable race.
 type Race struct {

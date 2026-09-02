@@ -58,7 +58,7 @@ type Tuning struct {
 }
 
 func LoadTuning() (Tuning, error) {
-	b, err := dataFS.ReadFile("data/tuning.json")
+	b, err := RawJSON("tuning.json")
 	if err != nil {
 		return Tuning{}, fmt.Errorf("read tuning.json: %w", err)
 	}
@@ -127,6 +127,30 @@ func ActiveWeight() float64 {
 }
 
 // RawJSON returns the raw bytes for a data file (for generic consumers / web upload overlay).
+// On wasm (//go:build js) it prefers a localStorage overlay ("data:"+name) before the embedded FS,
+// so a web-uploaded zip persists across reloads until reset.
 func RawJSON(name string) ([]byte, error) {
+	if b, ok := overlayJSON(name); ok {
+		return b, nil
+	}
 	return dataFS.ReadFile("data/" + name)
+}
+
+// loadJSON is generic data loader handling ReadFile / Unmarshal / fallback (DUP-09).
+func loadJSON[T any](path string, fallback T, cache **T) T {
+	if *cache != nil {
+		return **cache
+	}
+	b, err := dataFS.ReadFile(path)
+	if err != nil {
+		*cache = &fallback
+		return fallback
+	}
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		*cache = &fallback
+		return fallback
+	}
+	*cache = &v
+	return v
 }

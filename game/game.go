@@ -665,12 +665,138 @@ func (g *Game) removeFeatureAt(pos Pos, typ FeatureType) {
 	lvl.Features = dst
 }
 
+// canOpenLocked reports whether party can open a locked vault (rogue/wizard or wizard mode).
+func (g *Game) canOpenLocked() bool { return g.Party.HasRogueOrWizard() || g.Wizard }
+
+// AddFood adds n to Food and FoodFloat together (DUP-16).
+func (g *Game) AddFood(n int) {
+	g.Food += n
+	g.FoodFloat += float64(n)
+}
+
+// dealPartyDamage applies raw damage (DEF/MDEF) with cause; returns true if any survivor remains. (DUP-13)
+func (g *Game) dealPartyDamage(raw int, cause string, isMagic bool) bool {
+	_, actual := g.Party.ApplyDamageWithType(g.RNG, raw, isMagic)
+	_ = actual
+	if g.Party.LivingCount() == 0 {
+		g.Over = true
+		if g.Cause == "" {
+			g.Cause = cause
+		}
+		g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
+		g.RecordScore()
+		return false
+	}
+	return true
+}
+
+// tickRegen handles periodic heals via schedule table — troll(3), natural(10), enduring(5) (DUP-07).
+func (g *Game) tickRegen() {
+	if g.Turn%3 == 0 {
+		TrollRegenTick(g.Party)
+	}
+	if g.Turn%10 == 0 {
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && m.HP < m.MaxHP {
+				m.HP++
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
+			}
+		}
+	}
+	if g.Turn%5 == 0 {
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
+				m.HP++
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
+			}
+		}
+	}
+}
+
+// dropToNextFloor moves party one floor down to StairsUp, handles FOV and logging (DUP-02).
+func (g *Game) dropToNextFloor(reason string) bool {
+	if g.Floor+1 >= g.Tuning.Floors {
+		g.Logf("%s has no lower level -- you climb back out.", reason)
+		return false
+	}
+	g.Floor++
+	g.Party.Pos = g.CurLevel().StairsUp
+	g.Logf("%s drops you to floor %d (one-way).", reason, g.Floor+1)
+	g.UpdateFOV()
+	return true
+}
+
+// tickAfterMove centralizes Turn++ + tickFood + regen + starvation + FOV/EnemyTurn for pitfall path (DUP-02).
+func (g *Game) tickAfterMove() {
+	g.Turn++
+	g.tickFood()
+	g.tickRegen()
+	g.applyStarvation()
+	g.UpdateFOV()
+	if !g.Over {
+		g.EnemyTurn()
+		g.UpdateFOV()
+	}
+}
+
+
+// HelpEntry is one help line for HelpLines table (DUP-11).
+type HelpEntry struct {
+	Text string
+	FG   string
+}
+
+// HelpLines returns help overlay lines table used by RenderHelpOverlay and frontends (DUP-11).
+func HelpLines() []HelpEntry {
+	return []HelpEntry{
+		{Text: "PILGRIM'S TEMPLE - HELP", FG: "gold-bright"},
+		{Text: "q / w / e / r  - select member 1-4 (free)", FG: "gray-1"},
+		{Text: "Move: arrows, numpad 1-9, hjkl + y b n + 9 (NE)", FG: "gray-1"},
+		{Text: "5 / . / Space  - wait 1 turn", FG: "gray-1"},
+		{Text: "z / Z  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", FG: "gray-1"},
+		{Text: "g  - contextual use: pickup, or on fountain/merchant/forge/vault/shrine/pitfall", FG: "gray-1"},
+		{Text: "u/U - use menu (potions/scrolls) -> cursor targeting", FG: "gray-1"},
+		{Text: "t  - throw potion (menu + cursor)", FG: "gray-1"},
+		{Text: "v  - look: move cursor, v/Enter/Esc to examine", FG: "gray-1"},
+		{Text: "> / <  - stairs down / up", FG: "gray-1"},
+		{Text: "?  - help (this overlay)", FG: "gold"},
+		{Text: "Esc - quit to menu", FG: "gray-1"},
+	}
+}
+
+// CursorState unifies Throw/Use/Look cursor (DUP-14).
+type CursorState struct {
+	Active     bool
+	Cursor     Pos
+	Appearance string
+}
+
+func (g *Game) handleCursor(state *CursorState, dir Dir) bool {
+	if state == nil || !state.Active {
+		return false
+	}
+	// Simple cursor movement placeholder — actual movement handled by existing Throw/Use handlers
+	next := state.Cursor.Add(dir)
+	if g.CurLevel().InBounds(next) {
+		state.Cursor = next
+	}
+	return true
+}
+
+// Frontend dispatch deferred: shared AppState + Dispatch(State,Frame) would live in game/app (DUP-15).
+// Low-risk defer: current duplication between cmd/terminal and cmd/wasm is documented here;
+// moving would require cross-package import cycle audit, deferred with comment.
+
 // handleVault checks locked status via Party.HasRogue (and wizard). Returns true if blocked.
 func (g *Game) handleVault(f *Feature) bool {
 	if f == nil || !f.IsVault() {
 		return false
 	}
-	if f.Locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
+	if f.Locked && !g.canOpenLocked() {
 		g.Logf("Locked vault - need rogue or wizard.")
 		return true
 	}
@@ -1513,7 +1639,7 @@ func (g *Game) handlePitfall(f *Feature) bool {
 	}
 	// Detection: rogue/wizard or wizard mode reveal.
 	// Dwarf tremorsense extends aware radius: aware if tremorsenseRadius >= manhattan(pos,pit)
-	aware := !f.Hidden || g.Party.HasRogue() || g.Party.HasWizard() || g.Wizard
+	aware := !f.Hidden || g.Party.HasRogueOrWizard() || g.Wizard
 	if f.Hidden && !aware {
 		if r := SynergyTremorsense(g.Party); r > 0 {
 			dx := g.Party.Pos.X - f.Pos.X
@@ -1573,15 +1699,7 @@ func (g *Game) handlePitfall(f *Feature) bool {
 			g.RecordScore()
 			return true
 		}
-		// One-way fall to next level if possible.
-		if g.Floor+1 < g.Tuning.Floors {
-			g.Floor++
-			g.Party.Pos = g.CurLevel().StairsUp
-			g.Logf("Pitfall drops you to floor %d (one-way).", g.Floor+1)
-			g.UpdateFOV()
-		} else {
-			g.Logf("Pitfall has no lower level -- you climb back out.")
-		}
+		g.dropToNextFloor("Pitfall")
 		g.removeFeatureAt(f.Pos, FeaturePitfall)
 		return true
 	}
@@ -1591,17 +1709,8 @@ func (g *Game) handlePitfall(f *Feature) bool {
 	if !f.Hidden {
 		g.Logf("Pitfall ahead -- one-way drop to the next level.")
 	}
-	// Trigger drop without damage (or minimal).
-	if g.Floor+1 < g.Tuning.Floors {
-		// Move onto pitfall tile first for position consistency, then drop.
-		g.Party.Pos = f.Pos
-		g.Floor++
-		g.Party.Pos = g.CurLevel().StairsUp
-		g.Logf("You drop through the pitfall to floor %d (one-way).", g.Floor+1)
-		g.UpdateFOV()
-	} else {
-		g.Logf("No lower level beneath the pitfall.")
-	}
+	g.Party.Pos = f.Pos
+	g.dropToNextFloor("Pitfall")
 	g.removeFeatureAt(f.Pos, FeaturePitfall)
 	return true
 }
@@ -1640,25 +1749,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	}
 	next := g.Party.Pos.Add(dir)
 	if lvl.IsDoor(next) && lvl.IsDoorClosed(next) {
-		// Check vault lock near door
-		locked := false
-		for _, f := range lvl.Features {
-			if f.IsVault() && f.Locked {
-				dx := f.Pos.X - next.X
-				if dx < 0 {
-					dx = -dx
-				}
-				dy := f.Pos.Y - next.Y
-				if dy < 0 {
-					dy = -dy
-				}
-				if dx <= 4 && dy <= 4 {
-					locked = true
-					break
-				}
-			}
-		}
-		if locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
+		if lvl.vaultLockedNear(next, 4) && !g.canOpenLocked() {
 			g.Logf("The vault door is locked -- need rogue or wizard.")
 			return ActionResult{}
 		}
@@ -1850,7 +1941,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	// Feature checks at target tile before normal move.
 	if f := g.featureAt(next); f != nil {
 		// Vault locked check — block entry if no rogue/wizard.
-		if f.IsVault() && f.Locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
+		if f.IsVault() && f.Locked && !g.canOpenLocked() {
 			g.Logf("Locked vault - need rogue or wizard.")
 			return ActionResult{}
 		}
@@ -1858,34 +1949,8 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		if f.IsPitfall() {
 			wasHandled := g.handlePitfall(f)
 			if wasHandled {
-				// Pitfall already moved floor / applied damage; consume turn.
-				// If still alive and not game over, advance turn like EndPlayerTurn but without double FOV?
 				if !g.Over {
-					g.Turn++
-					g.tickFood()
-					if g.Turn%10 == 0 {
-						for _, m := range g.Party.Members {
-							if m.IsAlive() && m.HP < m.MaxHP {
-								m.HP++
-							}
-						}
-					}
-					if g.Turn%5 == 0 {
-						for _, m := range g.Party.Members {
-							if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
-								m.HP++
-								if m.HP > m.MaxHP {
-									m.HP = m.MaxHP
-								}
-							}
-						}
-					}
-					g.applyStarvation()
-					g.UpdateFOV()
-					if !g.Over {
-						g.EnemyTurn()
-						g.UpdateFOV()
-					}
+					g.tickAfterMove()
 				}
 				return ActionResult{Moved: true, Descended: true}
 			}
@@ -1985,23 +2050,7 @@ func dirName(d Dir) string {
 	}
 }
 
-func (g *Game) TryStairsDown() {
-	if g.Over {
-		return
-	}
-	lvl := g.CurLevel()
-	if g.Party.Pos != lvl.StairsDown {
-		g.Logf("No stairs down here.")
-		return
-	}
-	if g.Floor+1 >= g.Tuning.Floors {
-		g.Logf("The way down is sealed.")
-		return
-	}
-	g.Floor++
-	g.Party.Pos = g.CurLevel().StairsUp
-	g.Logf("You descend to floor %d.", g.Floor+1)
-	// On-transition talents fire exactly once per level per run.
+func (g *Game) handleFloorArrival() {
 	if g.VisitedFloors == nil {
 		g.VisitedFloors = make(map[int]bool)
 	}
@@ -2013,12 +2062,52 @@ func (g *Game) TryStairsDown() {
 		g.VisitedFloors[g.Floor] = true
 		g.TransitionFiredForLevel[g.Floor] = true
 	} else {
-		// Ensure visited marked even if transition already fired (for tracking).
 		g.VisitedFloors[g.Floor] = true
 		g.logBiomeEntry()
 	}
 	g.UpdateFOV()
-	g.EnemyTurn() // enemies act after descent?
+}
+
+type stairSpec struct {
+	delta      int
+	src        func(lvl *Level) Pos
+	dst        func(lvl *Level) Pos
+	blockedMsg string
+}
+
+func (g *Game) moveFloor(spec stairSpec) bool {
+	if g.Over {
+		return false
+	}
+	lvl := g.CurLevel()
+	if g.Party.Pos != spec.src(lvl) {
+		g.Logf("%s", spec.blockedMsg)
+		return false
+	}
+	if spec.delta > 0 && g.Floor+spec.delta >= g.Tuning.Floors {
+		g.Logf("The way down is sealed.")
+		return false
+	}
+	if spec.delta < 0 && g.Floor == 0 {
+		g.Logf("You are at the entrance.")
+		return false
+	}
+	g.Floor += spec.delta
+	g.Party.Pos = spec.dst(g.CurLevel())
+	if spec.delta > 0 {
+		g.Logf("You descend to floor %d.", g.Floor+1)
+	} else {
+		g.Logf("You ascend to floor %d.", g.Floor+1)
+	}
+	g.handleFloorArrival()
+	return true
+}
+
+func (g *Game) TryStairsDown() {
+	if !g.moveFloor(stairSpec{delta: 1, src: func(l *Level) Pos { return l.StairsDown }, dst: func(l *Level) Pos { return l.StairsUp }, blockedMsg: "No stairs down here."}) {
+		return
+	}
+	g.EnemyTurn()
 }
 
 func (g *Game) TryStairsUp() {
@@ -2026,11 +2115,7 @@ func (g *Game) TryStairsUp() {
 		return
 	}
 	lvl := g.CurLevel()
-	if g.Party.Pos != lvl.StairsUp {
-		g.Logf("No stairs up here.")
-		return
-	}
-	if g.Floor == 0 && g.RelicCollected && g.Party.Pos == lvl.StairsUp {
+	if g.Party.Pos == lvl.StairsUp && g.Floor == 0 && g.RelicCollected {
 		g.Escaped = true
 		g.Over = true
 		g.Won = true
@@ -2040,29 +2125,9 @@ func (g *Game) TryStairsUp() {
 		_ = DeleteSave()
 		return
 	}
-	if g.Floor == 0 {
-		g.Logf("You are at the entrance.")
+	if !g.moveFloor(stairSpec{delta: -1, src: func(l *Level) Pos { return l.StairsUp }, dst: func(l *Level) Pos { return l.StairsDown }, blockedMsg: "No stairs up here."}) {
 		return
 	}
-	g.Floor--
-	g.Party.Pos = g.CurLevel().StairsDown
-	g.Logf("You ascend to floor %d.", g.Floor+1)
-	// Same visited/transition gating for upward travel (covers post-relic repopulation).
-	if g.VisitedFloors == nil {
-		g.VisitedFloors = make(map[int]bool)
-	}
-	if g.TransitionFiredForLevel == nil {
-		g.TransitionFiredForLevel = make(map[int]bool)
-	}
-	if !g.VisitedFloors[g.Floor] && !g.TransitionFiredForLevel[g.Floor] {
-		g.ApplyFloorTransition()
-		g.VisitedFloors[g.Floor] = true
-		g.TransitionFiredForLevel[g.Floor] = true
-	} else {
-		g.VisitedFloors[g.Floor] = true
-		g.logBiomeEntry()
-	}
-	g.UpdateFOV()
 }
 
 func (g *Game) ApplyFloorTransition() {
@@ -2074,8 +2139,7 @@ func (g *Game) ApplyFloorTransition() {
 			continue
 		}
 		if m.HasTalent("forage") {
-			g.Food += 100
-			g.FoodFloat += 100
+			g.AddFood(100)
 			g.Logf("%s forages +100 food (now %d).", m.Name, g.Food)
 		}
 		if m.HasTalent("restoration") {
@@ -2117,22 +2181,7 @@ func (g *Game) EndPlayerTurn(msg string) {
 	}
 	g.Turn++
 	g.tickFood()
-	// Troll regen every 3 ticks
-	if g.Turn%3 == 0 {
-		healed := false
-		for _, m := range g.Party.Members {
-			if m.IsAlive() && normalizeRaceID(m.Race) == "troll" && m.HP < m.MaxHP {
-				m.HP++
-				if m.HP > m.MaxHP {
-					m.HP = m.MaxHP
-				}
-				healed = true
-			}
-		}
-		if healed {
-			// optional log? keep silent or minimal
-		}
-	}
+	g.tickRegen()
 	// Tick party statuses and apply DoTs.
 	if g.Party != nil {
 		expired := g.Party.TickStatuses()
@@ -2226,28 +2275,7 @@ func (g *Game) EndPlayerTurn(msg string) {
 			}
 		}
 	}
-	// Natural regen: 1 HP every 10 ticks per living member
-	if g.Turn%10 == 0 {
-		for _, m := range g.Party.Members {
-			if m.IsAlive() && m.HP < m.MaxHP {
-				m.HP++
-				if m.HP > m.MaxHP {
-					m.HP = m.MaxHP
-				}
-			}
-		}
-	}
-	// Endurance talent: +1 HP per 5 ticks per bearer (tuned from 1/tick = ~0.2/tick)
-	if g.Turn%5 == 0 {
-		for _, m := range g.Party.Members {
-			if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
-				m.HP++
-				if m.HP > m.MaxHP {
-					m.HP = m.MaxHP
-				}
-			}
-		}
-	}
+
 	// Cleric healers_grace HoT: +0.5 HP/tick -> +1 every 2 ticks (bard-buffed 0.55 via extra 10% chance on odd)
 	if g.Party != nil && g.Party.HasClass("cleric") {
 		hasBard := g.Party.HasBardAlive()

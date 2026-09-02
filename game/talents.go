@@ -381,35 +381,12 @@ func ApplyAffixMod(m *Member, affixID string) {
 			return
 		}
 	}
-	// fallback hardcoded for of_hollow etc if mod missing in JSON
+	// fallback hardcoded for of_hollow etc if mod missing in JSON — unified via buffByID
+	if b, ok := buffByID[affixID]; ok {
+		m.AddBuff(b)
+		return
+	}
 	switch affixID {
-	case "of_hollow":
-		m.MaxHP += 5
-		m.HP += 5
-		if m.HP > m.MaxHP {
-			m.HP = m.MaxHP
-		}
-		m.Light--
-		if m.Light < 0 {
-			m.Light = 0
-		}
-	case "veteran":
-		m.ATK[0] += 2
-		m.ATK[1] += 2
-	case "hardy":
-		m.MaxHP += 3
-		m.HP += 3
-	case "keen":
-		m.ATK[0]++
-	case "stout":
-		m.DEF++
-	case "bright":
-		m.Light++
-	case "burdened":
-		if m.Carry == 0 {
-			m.Carry = 5
-		}
-		m.Carry += 3
 	case "of_warding", "of_wrath", "of_thorns", "of_plenty", "of_mending", "of_martyr", "nimble":
 		// no immediate stat, handled via triggers
 	}

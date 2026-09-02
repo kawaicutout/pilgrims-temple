@@ -185,6 +185,26 @@ func (l *Level) isVaultLockedInterior(p Pos) bool {
 	return false
 }
 
+// vaultLockedNear reports whether a locked vault feature lies within Chebyshev radius r of pos.
+func (l *Level) vaultLockedNear(pos Pos, r int) bool {
+	for _, f := range l.Features {
+		if f.IsVault() && f.Locked {
+			dx := f.Pos.X - pos.X
+			if dx < 0 {
+				dx = -dx
+			}
+			dy := f.Pos.Y - pos.Y
+			if dy < 0 {
+				dy = -dy
+			}
+			if dx <= r && dy <= r {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // LitterAt returns litter at p if any.
 func (l *Level) LitterAt(p Pos) *LitterObj {
 	for i := range l.Litter {

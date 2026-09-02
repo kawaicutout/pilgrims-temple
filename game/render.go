@@ -22,6 +22,27 @@ type Frame struct {
 	MinRows int
 }
 
+func newFrame(w, h int) [][]Cell {
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	return cells
+}
+
+// panelWrap returns panel wrap width (DUP-08 unified 30 vs 28).
+func panelWrap(t Tuning) int {
+	if t.Layout.PanelWrap > 0 {
+		return t.Layout.PanelWrap
+	}
+	return 30
+}
+
+
+
 func (g *Game) Render() Frame {
 	t := g.Tuning
 	lvl := g.CurLevel()
@@ -145,10 +166,7 @@ func (g *Game) Render() Frame {
 	// Panel - right-side overhaul: 5 lines per member (20 total) + 6 potion/scroll lines = 26
 	var panel []string
 	var panelFG []string
-	panelWrap := t.Layout.PanelWrap
-	if panelWrap <= 0 {
-		panelWrap = 30
-	}
+	panelWrap := panelWrap(t)
 	buildTalentLines := func(talents []string) (string, string) {
 		if len(talents) == 0 {
 			return "  ", "  "
@@ -433,7 +451,7 @@ func (g *Game) Render() Frame {
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
 	lightStr := fmt.Sprintf("Light %d", g.Party.BestLight())
 	aware := ""
-	if g.Party.HasRogue() || g.Party.HasWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard {
+	if g.Party.HasRogueOrWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard {
 		aware = "Aware"
 	}
 	foodStr := fmt.Sprintf("Food %d %s", g.Food, g.HungerState())
@@ -520,7 +538,7 @@ func (g *Game) Render() Frame {
 			hints = fmt.Sprintf("Forge: g to use%s (u also)  |  Move: numpad/arrow/hjkl  Wait:5/./Space", costStr)
 		} else if f.IsVault() {
 			if f.Locked {
-				if g.Party.HasRogue() || g.Party.HasWizard() || g.Wizard {
+				if g.canOpenLocked() {
 					hints = fmt.Sprintf("Vault: g to loot %d gold%s  |  Move: numpad/arrow/hjkl  Help:?", f.Treasure, map[bool]string{true: " (trapped)", false: ""}[f.Trapped])
 				} else {
 					hints = "Vault: locked - need rogue or wizard  |  Move: numpad/arrow/hjkl  Help:?"
@@ -529,7 +547,7 @@ func (g *Game) Render() Frame {
 				hints = fmt.Sprintf("Vault: g to loot %d gold%s  |  Move: numpad/arrow/hjkl  Help:?", f.Treasure, map[bool]string{true: " (trapped)", false: ""}[f.Trapped])
 			}
 		} else if f.IsPitfall() {
-			aware := !f.Hidden || g.Party.HasRogue() || g.Party.HasWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard
+			aware := !f.Hidden || g.Party.HasRogueOrWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard
 			if f.Hidden && !aware {
 				hints = "Pitfall: hidden (step carefully)  |  Move: numpad/arrow/hjkl  Help:?"
 			} else if f.Hidden && aware {

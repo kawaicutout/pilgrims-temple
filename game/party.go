@@ -117,6 +117,9 @@ func (p *Party) HasWizard() bool {
 	return false
 }
 
+// HasRogueOrWizard reports whether party has a living rogue or wizard (vault/pitfall unified).
+func (p *Party) HasRogueOrWizard() bool { return p.HasRogue() || p.HasWizard() }
+
 // HasClass reports whether party has a living member of given class.
 func (p *Party) HasClass(class string) bool {
 	for _, m := range p.Members {

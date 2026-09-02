@@ -48,17 +48,7 @@ func RestBatch(g *Game) int {
 
 		g.Turn++
 		g.tickFood()
-		// Troll regen every 3 ticks (mirrors EndPlayerTurn)
-		if g.Turn%3 == 0 {
-			for _, m := range g.Party.Members {
-				if m.IsAlive() && normalizeRaceID(m.Race) == "troll" && m.HP < m.MaxHP {
-					m.HP++
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
-					}
-				}
-			}
-		}
+		g.tickRegen()
 
 		heal := base
 		if completed < rem {
@@ -75,16 +65,7 @@ func RestBatch(g *Game) int {
 				}
 			}
 		}
-		if g.Turn%5 == 0 {
-			for _, m := range g.Party.Members {
-				if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
-					m.HP++
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
-					}
-				}
-			}
-		}
+
 		// Elf identify ticker during rest as well
 		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
 			if g.NextElfIdentifyTurn == 0 {

@@ -15,7 +15,12 @@ func RollRaw(rng *rand.Rand, atkMin, atkMax int) int {
 
 // RollDamage picks uniformly then subtracts DEF, floor 1.
 func RollDamage(rng *rand.Rand, atkMin, atkMax, def int) int {
-	dmg := RollRaw(rng, atkMin, atkMax) - def
+	return calcDamage(RollRaw(rng, atkMin, atkMax), def)
+}
+
+// calcDamage centralizes raw-def with floor 1 (DUP-05).
+func calcDamage(raw, def int) int {
+	dmg := raw - def
 	if dmg < 1 {
 		dmg = 1
 	}

@@ -291,6 +291,49 @@ type UseEntry struct {
 
 // InventoryUseEntries returns grouped inventory entries sorted for the usage menu.
 // Groups by appearance (potions and scrolls), showing identified names when known.
+// GroupedInventory returns grouped inventory entries for given kind filter (DUP-10).
+func GroupedInventory(party *Party, kind string) []UseEntry {
+	counts := map[string]int{}
+	for _, it := range party.Inventory {
+		if kind != "" && it.Kind != kind {
+			continue
+		}
+		app := appearanceFromItem(it)
+		counts[app]++
+	}
+	entries := make([]UseEntry, 0, len(counts))
+	for app, cnt := range counts {
+		dispKind := kind
+		if dispKind == "" {
+			// infer kind from first item with this appearance
+			for _, it2 := range party.Inventory {
+				if appearanceFromItem(it2) == app {
+					dispKind = it2.Kind
+					break
+				}
+			}
+		}
+		entries = append(entries, UseEntry{Appearance: app, DisplayName: DisplayNameFor(app, dispKind), Count: cnt})
+	}
+	// sort by DisplayName
+	// Use sort.Slice
+	sort.Slice(entries, func(i, j int) bool { return entries[i].DisplayName < entries[j].DisplayName })
+	return entries
+}
+
+// DisplayNameFor returns friendly display name for appearance (DUP-10).
+func DisplayNameFor(appearance, kind string) string {
+	if IsIdentified(appearance) {
+		if tid, ok := Knowledge[appearance]; ok && tid != "" {
+			return friendlyTypeName(tid, kind)
+		}
+		if tid := TypeForAppearance(appearance); tid != "" {
+			return friendlyTypeName(tid, kind)
+		}
+	}
+	return appearance
+}
+
 func (g *Game) InventoryUseEntries() []UseEntry {
 	if g.Party == nil || len(g.Party.Inventory) == 0 {
 		return nil

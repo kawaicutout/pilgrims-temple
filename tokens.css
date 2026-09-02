@@ -8,9 +8,15 @@
   /* Core */
   --bg:            #141210; /* near-black, slightly warm */
   --fg:            #e6e0d8; /* near-white text and glyphs */
-  --floor:         #4a4642; /* decorative open floor glyph */
-  --wall:          #6b645c; /* wall and pillar glyph */
-  --gray-4:        #2c2927;
+  --floor:         #4a4642; /* decorative open floor glyph — crypt neutral (base) */
+  --wall:          #6b645c; /* wall and pillar glyph — crypt neutral */
+  /* Biome floor/wall — desaturated but hue-distinct, wall ~1.5× contrast over floor:
+     crypt   floor #4a4642 / wall #6b645c (neutral stone)
+     ossuary floor #4f3d32 / wall #7a5a3a (warm tan bone)
+     fungal  floor #2e4a35 / wall #4a6a4a (greener damp)
+     jungle  floor #2a3d2f / wall #3d5a3a (deeper green overgrowth)
+     cinder  floor #4a2e2a / wall #6a3d2f (redder ash)
+     Render: FloorColorForLevel/WallColorForLevel emit these hexes; web maps via colorForToken(token) passthrough, terminal via tcell truecolor. */
   --gray-3:        #3d3936;
   --gray-2:        #8a857e; /* dim read-only labels */
   --gray-1:        #b5aea5;

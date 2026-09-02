@@ -372,26 +372,31 @@ func RenderScoresScreen(tuning Tuning, selected int) Frame {
 		if selected >= len(entries) {
 			selected = len(entries) - 1
 		}
-		header := " # Score Lv Gold Depth Seed       Result     Members"
+		header := " #  Score   Lv  Gold  Depth  Seed"
 		if len(header) > w-2 {
 			header = header[:w-2]
 		}
 		drawString(cells, 1, 4, header, "gray-2")
+		// Reserve h-7 rows for entries; two lines per entry.
 		maxRows := h - 7
-		if maxRows < 1 {
-			maxRows = 1
+		if maxRows < 2 {
+			maxRows = 2
+		}
+		perPage := maxRows / 2
+		if perPage < 1 {
+			perPage = 1
 		}
 		start := 0
-		if len(entries) > maxRows {
-			start = selected - maxRows/2
+		if len(entries) > perPage {
+			start = selected - perPage/2
 			if start < 0 {
 				start = 0
 			}
-			if start+maxRows > len(entries) {
-				start = len(entries) - maxRows
+			if start+perPage > len(entries) {
+				start = len(entries) - perPage
 			}
 		}
-		end := start + maxRows
+		end := start + perPage
 		if end > len(entries) {
 			end = len(entries)
 		}
@@ -405,21 +410,30 @@ func RenderScoresScreen(tuning Tuning, selected int) Frame {
 				result = "Unknown"
 			}
 			members := MembersSummary(e)
-			line := fmt.Sprintf("%2d. %5d Lv%d G%d D%d S%d %-10s %s", i+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached, e.Seed, result, members)
-			if len(line) > w-2 {
-				line = line[:w-5] + "..."
+			line1 := fmt.Sprintf("%2d. %5d  Lv%-2d  G%-3d  D%-2d  S%d", i+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached, e.Seed)
+			if len(line1) > w-2 {
+				line1 = line1[:w-5] + "..."
+			}
+			line2 := fmt.Sprintf("    %s — %s", result, members)
+			if len(line2) > w-2 {
+				line2 = line2[:w-5] + "..."
 			}
 			fg := "gray-1"
 			if e.Victory {
 				fg = "gold-bright"
 			}
+			y := 5 + (i-start)*2
+			if y+1 >= h-2 {
+				break
+			}
 			if i == selected {
 				fg = "gold-bright"
-				line = "> " + line[2:]
+				line1 = "> " + line1[2:]
 			}
-			drawString(cells, 1, 5+(i-start), line, fg)
+			drawString(cells, 1, y, line1, fg)
+			drawString(cells, 1, y+1, line2, fg)
 		}
-		if len(entries) > maxRows {
+		if len(entries) > perPage {
 			more := fmt.Sprintf("(%d/%d)", selected+1, len(entries))
 			drawCentered(cells, w, h-3, more, "gray-2")
 		}

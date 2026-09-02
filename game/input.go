@@ -1,6 +1,7 @@
 package game
 
 type Key string
+
 const (
 	KeyUp         Key = "up"
 	KeyDown       Key = "down"
@@ -24,8 +25,10 @@ const (
 	KeySelect2    Key = "select2"
 	KeySelect3    Key = "select3"
 	KeySelect4    Key = "select4"
+	KeyThrow      Key = "throw"
 	KeyWizard     Key = "wizard"
 )
+
 func KeyToDir(k Key) (Dir, bool) {
 	switch k {
 	case KeyUp:
@@ -50,6 +53,7 @@ func KeyToDir(k Key) (Dir, bool) {
 		return DirNone, false
 	}
 }
+
 func (g *Game) HandleKey(k Key) bool {
 	// Help can be invoked even in look mode.
 	if k == KeyHelp {
@@ -78,6 +82,26 @@ func (g *Game) HandleKey(k Key) bool {
 			// Other keys (help, select) still work in look mode? For now ignore
 			return false
 		}
+	}
+	// Throw mode has next priority: when pending, next direction throws.
+	if g.ThrowPending {
+		if k == KeyQuit {
+			g.ThrowPending = false
+			g.Logf("Cancelled throw.")
+			return false
+		}
+		if dir, ok := KeyToDir(k); ok {
+			if dir == DirNone {
+				g.ThrowPending = false
+				g.Logf("Cancelled throw.")
+				return false
+			}
+			g.ThrowPending = false
+			g.TryThrowPotion(dir)
+			return true
+		}
+		// Non-direction while throw pending: cancel on any other key (help already handled).
+		return false
 	}
 	switch k {
 	case KeySelect1, KeySelect2, KeySelect3, KeySelect4:
@@ -111,10 +135,32 @@ func (g *Game) HandleKey(k Key) bool {
 			g.EndPlayerTurn("")
 			return true
 		}
-		g.TryUseItem()
-		return true
+		if g.Party == nil || len(g.Party.Inventory) == 0 {
+			g.Logf("No potions or scrolls to use.")
+			return false
+		}
+		// Do not auto-consume; frontend opens usage menu (select via InventoryUseEntries + TryUseAppearance).
+		// Keep TryUseItem as fallback but not auto-called on u/U.
+		return false
 	case KeyQuit:
 		g.Logf("Quit to menu. Seed %d saved.", g.Seed)
+		return false
+	case KeyThrow:
+		hasPotion := false
+		if g.Party != nil {
+			for _, it := range g.Party.Inventory {
+				if it.Kind == "potion" {
+					hasPotion = true
+					break
+				}
+			}
+		}
+		if !hasPotion {
+			g.Logf("No potions to throw.")
+			return false
+		}
+		g.ThrowPending = true
+		g.Logf("Throw potion: choose direction (hjkl/arrows/numpad).")
 		return false
 	case KeyStairsDown:
 		g.TryStairsDown()
@@ -130,6 +176,7 @@ func (g *Game) HandleKey(k Key) bool {
 	}
 	return false
 }
+
 func NormalizeKey(raw string, code string) Key {
 	switch code {
 	case "Numpad8", "Digit8", "ArrowUp":
@@ -152,6 +199,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyWait
 	case "KeyZ":
 		return KeyRest
+	case "KeyT":
+		return KeyThrow
 	case "Escape":
 		return KeyQuit
 	case "Enter":
@@ -170,9 +219,9 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyRight
 	case "7", "y", "Y":
 		return KeyUpLeft
-	case "9", "U":
+	case "9":
 		return KeyUpRight
-	case "u":
+	case "u", "U":
 		return KeyUse
 	case "1", "b", "B":
 		return KeyDownLeft
@@ -200,6 +249,8 @@ func NormalizeKey(raw string, code string) Key {
 		return KeyLook
 	case "g", "G":
 		return KeyPickup
+	case "t", "T":
+		return KeyThrow
 	case "?":
 		return KeyHelp
 	case "Escape":

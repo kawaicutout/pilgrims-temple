@@ -52,6 +52,7 @@ const (
 	stateWizardAddMember
 	stateWizardRemoveMember
 	stateWizardResurrectMember
+	stateUseInventory
 )
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -60,7 +61,7 @@ const (
 	wizardState := &game.WizardState{Selected: 0}
 	var wizardAddCS *game.CharSelectState
 	wizardRemoveIdx := 0
-
+	useSelected := 0
 	renderMenu := func() {
 		frame := game.RenderMainMenu(tuning, menu.Selected)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
@@ -128,7 +129,15 @@ const (
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
 	}
-
+	renderUseMenu := func() {
+		if g == nil {
+			return
+		}
+		frame := g.RenderUseMenu(useSelected)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
 	renderMenu()
 
 	var keyHandler js.Func
@@ -279,6 +288,26 @@ const (
 				renderWizard()
 				break
 			}
+			if k == game.KeyUse && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit {
+				if g.TryUseForge() {
+					g.EndPlayerTurn("")
+					renderGame()
+					if g.LevelUpPending != nil {
+						renderLevelUp()
+					}
+					break
+				}
+				entries := g.InventoryUseEntries()
+				if len(entries) == 0 {
+					g.Logf("No potions or scrolls to use.")
+					renderGame()
+					break
+				}
+				useSelected = 0
+				state = stateUseInventory
+				renderUseMenu()
+				break
+			}
 			g.HandleKey(k)
 			if g.HelpActive {
 				renderHelp()
@@ -295,6 +324,59 @@ const (
 					g = nil
 					renderMenu()
 				}
+			}
+		case stateUseInventory:
+			if g == nil {
+				state = statePlaying
+				renderGame()
+				break
+			}
+			entries := g.InventoryUseEntries()
+			switch k {
+			case game.KeyUp:
+				if len(entries) > 0 {
+					useSelected--
+					if useSelected < 0 {
+						useSelected = len(entries) - 1
+					}
+				}
+				renderUseMenu()
+			case game.KeyDown:
+				if len(entries) > 0 {
+					useSelected++
+					if useSelected >= len(entries) {
+						useSelected = 0
+					}
+				}
+				renderUseMenu()
+			case game.KeyQuit:
+				state = statePlaying
+				renderGame()
+			case game.KeyEnter:
+				if len(entries) > 0 && useSelected >= 0 && useSelected < len(entries) {
+					g.TryUseItemAt(useSelected)
+					state = statePlaying
+					renderGame()
+					if g.LevelUpPending != nil {
+						renderLevelUp()
+					}
+					if g.Quit {
+						state = stateMenu
+						g = nil
+						renderMenu()
+					} else if g.Over {
+						if k == game.KeyQuit || k == game.KeyEnter {
+							state = stateMenu
+							g = nil
+							renderMenu()
+						}
+					}
+				} else {
+					state = statePlaying
+					renderGame()
+				}
+			default:
+				renderUseMenu()
 			}
 		case stateWizard:
 			switch k {

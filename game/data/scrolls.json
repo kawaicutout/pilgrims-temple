@@ -1,15 +1,6 @@
 {
-  "notes": "Pilgrim's Temple — scroll appearance pool. Run-random: appearances are shuffled onto scroll types at generation (DESIGN 7.2/11.1). Appearance is a \"verb noun\" token of the form \"X of (the) Y\" such as \"Than of the Moth\". 8 appearances, 8 types, bijection per run.",
-  "appearances": [
-    "Than of the Moth",
-    "Kel of Shadows",
-    "Vor of Flames",
-    "Zin of Binding",
-    "Eld of Whispers",
-    "Mor of Unmaking",
-    "Ir of Light",
-    "Sha of Warding"
-  ],
+  "notes": "Pilgrim's Temple — scroll appearance pool. Run-random: appearances are generated via conlang.json weighted onsets/nuclei/codas (GenerateConlangWord) — 1-2 word tokens like \"thae khor\", \"branel\", \"zae of orin\". 8 appearances, 8 types, bijection per run. JSON appearances may be empty; generation is preferred. Fallback static pool is lower-case conlang style to keep potion/scroll namespaces distinct.",
+  "appearances": [],
   "types": [
     { "id": "identify", "name": "Identify", "desc": "Identifies one held appearance" },
     { "id": "teleport", "name": "Teleport", "desc": "Teleports to a random floor tile" },

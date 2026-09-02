@@ -36,28 +36,68 @@ type itemType struct {
 	Desc string `json:"desc"`
 }
 
+// potionAdjectives and potionColors are the combinatorial pools for automated
+// "{Adjective} {Color}" generation. Every potion appearance is exactly
+// one adjective plus one color, e.g. "Mottled Jade", "Vivid Yellow".
+var potionAdjectives = []string{
+	"Azure", "Crimson", "Mottled", "Vivid", "Smoky", "Pale",
+	"Deep", "Murky", "Bright", "Dark", "Cloudy", "Faint",
+}
+
+var potionColors = []string{
+	"Jade", "Yellow", "Grey", "Violet", "Amber", "Brown",
+	"Crimson", "Azure", "Red", "Green", "Blue", "Silver",
+}
+
+// potionAppearancePool returns every unique "{Adjective} {Color}" combination
+// (12 adjectives × 12 colors = 144 entries). Caller shuffles and samples 8 for
+// the per-run bijection.
+func potionAppearancePool() []string {
+	pool := make([]string, 0, len(potionAdjectives)*len(potionColors))
+	for _, adj := range potionAdjectives {
+		for _, col := range potionColors {
+			pool = append(pool, adj+" "+col)
+		}
+	}
+	return pool
+}
+
+// generatedPotionAppearances returns 8 unique "{Adjective} {Color}" appearances
+// sampled from the combinatorial pool. Uses a deterministic shuffle so the
+// fallback is stable across calls; InitIdentification reshuffles per-run.
+func generatedPotionAppearances() []string {
+	pool := potionAppearancePool()
+	// Deterministic sample: shuffle with fixed seed then take first 8.
+	rng := rand.New(rand.NewPCG(1, 0x9e3779b97f4a7c15))
+	shuffleStrings(rng, pool)
+	out := make([]string, 8)
+	copy(out, pool[:8])
+	return out
+}
+
 // fallback appearances — used if JSON load fails; kept for robustness.
-// Must match the 8-entry pool described in DESIGN 7.2.
+// Must match the 8-entry pool described in DESIGN 7.2 and the
+// "{Adjective} {Color}" pattern above. Generated style.
 var fallbackPotionAppearances = []string{
-	"Azure",
-	"Crimson",
 	"Mottled Jade",
 	"Vivid Yellow",
 	"Smoky Grey",
 	"Pale Violet",
 	"Deep Amber",
 	"Murky Brown",
+	"Bright Red",
+	"Dark Blue",
 }
 
 var fallbackScrollAppearances = []string{
-	"Than of the Moth",
-	"Kel of Shadows",
-	"Vor of Flames",
-	"Zin of Binding",
-	"Eld of Whispers",
-	"Mor of Unmaking",
-	"Ir of Light",
-	"Sha of Warding",
+	"thae khor",
+	"branel",
+	"zae of orin",
+	"elae",
+	"shor is",
+	"gran en",
+	"ae or",
+	"khael'lor",
 }
 
 var fallbackPotionTypes = []itemType{
@@ -85,32 +125,47 @@ var fallbackScrollTypes = []itemType{
 func loadPotionData() (appearances []string, types []itemType) {
 	b, err := dataFS.ReadFile("data/potions.json")
 	if err != nil {
-		return append([]string(nil), fallbackPotionAppearances...), append([]itemType(nil), fallbackPotionTypes...)
+		return append([]string(nil), generatedPotionAppearances()...), append([]itemType(nil), fallbackPotionTypes...)
 	}
 	var pf potionFile
 	if err := json.Unmarshal(b, &pf); err != nil {
-		return append([]string(nil), fallbackPotionAppearances...), append([]itemType(nil), fallbackPotionTypes...)
+		return append([]string(nil), generatedPotionAppearances()...), append([]itemType(nil), fallbackPotionTypes...)
 	}
 	if len(pf.Appearances) == 0 {
-		pf.Appearances = append([]string(nil), fallbackPotionAppearances...)
+		pf.Appearances = append([]string(nil), generatedPotionAppearances()...)
 	}
 	if len(pf.Types) == 0 {
 		pf.Types = append([]itemType(nil), fallbackPotionTypes...)
 	}
+	// pf.Appearances is the JSON pool (fallback) when present; the per-run
+	// 8-way bijection is built by InitIdentification shuffling onto types.
 	return pf.Appearances, pf.Types
 }
 
 func loadScrollData() (appearances []string, types []itemType) {
 	b, err := dataFS.ReadFile("data/scrolls.json")
 	if err != nil {
+		tmp := rand.New(rand.NewPCG(0xC0FFEE, 1))
+		if gen := generateConlangScrollAppearances(tmp); len(gen) == 8 {
+			return gen, append([]itemType(nil), fallbackScrollTypes...)
+		}
 		return append([]string(nil), fallbackScrollAppearances...), append([]itemType(nil), fallbackScrollTypes...)
 	}
 	var sf scrollFile
 	if err := json.Unmarshal(b, &sf); err != nil {
+		tmp := rand.New(rand.NewPCG(0xC0FFEE, 1))
+		if gen := generateConlangScrollAppearances(tmp); len(gen) == 8 {
+			return gen, append([]itemType(nil), fallbackScrollTypes...)
+		}
 		return append([]string(nil), fallbackScrollAppearances...), append([]itemType(nil), fallbackScrollTypes...)
 	}
 	if len(sf.Appearances) == 0 {
-		sf.Appearances = append([]string(nil), fallbackScrollAppearances...)
+		tmp := rand.New(rand.NewPCG(0xC0FFEE, 2))
+		if gen := generateConlangScrollAppearances(tmp); len(gen) == 8 {
+			sf.Appearances = gen
+		} else {
+			sf.Appearances = append([]string(nil), fallbackScrollAppearances...)
+		}
 	}
 	if len(sf.Types) == 0 {
 		sf.Types = append([]itemType(nil), fallbackScrollTypes...)
@@ -201,6 +256,14 @@ func ResetIdentification() {
 func InitIdentification(rng *rand.Rand) {
 	pApps, pTypes := loadPotionData()
 	sApps, sTypes := loadScrollData()
+	// Prefer conlang-generated scroll appearances per run (weighted onsets/nuclei/codas).
+	// Overrides static JSON appearances to generate 8 unique tokens via GenerateConlangWord(rng);
+	// shuffle still provides bijection. Fallback to JSON/fallback pool only if generation fails.
+	if rng != nil {
+		if gen := generateConlangScrollAppearances(rng); len(gen) == 8 {
+			sApps = gen
+		}
+	}
 
 	// Copy so shuffling does not mutate the source slices.
 	potions := append([]string(nil), pApps...)
@@ -227,10 +290,10 @@ func InitIdentification(rng *rand.Rand) {
 	}
 	// Scrolls bijection (type IDs may overlap potion ids like "healing";
 	// appearances are distinct tokens so no collision in appearanceToType.
-	// For typeToAppearance a scroll "healing" would overwrite potion "healing"
-	// — disambiguate by namespacing if needed. In practice ids are distinct
-	// except "healing"; keep the last write or namespace with prefix.
-	// To preserve both, store scroll types with a prefix when colliding.
+	// Scroll appearances are lowercase conlang tokens (e.g., "thae khor"),
+	// potions are capitalized "Adjective Color" (e.g., "Mottled Jade"),
+	// so namespaces stay distinct. For typeToAppearance a scroll "healing"
+	// would overwrite potion "healing" — prefer potion mapping.
 	for i := range sTypes {
 		if i >= len(scrolls) {
 			break

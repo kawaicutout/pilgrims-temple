@@ -30,6 +30,7 @@ type Game struct {
 	Won                     bool          `json:"won"`
 	Quit                    bool          `json:"quit"`
 	Look                    *LookState    `json:"look"`
+	ThrowPending            bool          `json:"throwPending"`
 	Relic                   Pos           `json:"relic"`
 	Wizard                  bool          `json:"wizard"`
 	WizardReveal            bool          `json:"wizardReveal"`

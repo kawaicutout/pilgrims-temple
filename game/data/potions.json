@@ -1,14 +1,14 @@
 {
-  "notes": "Pilgrim's Temple — potion appearance pool. Run-random: appearances are shuffled onto potion types at generation (DESIGN 7.2/11.1). Appearance is \"{optional adjective} {color}\" — a color with an optional adjective prefix. 8 appearances, 8 types, bijection per run.",
+  "notes": "Pilgrim's Temple — potion appearance pool. Run-random: appearances are shuffled onto potion types at generation (DESIGN 7.2/11.1). Appearance is \"{Adjective} {Color}\" combinatorial from adjective and color pools (12×12=144). 8 appearances, 8 types, bijection per run via shuffle.",
   "appearances": [
-    "Azure",
-    "Crimson",
     "Mottled Jade",
     "Vivid Yellow",
     "Smoky Grey",
     "Pale Violet",
     "Deep Amber",
-    "Murky Brown"
+    "Murky Brown",
+    "Bright Red",
+    "Dark Blue"
   ],
   "types": [
     { "id": "healing", "name": "Healing", "desc": "Restores 12 HP to one member" },

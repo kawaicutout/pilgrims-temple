@@ -227,6 +227,7 @@ func main() {
 		stateWizardAddMember
 		stateWizardRemoveMember
 		stateWizardResurrectMember
+		stateUseInventory
 	)
 
 	state := stateMenu
@@ -236,6 +237,7 @@ func main() {
 	wizardState := &game.WizardState{Selected: 0}
 	var wizardAddCS *game.CharSelectState
 	wizardRemoveIdx := 0
+	useSelected := 0
 	for {
 		ev := s.PollEvent()
 		switch e := ev.(type) {
@@ -269,6 +271,10 @@ func main() {
 			case stateWizardRemoveMember:
 				if g != nil {
 					drawFrame(g.Render())
+				}
+			case stateUseInventory:
+				if g != nil {
+					drawFrame(g.RenderUseMenu(useSelected))
 				}
 			}
 		case *tcell.EventKey:
@@ -419,6 +425,28 @@ func main() {
 					drawFrame(g.RenderWizardMenu(tuning, wizardState.Selected))
 					break
 				}
+				// Use inventory: open usage menu (not instant consume)
+				if k == game.KeyUse && (g.Look == nil || !g.Look.Active) && !g.Over && !g.Quit {
+					// Try forge first (like pickup); if forge present, use it directly
+					if g.TryUseForge() {
+						g.EndPlayerTurn("")
+						drawFrame(g.Render())
+						if g.LevelUpPending != nil {
+							drawFrame(g.RenderLevelUp())
+						}
+						break
+					}
+					entries := g.InventoryUseEntries()
+					if len(entries) == 0 {
+						g.Logf("No potions or scrolls to use.")
+						drawFrame(g.Render())
+						break
+					}
+					useSelected = 0
+					state = stateUseInventory
+					drawFrame(g.RenderUseMenu(useSelected))
+					break
+				}
 				g.HandleKey(k)
 				if g.HelpActive {
 					drawFrame(g.RenderHelpOverlay())
@@ -455,6 +483,74 @@ func main() {
 							}
 						}
 					}
+				}
+			case stateUseInventory:
+				if g == nil {
+					state = statePlaying
+					drawFrame(g.Render())
+					break
+				}
+				entries := g.InventoryUseEntries()
+				switch k {
+				case game.KeyUp:
+					if len(entries) > 0 {
+						useSelected--
+						if useSelected < 0 {
+							useSelected = len(entries) - 1
+						}
+					}
+					drawFrame(g.RenderUseMenu(useSelected))
+				case game.KeyDown:
+					if len(entries) > 0 {
+						useSelected++
+						if useSelected >= len(entries) {
+							useSelected = 0
+						}
+					}
+					drawFrame(g.RenderUseMenu(useSelected))
+				case game.KeyQuit:
+					state = statePlaying
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					if len(entries) > 0 && useSelected >= 0 && useSelected < len(entries) {
+						g.TryUseItemAt(useSelected)
+						state = statePlaying
+						drawFrame(g.Render())
+						if g.LevelUpPending != nil {
+							drawFrame(g.RenderLevelUp())
+						}
+						if g.Quit {
+							state = stateMenu
+							g = nil
+							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+						} else if g.Over {
+							for {
+								ev2 := s.PollEvent()
+								if ke, ok := ev2.(*tcell.EventKey); ok {
+									key2, code2 := tcellKeyToRaw(ke)
+									k2 := game.NormalizeKey(key2, code2)
+									if k2 == game.KeyQuit || k2 == game.KeyEnter {
+										state = stateMenu
+										g = nil
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+										break
+									}
+								} else if _, ok := ev2.(*tcell.EventResize); ok {
+									s.Sync()
+									if g != nil {
+										drawFrame(g.Render())
+									} else {
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+									}
+								}
+							}
+						}
+					} else {
+						state = statePlaying
+						drawFrame(g.Render())
+					}
+				default:
+					drawFrame(g.RenderUseMenu(useSelected))
 				}
 			case stateWizard:
 				switch k {

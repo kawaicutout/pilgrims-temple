@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"math/rand/v2"
+	"sort"
 	"strings"
 )
 
@@ -168,6 +169,225 @@ func friendlyTypeName(typeID, kind string) string {
 		return strings.Title(typeID)
 	}
 	return "unknown"
+}
+
+// UseEntry represents a grouped inventory entry for the usage menu.
+type UseEntry struct {
+	Appearance  string
+	Kind        string // potion or scroll
+	Count       int
+	DisplayName string
+}
+
+// InventoryUseEntries returns grouped inventory entries sorted for the usage menu.
+// Groups by appearance (potions and scrolls), showing identified names when known.
+func (g *Game) InventoryUseEntries() []UseEntry {
+	if g.Party == nil || len(g.Party.Inventory) == 0 {
+		return nil
+	}
+	m := map[string]*UseEntry{}
+	for _, it := range g.Party.Inventory {
+		app := appearanceFromItem(it)
+		key := it.Kind + "|" + app
+		if e, ok := m[key]; ok {
+			e.Count++
+		} else {
+			display := app
+			if IsIdentified(app) {
+				if tid, ok := Knowledge[app]; ok && tid != "" {
+					display = friendlyTypeName(tid, it.Kind)
+				} else if tid := TypeForAppearance(app); tid != "" {
+					display = friendlyTypeName(tid, it.Kind)
+				}
+			}
+			m[key] = &UseEntry{Appearance: app, Kind: it.Kind, Count: 1, DisplayName: display}
+		}
+	}
+	entries := make([]UseEntry, 0, len(m))
+	for _, e := range m {
+		entries = append(entries, *e)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Kind != entries[j].Kind {
+			return entries[i].Kind < entries[j].Kind // potion before scroll lexicographically
+		}
+		return entries[i].Appearance < entries[j].Appearance
+	})
+	return entries
+}
+
+// TryUseAppearance consumes one item of the given appearance, identifies it, applies effect and advances turn.
+func (g *Game) TryUseAppearance(appearance string) bool {
+	if g.Party == nil || len(g.Party.Inventory) == 0 {
+		g.Logf("No potions or scrolls to use.")
+		return false
+	}
+	idx := -1
+	for i, it := range g.Party.Inventory {
+		if appearanceFromItem(it) == appearance {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		g.Logf("No %s to use.", appearance)
+		return false
+	}
+	it := g.Party.Inventory[idx]
+	g.Party.Inventory = append(g.Party.Inventory[:idx], g.Party.Inventory[idx+1:]...)
+	trueType := TypeForAppearance(appearance)
+	if trueType == "" {
+		trueType = it.ID
+	}
+	newlyIdentified := IdentifyOnUse(appearance)
+	typeName := friendlyTypeName(trueType, it.Kind)
+	if newlyIdentified {
+		g.Logf("Used %s - identified as %s!", appearance, typeName)
+	} else if IsIdentified(appearance) {
+		g.Logf("Used %s (%s).", appearance, typeName)
+	} else {
+		g.Logf("Used %s.", it.Name)
+	}
+	switch it.Kind {
+	case "potion":
+		switch trueType {
+		case "healing":
+			healed := 0
+			for _, m := range g.Party.Members {
+				if m.IsAlive() && m.HP < m.MaxHP {
+					m.HP += 12
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+					healed++
+				}
+			}
+			if healed > 0 {
+				g.Logf("Healing potion restores 12 HP to %d members.", healed)
+			} else {
+				g.Logf("Healing potion: already at full health.")
+			}
+		case "poison":
+			_, dmg := g.Party.ApplyDamage(g.RNG, 6)
+			g.Logf("Poison potion deals %d damage!", dmg)
+			if g.Party.LivingCount() == 0 {
+				g.Over = true
+				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+			}
+		case "strength":
+			members := g.Party.LivingMembers()
+			if len(members) > 0 {
+				m := members[g.RNG.IntN(len(members))]
+				m.ATK[0] += 2
+				m.ATK[1] += 2
+				g.Logf("Strength potion: %s gains +2 ATK.", m.Name)
+			}
+		case "invisibility":
+			g.Logf("Invisibility potion: you fade from sight briefly.")
+		case "fire_resist":
+			g.Logf("Fire resistance potion: you feel resistant to flame.")
+		case "paralysis":
+			g.Logf("Paralysis potion: you are paralyzed briefly!")
+		case "levitation":
+			g.Logf("Levitation potion: you float above traps.")
+		case "enlightenment":
+			g.Logf("Enlightenment potion: your mind expands.")
+		default:
+			g.Logf("Potion effect: %s.", typeName)
+		}
+	case "scroll":
+		switch trueType {
+		case "identify":
+			found := ""
+			for _, inv := range g.Party.Inventory {
+				app := appearanceFromItem(inv)
+				if !IsIdentified(app) {
+					found = app
+					break
+				}
+			}
+			if found != "" {
+				IdentifyOnUse(found)
+				g.Logf("Identify scroll reveals %s as %s.", found, friendlyTypeName(TypeForAppearance(found), "potion"))
+			} else {
+				g.Logf("Identify scroll: nothing left to identify.")
+			}
+		case "teleport":
+			if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
+				var cands []Pos
+				for y := range lvl.H {
+					for x := range lvl.W {
+						p := Pos{x, y}
+						if lvl.Walkable(p) {
+							cands = append(cands, p)
+						}
+					}
+				}
+				if len(cands) > 0 {
+					g.Party.Pos = cands[g.RNG.IntN(len(cands))]
+					g.Logf("Teleport scroll: you vanish to a new location.")
+					g.UpdateFOV()
+				}
+			}
+		case "fireball":
+			g.Logf("Fireball scroll: flames burst around you!")
+			if lvl := g.CurLevel(); lvl != nil {
+				for _, e := range lvl.Enemies {
+					if !e.IsAlive() {
+						continue
+					}
+					if max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= 2 {
+						for _, m := range e.Members {
+							if m.IsAlive() {
+								m.HP -= 10
+								if m.HP <= 0 {
+									m.HP = 0
+									m.Alive = false
+								}
+							}
+						}
+						if !e.IsAlive() {
+							g.Logf("Fireball slays %s!", e.DisplayName())
+						}
+					}
+				}
+			}
+		case "mapping":
+			if lvl := g.CurLevel(); lvl != nil {
+				for y := range lvl.H {
+					for x := range lvl.W {
+						lvl.Seen[y][x] = true
+					}
+				}
+				g.Logf("Mapping scroll reveals the floor.")
+			}
+		case "greater_healing":
+			for _, m := range g.Party.Members {
+				if m.IsAlive() {
+					m.HP += 20
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+				}
+			}
+			g.Logf("Greater healing scroll restores 20 HP to all members.")
+		default:
+			g.Logf("Scroll effect: %s.", typeName)
+		}
+	default:
+		g.Logf("Used %s: %s.", it.Name, typeName)
+	}
+	g.EndPlayerTurn("")
+	return true
+}
+
+// TryUseItemAt consumes the grouped entry at index (sorted order) and advances turn.
+func (g *Game) TryUseItemAt(index int) bool {
+	entries := g.InventoryUseEntries()
+	if index < 0 || index >= len(entries) {
+		return false
+	}
+	return g.TryUseAppearance(entries[index].Appearance)
 }
 
 // TryUseItem consumes the first available potion/scroll in inventory,
@@ -337,6 +557,149 @@ func (g *Game) TryUseItem() bool {
 		}
 	default:
 		g.Logf("Used %s: %s.", it.Name, typeName)
+	}
+	g.EndPlayerTurn("")
+	return true
+}
+
+// TryThrowPotion consumes the first potion in inventory, identifies it, logs throw, applies effect to target enemy if present, and advances turn.
+func (g *Game) TryThrowPotion(dir Dir) bool {
+	if g.Party == nil {
+		g.Logf("No potions to throw.")
+		return false
+	}
+	idx := -1
+	for i, it := range g.Party.Inventory {
+		if it.Kind == "potion" {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		g.Logf("No potions to throw.")
+		return false
+	}
+	it := g.Party.Inventory[idx]
+	g.Party.Inventory = append(g.Party.Inventory[:idx], g.Party.Inventory[idx+1:]...)
+	appearance := appearanceFromItem(it)
+	trueType := TypeForAppearance(appearance)
+	if trueType == "" {
+		trueType = it.ID
+	}
+	newlyIdentified := IdentifyOnUse(appearance)
+	typeName := friendlyTypeName(trueType, it.Kind)
+	target := g.Party.Pos.Add(dir)
+	var targetEnemy *EnemyParty
+	if lvl := g.CurLevel(); lvl != nil {
+		for _, e := range lvl.Enemies {
+			if e.IsAlive() && e.Pos == target {
+				targetEnemy = e
+				break
+			}
+		}
+	}
+	dirStr := dirName(dir)
+	if newlyIdentified {
+		g.Logf("Threw %s potion - identified as %s at %s!", appearance, typeName, dirStr)
+	} else if IsIdentified(appearance) {
+		g.Logf("Threw %s potion (%s) at %s.", appearance, typeName, dirStr)
+	} else {
+		g.Logf("Threw %s at %s.", it.Name, dirStr)
+	}
+	switch trueType {
+	case "healing":
+		if targetEnemy != nil {
+			healed := 0
+			for _, m := range targetEnemy.Members {
+				if m.IsAlive() && m.HP < m.MaxHP {
+					m.HP += 12
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+					healed++
+				}
+			}
+			if healed > 0 {
+				g.Logf("Healing potion restores 12 HP to %d enemies.", healed)
+			} else {
+				g.Logf("Healing potion splashes on %s with no effect.", targetEnemy.DisplayName())
+			}
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "poison":
+		if targetEnemy != nil {
+			dmgTotal := 0
+			for _, m := range targetEnemy.Members {
+				if m.IsAlive() {
+					m.HP -= 6
+					dmgTotal += 6
+					if m.HP <= 0 {
+						m.HP = 0
+						m.Alive = false
+					}
+				}
+			}
+			g.Logf("Poison potion deals %d damage to %s!", dmgTotal, targetEnemy.DisplayName())
+			if !targetEnemy.IsAlive() {
+				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
+			}
+		} else {
+			g.Logf("Poison potion shatters on ground.")
+		}
+	case "strength":
+		if targetEnemy != nil {
+			var members []*Member
+			for _, m := range targetEnemy.Members {
+				if m.IsAlive() {
+					members = append(members, m)
+				}
+			}
+			if len(members) > 0 {
+				m := members[g.RNG.IntN(len(members))]
+				m.ATK[0] += 2
+				m.ATK[1] += 2
+				g.Logf("Strength potion: %s gains +2 ATK.", m.Name)
+			}
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "invisibility":
+		if targetEnemy != nil {
+			g.Logf("Invisibility potion: %s fades from sight briefly.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "fire_resist":
+		if targetEnemy != nil {
+			g.Logf("Fire resistance potion splashes on %s.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "paralysis":
+		if targetEnemy != nil {
+			g.Logf("Paralysis potion: %s is paralyzed briefly!", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "levitation":
+		if targetEnemy != nil {
+			g.Logf("Levitation potion: %s floats above traps.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	case "enlightenment":
+		if targetEnemy != nil {
+			g.Logf("Enlightenment potion splashes on %s.", targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
+	default:
+		if targetEnemy != nil {
+			g.Logf("Potion effect (%s) hits %s.", typeName, targetEnemy.DisplayName())
+		} else {
+			g.Logf("Potion shatters on ground.")
+		}
 	}
 	g.EndPlayerTurn("")
 	return true

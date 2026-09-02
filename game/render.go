@@ -242,7 +242,7 @@ func (g *Game) Render() Frame {
 	}
 	copy(logLines[max(0, len(logLines)-len(g.Log)):], g.Log)
 
-	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u  Stairs:>/ <  Quit:Esc  Help:?"
+	hints := "Move: numpad/arrow/hjkl  Wait:5/.  Rest:z  Use:u(menu)  Throw:t  Stairs:>/ <  Quit:Esc  Help:?"
 	if g.Quit {
 		hints = "Quit to menu. Seed " + fmt.Sprint(g.Seed) + " - Esc again or close window"
 	} else if g.Over {
@@ -334,6 +334,91 @@ func (g *Game) RenderLevelUp() Frame {
 	}
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
 }
+func (g *Game) RenderUseMenu(selected int) Frame {
+	t := g.Tuning
+	w, h := t.Map.Width, t.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	entries := g.InventoryUseEntries()
+	title := "USE ITEM"
+	sub := "Select potion/scroll to use"
+	if len(entries) == 0 {
+		sub = "No potions or scrolls"
+	}
+	drawCentered(cells, w, 2, title, "gold-bright")
+	drawCentered(cells, w, 3, sub, "gray-1")
+	if len(entries) == 0 {
+		drawCentered(cells, w, 5, "(empty)", "gray-2")
+	} else {
+		startY := 5
+		if selected < 0 {
+			selected = 0
+		}
+		if selected >= len(entries) {
+			selected = len(entries) - 1
+		}
+		maxRows := h - 7
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		start := 0
+		if len(entries) > maxRows {
+			start = selected - maxRows/2
+			if start < 0 {
+				start = 0
+			}
+			if start+maxRows > len(entries) {
+				start = len(entries) - maxRows
+			}
+		}
+		end := start + maxRows
+		if end > len(entries) {
+			end = len(entries)
+		}
+		for i := start; i < end; i++ {
+			e := entries[i]
+			fg := "gray-1"
+			prefix := "  "
+			if i == selected {
+				prefix = "> "
+				fg = "gold-bright"
+			}
+			var line string
+			if e.Count > 1 {
+				line = fmt.Sprintf("%s%s (x%d)", prefix, e.DisplayName, e.Count)
+			} else {
+				line = fmt.Sprintf("%s%s", prefix, e.DisplayName)
+			}
+			if len(line) > w-4 {
+				line = line[:w-7] + "..."
+			}
+			drawCentered(cells, w, startY+(i-start)*2, line, fg)
+			if i == selected && IsIdentified(e.Appearance) && e.DisplayName != e.Appearance {
+				detail := fmt.Sprintf("(%s)", e.Appearance)
+				drawCentered(cells, w, startY+(i-start)*2+1, detail, "gray-2")
+			}
+		}
+		if len(entries) > maxRows {
+			more := fmt.Sprintf("(%d/%d)", selected+1, len(entries))
+			drawCentered(cells, w, h-3, more, "gray-2")
+		}
+	}
+	panel := []string{"", "Use Item", "Enter: use", "Esc: cancel", "Up/Down: move"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	status := "Use Item"
+	hints := "Up/Down or k/j: move  Enter: use  Esc: cancel"
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
+}
+
 func (g *Game) RenderWizardMenu(tuning Tuning, selected int) Frame {
 	w, h := tuning.Map.Width, tuning.Map.Height
 	cells := make([][]Cell, h)
@@ -395,7 +480,8 @@ func (g *Game) RenderHelpOverlay() Frame {
 		{"Move: arrows, numpad 1-9, hjkl + y u b n", "gray-1"},
 		{"5 / . / Space  - wait 1 turn", "gray-1"},
 		{"z / Z  - rest: 10-turn batch, 15 HP, ends on hostile/hunger", "gray-1"},
-		{"g  - pickup  u  - use potion/scroll", "gray-1"},
+		{"g  - pickup  u/U - use menu (potions/scrolls)", "gray-1"},
+		{"t  - throw potion at adjacent target (choose direction)", "gray-1"},
 		{"v  - look: move cursor, v/Enter/Esc to examine", "gray-1"},
 		{"> / <  - stairs down / up", "gray-1"},
 		{"?  - help (this overlay)", "gold"},
@@ -423,7 +509,7 @@ func (g *Game) RenderHelpOverlay() Frame {
 	// Draw border box around lines (optional subtle frame)
 	status := fmt.Sprintf("Help | Seed %d | Floor %d/%d", g.Seed, g.Floor+1, t.Floors)
 	hints := "Esc / Enter / ? : close help  (no turn consumed)"
-	panel := []string{"", "Commands", "q/w/e/r select", "arrows/hjkl move", "5/. wait  z rest", "g pickup  u use", "v look  >/< stairs", "? help  Esc quit", "] wizard"}
+	panel := []string{"", "Commands", "q/w/e/r select", "arrows/hjkl move", "5/. wait  z rest", "g pickup  u use(menu)  t throw", "v look  >/< stairs", "? help  Esc quit", "] wizard"}
 	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1"}
 	for len(panel) < 12 {
 		panel = append(panel, "")

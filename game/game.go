@@ -14,6 +14,12 @@ type MerchantState struct {
 	Selected int    `json:"selected"`
 }
 
+type ShrineState struct {
+	Active   bool `json:"active"`
+	Pos      Pos  `json:"pos"`
+	Selected int  `json:"selected"`
+}
+
 type Game struct {
 	Seed                    int64         `json:"seed"`
 	RNG                     *rand.Rand    `json:"-"`
@@ -46,6 +52,7 @@ type Game struct {
 	RelicCollected          bool          `json:"relicCollected"`
 	NextAmbienceTurn        int           `json:"nextAmbienceTurn"`
 	Merchant                MerchantState `json:"merchant"`
+	Shrine                  ShrineState   `json:"shrine"`
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {
@@ -70,6 +77,7 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	g.Relic = final.StairsDown
 	// Place party at stairs up of floor 0
 	g.Party = GenerateParty(rng, 1)
+	ApplyRaceBuffs(g.Party)
 	start := g.Levels[0].StairsUp
 	// Find nearby free tile if stairs blocked by enemy (rare)
 	g.Party.Pos = start
@@ -310,10 +318,16 @@ type TalentPick struct {
 func (g *Game) xpForNext() int {
 	return 100 + 50*(g.Level-1)
 }
-
 func (g *Game) GainXP(amount int) {
 	if g.Over || g.LevelUpPending != nil {
 		return
+	}
+	if bonus := SynergyXPBonus(g.Party); bonus > 0 {
+		extra := int(float64(amount) * bonus)
+		if extra > 0 {
+			amount += extra
+			g.Logf("Synergy bonus +%d XP.", extra)
+		}
 	}
 	g.XP += amount
 	g.Logf("Gained %d XP (total %d/%d).", amount, g.XP, g.XPToNext)
@@ -366,6 +380,7 @@ func (g *Game) LevelUp() {
 		g.LevelUpPending = &LevelUpState{NewLevel: g.Level, Picks: picks, Current: 0}
 		g.Logf("Level up pending: %d talent picks. Press Tab to choose.", len(picks))
 	}
+	ApplyRaceBuffs(g.Party)
 }
 
 func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
@@ -839,7 +854,149 @@ func (g *Game) TryUseMerchant() bool {
 	return g.StartMerchant(g.Party.Pos)
 }
 
-// TryUseFeature checks current tile for deliberate features in priority Fountain -> Merchant -> Forge.
+// StartShrine opens shrine menu at pos into g.Shrine state.
+func (g *Game) StartShrine(pos Pos) bool {
+	f := g.featureAt(pos)
+	if f == nil || !f.IsShrine() {
+		return false
+	}
+	g.Shrine = ShrineState{Active: true, Pos: pos, Selected: 0}
+	g.Logf("Shrine offers: Add member, Resurrect, Level up, Leave -- Enter to choose, Esc to leave.")
+	return true
+}
+
+// CancelShrine closes shrine menu without using it, keeping the feature.
+func (g *Game) CancelShrine() {
+	if g.Shrine.Active {
+		g.Logf("You step away from the shrine.")
+	}
+	g.Shrine = ShrineState{}
+}
+
+// TryUseShrine attempts deliberate use of a shrine at the party's current position.
+// Opens the shrine menu (StartShrine) and returns true if a shrine was present.
+func (g *Game) TryUseShrine() bool {
+	if g.Party == nil {
+		return false
+	}
+	return g.StartShrine(g.Party.Pos)
+}
+
+// ExecuteShrineChoice handles shrine menu selection 0..3:
+// 0 Add new party member random (free), 1 Resurrect dead member (free), 2 Gain instant level-up without XP reset, 3 Leave.
+// Returns true if choice was handled (even if it logged a failure like party full). Caller may advance turn for 0-2.
+func (g *Game) ExecuteShrineChoice(index int) bool {
+	if !g.Shrine.Active {
+		return false
+	}
+	if index < 0 || index > 3 {
+		return false
+	}
+	switch index {
+	case 0: // Add new party member random
+		if len(g.Party.Members) >= 4 {
+			g.Logf("Shrine: party already full (4).")
+			return false
+		}
+		classes, err := LoadClasses()
+		pick := "fighter"
+		if err == nil && len(classes) > 0 && g.RNG != nil {
+			pick = classes[g.RNG.IntN(len(classes))].ID
+		}
+		tmp := GeneratePartyWithClasses(g.RNG, []string{pick}, g.Level)
+		if tmp == nil || len(tmp.Members) == 0 {
+			g.Logf("Shrine tries to recruit, but none answer.")
+			return false
+		}
+		m := tmp.Members[0]
+		m.HP = m.MaxHP
+		m.Alive = true
+		g.Party.Members = append(g.Party.Members, m)
+		g.Party.EnsureSelection()
+		g.Logf("Shrine recruits %s the %s! (+)", m.Name, m.Class)
+		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
+		g.Shrine = ShrineState{}
+		return true
+	case 1: // Resurrect dead member (most recent)
+		deadIdx := -1
+		for i := len(g.Party.Members) - 1; i >= 0; i-- {
+			if !g.Party.Members[i].IsAlive() {
+				deadIdx = i
+				break
+			}
+		}
+		if deadIdx == -1 {
+			g.Logf("Shrine: no fallen pilgrims to resurrect.")
+			return false
+		}
+		m := g.Party.Members[deadIdx]
+		m.Alive = true
+		m.HP = m.MaxHP
+		g.Party.EnsureSelection()
+		g.Logf("Shrine resurrects %s for free! (+)", m.Name)
+		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
+		g.Shrine = ShrineState{}
+		return true
+	case 2: // Gain instant level-up without XP reset
+		if g.LevelUpPending != nil {
+			g.Logf("Shrine: level up already pending.")
+			return false
+		}
+		oldLevel := g.Level
+		g.Level++
+		g.XPToNext = g.xpForNext()
+		g.Logf("Shrine grants level %d! (XP %d/%d)", g.Level, g.XP, g.XPToNext)
+		for _, m := range g.Party.Members {
+			if !m.IsAlive() {
+				continue
+			}
+			hpGain := 1 + g.RNG.IntN(2)
+			m.MaxHP += hpGain
+			m.HP += hpGain
+			if g.RNG.IntN(2) == 0 {
+				m.ATK[0]++
+				m.ATK[1]++
+			}
+			if g.RNG.IntN(4) == 0 {
+				m.DEF++
+			}
+			g.Logf("%s gains +%d HP.", m.Name, hpGain)
+		}
+		var picks []TalentPick
+		for i, m := range g.Party.Members {
+			if !m.IsAlive() {
+				continue
+			}
+			if g.RNG.Float64() < g.Tuning.LevelUp.TalentChance {
+				pick := TalentPick{MemberIdx: i, MemberName: m.Name, Class: m.Class}
+				if g.RNG.Float64() < g.Tuning.LevelUp.AffixReplaceChance {
+					pick.IsAffix = true
+					pick.Options = []string{GetRandomAffix(g.RNG)}
+					g.Logf("%s will gain an affix: %s", m.Name, FriendlyID(pick.Options[0]))
+				} else {
+					pick.IsAffix = false
+					pick.Options = GetTalentOptions(g.RNG, m.Class, 3)
+					g.Logf("%s may choose a talent.", m.Name)
+				}
+				picks = append(picks, pick)
+			}
+		}
+		if len(picks) > 0 {
+			g.LevelUpPending = &LevelUpState{NewLevel: g.Level, Picks: picks, Current: 0}
+			g.Logf("Level up pending: %d talent picks. Press Tab to choose.", len(picks))
+		}
+		g.Logf("Shrine: old level %d -> %d free blessing.", oldLevel, g.Level)
+		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
+		g.Shrine = ShrineState{}
+		return true
+	case 3: // Leave and come back later
+		g.CancelShrine()
+		return true
+	}
+	return false
+}
+
+// TryUseFeature checks current tile for deliberate features in priority Fountain -> Merchant -> Forge -> Shrine.
 // Returns true if any feature was handled/opened.
 func (g *Game) TryUseFeature() bool {
 	if g.TryUseFountain() {
@@ -850,6 +1007,44 @@ func (g *Game) TryUseFeature() bool {
 	}
 	if g.TryUseForge() {
 		return true
+	}
+	if g.TryUseShrine() {
+		return true
+	}
+	return false
+}
+
+// TryCloseDoor attempts to close an adjacent open door when standing on empty ground.
+// Returns true if a door was closed (consumes turn via caller).
+func (g *Game) TryCloseDoor() bool {
+	lvl := g.CurLevel()
+	if lvl == nil || g.Party == nil {
+		return false
+	}
+	pos := g.Party.Pos
+	// Check nothing underfoot: no feature, no litter, no enemy at pos
+	if g.featureAt(pos) != nil {
+		return false
+	}
+	if lvl.LitterAt(pos) != nil {
+		return false
+	}
+	for _, e := range lvl.Enemies {
+		if e.IsAlive() && e.Pos == pos {
+			return false
+		}
+	}
+	// Find adjacent open door (cardinal first, then diagonal)
+	for _, d := range []Dir{DirN, DirS, DirW, DirE, DirNW, DirNE, DirSW, DirSE} {
+		np := pos.Add(d)
+		if !lvl.InBounds(np) {
+			continue
+		}
+		if lvl.IsDoor(np) && lvl.IsDoorOpen(np) {
+			lvl.SetDoorOpen(np, false)
+			g.Logf("You close the door.")
+			return true
+		}
 	}
 	return false
 }
@@ -1258,6 +1453,35 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 	}
 	lvl := g.CurLevel()
 	next := g.Party.Pos.Add(dir)
+	if lvl.IsDoor(next) && lvl.IsDoorClosed(next) {
+		// Check vault lock near door
+		locked := false
+		for _, f := range lvl.Features {
+			if f.IsVault() && f.Locked {
+				dx := f.Pos.X - next.X
+				if dx < 0 {
+					dx = -dx
+				}
+				dy := f.Pos.Y - next.Y
+				if dy < 0 {
+					dy = -dy
+				}
+				if dx <= 4 && dy <= 4 {
+					locked = true
+					break
+				}
+			}
+		}
+		if locked && !g.Party.HasRogue() && !g.Party.HasWizard() && !g.Wizard {
+			g.Logf("The vault door is locked -- need rogue.")
+			return ActionResult{}
+		}
+		lvl.SetDoorOpen(next, true)
+		g.Logf("You open the door.")
+		g.Party.Active = g.Party.Selected
+		g.EndPlayerTurn("")
+		return ActionResult{Moved: false}
+	}
 	// Stay in place (wait) if dir none - silent per UI parity
 	if dir == DirNone {
 		g.Party.Active = g.Party.Selected
@@ -1430,8 +1654,8 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			}
 		}
 	}
-	// Post-move feature interactions: Vault loot, Den warning, Shrine are auto.
-	// Forge, Fountain, Merchant are deliberate-use only (press g on tile to trigger).
+	// Post-move feature interactions: Vault loot, Den warning are auto.
+	// Forge, Fountain, Merchant, Shrine are deliberate-use only (press g on tile to trigger).
 	if f := g.featureAt(next); f != nil {
 		if f.IsVault() {
 			// Vault already passed locked check; claim treasure.
@@ -1442,8 +1666,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		} else if f.IsDen() {
 			g.handleDen(f)
 		} else if f.IsShrine() {
-			sf := *f
-			g.handleShrine(&sf)
+			g.Logf("Shrine here (press g)")
 		} else if f.IsFountain() {
 			g.Logf("A fountain bubbles here (press g to drink).")
 		} else if f.IsMerchant() {
@@ -1677,7 +1900,6 @@ func (g *Game) EnemyTurn() {
 			}
 			attackerName := e.MemberDisplayName(e.Active)
 			g.Logf("%s hits %s for %d.", attackerName, defender, actual)
-			// Effect placeholder roll
 			if atk.EffectChance > 0 {
 				if g.RNG.Float64() < atk.EffectChance {
 					effect := atk.Effect
@@ -1694,41 +1916,146 @@ func (g *Game) EnemyTurn() {
 			}
 			continue
 		}
-		// Move toward if within 8
+		// Door opening: if adjacent closed door and within 3 of player, open it
 		if cheb <= 8 {
-			step := Dir{sign(dx), sign(dy)}
-			nxt := e.Pos.Add(step)
-			if !lvl.InBounds(nxt) || !lvl.Walkable(nxt) {
-				// Try cardinal
-				if abs(dx) > abs(dy) {
-					nxt = e.Pos.Add(Dir{sign(dx), 0})
-					if !lvl.Walkable(nxt) {
-						nxt = e.Pos.Add(Dir{0, sign(dy)})
-					}
-				} else {
-					nxt = e.Pos.Add(Dir{0, sign(dy)})
-					if !lvl.Walkable(nxt) {
-						nxt = e.Pos.Add(Dir{sign(dx), 0})
+			for _, d := range []Dir{DirN, DirS, DirW, DirE} {
+				np := e.Pos.Add(d)
+				if lvl.IsDoor(np) && lvl.IsDoorClosed(np) {
+					// Check vault lock near door - enemies can open non-locked doors or locked if they have rogue? Simplify: enemies can open any door if within 3 of player
+					distToPlayer := max(abs(g.Party.Pos.X-np.X), abs(g.Party.Pos.Y-np.Y))
+					if distToPlayer <= 3 || cheb <= 3 {
+						// Check vault lock - if locked, still block unless enemy has rogue? For now allow
+						locked := false
+						for _, f := range lvl.Features {
+							if f.IsVault() && f.Locked {
+								ddx := f.Pos.X - np.X
+								if ddx < 0 {
+									ddx = -ddx
+								}
+								ddy := f.Pos.Y - np.Y
+								if ddy < 0 {
+									ddy = -ddy
+								}
+								if ddx <= 4 && ddy <= 4 {
+									locked = true
+									break
+								}
+							}
+						}
+						if !locked {
+							lvl.SetDoorOpen(np, true)
+						}
 					}
 				}
 			}
-			if lvl.Walkable(nxt) && nxt != g.Party.Pos {
-				// Check collision with other enemies
-				coll := false
-				for _, o := range lvl.Enemies {
-					if o != e && o.IsAlive() && o.Pos == nxt {
-						coll = true
+		}
+		// Move toward if within 8 using BFS cardinal
+		if cheb <= 8 {
+			// BFS cardinal
+			parent := make(map[Pos]Pos)
+			visited := make(map[Pos]bool)
+			queue := []Pos{e.Pos}
+			visited[e.Pos] = true
+			found := false
+			for len(queue) > 0 && !found {
+				cur := queue[0]
+				queue = queue[1:]
+				if cur == g.Party.Pos {
+					found = true
+					break
+				}
+				for _, d := range []Dir{DirN, DirS, DirW, DirE} {
+					np := cur.Add(d)
+					if !lvl.InBounds(np) || visited[np] {
+						continue
+					}
+					if !lvl.Walkable(np) && np != g.Party.Pos {
+						continue
+					}
+					// Avoid other enemies
+					blocked := false
+					for _, o := range lvl.Enemies {
+						if o != e && o.IsAlive() && o.Pos == np && np != g.Party.Pos {
+							blocked = true
+							break
+						}
+					}
+					if blocked {
+						continue
+					}
+					visited[np] = true
+					parent[np] = cur
+					queue = append(queue, np)
+				}
+			}
+			if found {
+				// Reconstruct step from e.Pos toward player
+				stepPos := g.Party.Pos
+				for {
+					p, ok := parent[stepPos]
+					if !ok {
 						break
 					}
+					if p == e.Pos {
+						// stepPos is next tile
+						if lvl.Walkable(stepPos) && stepPos != g.Party.Pos {
+							coll := false
+							for _, o := range lvl.Enemies {
+								if o != e && o.IsAlive() && o.Pos == stepPos {
+									coll = true
+									break
+								}
+							}
+							if !coll {
+								e.Pos = stepPos
+							}
+						}
+						break
+					}
+					stepPos = p
 				}
-				if !coll {
-					e.Pos = nxt
+			} else {
+				// No path, try direct cardinal step as fallback
+				best := e.Pos
+				bestDist := cheb
+				for _, d := range []Dir{DirN, DirS, DirW, DirE} {
+					np := e.Pos.Add(d)
+					if !lvl.Walkable(np) || np == g.Party.Pos {
+						continue
+					}
+					coll := false
+					for _, o := range lvl.Enemies {
+						if o != e && o.IsAlive() && o.Pos == np {
+							coll = true
+							break
+						}
+					}
+					if coll {
+						continue
+					}
+					ndx := g.Party.Pos.X - np.X
+					if ndx < 0 {
+						ndx = -ndx
+					}
+					ndy := g.Party.Pos.Y - np.Y
+					if ndy < 0 {
+						ndy = -ndy
+					}
+					ndist := max(ndx, ndy)
+					if ndist < bestDist {
+						bestDist = ndist
+						best = np
+					}
+				}
+				if best != e.Pos {
+					e.Pos = best
 				}
 			}
 		} else {
-			// Wander
-			dir := AllDirs[g.RNG.IntN(len(AllDirs))]
-			nxt := e.Pos.Add(dir)
+			// Wander cardinal
+			dirs := []Dir{DirN, DirS, DirW, DirE}
+			d := dirs[g.RNG.IntN(len(dirs))]
+			nxt := e.Pos.Add(d)
 			if lvl.Walkable(nxt) && nxt != g.Party.Pos {
 				coll := false
 				for _, o := range lvl.Enemies {

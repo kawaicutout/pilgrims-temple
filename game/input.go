@@ -151,6 +151,10 @@ func (g *Game) HandleKey(k Key) bool {
 		RestBatch(g)
 		return true
 	case KeyPickup:
+		if g.TryCloseDoor() {
+			g.EndPlayerTurn("")
+			return true
+		}
 		if g.TryUseFountain() {
 			g.EndPlayerTurn("")
 			return true
@@ -161,6 +165,9 @@ func (g *Game) HandleKey(k Key) bool {
 		if g.TryUseForge() {
 			g.EndPlayerTurn("")
 			return true
+		}
+		if g.TryUseShrine() {
+			return false
 		}
 		g.TryPickup()
 		g.EndPlayerTurn("")

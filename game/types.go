@@ -30,12 +30,17 @@ const (
 	TileFloor
 	TileStairsDown
 	TileStairsUp
+	TileDoor
 )
 
 func (t Tile) Walkable() bool {
 	switch t {
 	case TileFloor, TileStairsDown, TileStairsUp:
 		return true
+	case TileDoor:
+		// Door walkability is level-state dependent (open vs closed).
+		// Base tile is not walkable; Level.Walkable handles open doors.
+		return false
 	default:
 		return false
 	}
@@ -51,6 +56,8 @@ func (t Tile) Glyph() rune {
 		return '>'
 	case TileStairsUp:
 		return '<'
+	case TileDoor:
+		return '+'
 	default:
 		return ' '
 	}

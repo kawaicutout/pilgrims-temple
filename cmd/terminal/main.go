@@ -231,6 +231,7 @@ func main() {
 		stateThrowMenu
 		stateThrowCursor
 		stateMerchant
+		stateShrine
 	)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -290,6 +291,10 @@ func main() {
 			case stateMerchant:
 				if g != nil {
 					drawFrame(g.RenderMerchantMenu())
+				}
+			case stateShrine:
+				if g != nil {
+					drawFrame(g.RenderShrineMenu())
 				}
 			}
 		case *tcell.EventKey:
@@ -479,6 +484,11 @@ func main() {
 				if g.Merchant.Active {
 					state = stateMerchant
 					drawFrame(g.RenderMerchantMenu())
+					break
+				}
+				if g.Shrine.Active {
+					state = stateShrine
+					drawFrame(g.RenderShrineMenu())
 					break
 				}
 				if g.HelpActive {
@@ -781,6 +791,86 @@ func main() {
 					}
 				default:
 					drawFrame(g.RenderMerchantMenu())
+				}
+			case stateShrine:
+				if g == nil {
+					state = statePlaying
+					drawFrame(g.Render())
+					break
+				}
+				switch k {
+				case game.KeyUp:
+					if g.Shrine.Active {
+						g.Shrine.Selected--
+						if g.Shrine.Selected < 0 {
+							g.Shrine.Selected = 3
+						}
+					}
+					drawFrame(g.RenderShrineMenu())
+				case game.KeyDown:
+					if g.Shrine.Active {
+						g.Shrine.Selected++
+						if g.Shrine.Selected > 3 {
+							g.Shrine.Selected = 0
+						}
+					}
+					drawFrame(g.RenderShrineMenu())
+				case game.KeyQuit:
+					g.CancelShrine()
+					state = statePlaying
+					drawFrame(g.Render())
+				case game.KeyEnter:
+					if g.Shrine.Active {
+						sel := g.Shrine.Selected
+						if sel == 3 {
+							g.CancelShrine()
+							state = statePlaying
+							drawFrame(g.Render())
+						} else {
+							if g.ExecuteShrineChoice(sel) {
+								// 0 add,1 resurrect,2 level use turn
+								g.EndPlayerTurn("")
+								state = statePlaying
+								drawFrame(g.Render())
+								if g.LevelUpPending != nil {
+									drawFrame(g.RenderLevelUp())
+								}
+								if g.Quit {
+									state = stateMenu
+									g = nil
+									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+								} else if g.Over {
+									for {
+										ev2 := s.PollEvent()
+										if ke, ok := ev2.(*tcell.EventKey); ok {
+											key2, code2 := tcellKeyToRaw(ke)
+											k2 := game.NormalizeKey(key2, code2)
+											if k2 == game.KeyQuit || k2 == game.KeyEnter {
+												state = stateMenu
+												g = nil
+												drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+												break
+											}
+										} else if _, ok := ev2.(*tcell.EventResize); ok {
+											s.Sync()
+											if g != nil {
+												drawFrame(g.Render())
+											} else {
+												drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+											}
+										}
+									}
+								}
+							} else {
+								drawFrame(g.RenderShrineMenu())
+							}
+						}
+					} else {
+						state = statePlaying
+						drawFrame(g.Render())
+					}
+				default:
+					drawFrame(g.RenderShrineMenu())
 				}
 			case stateWizard:
 				switch k {

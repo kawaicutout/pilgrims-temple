@@ -724,7 +724,9 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 	spawnLitter(l, rng, biome)
 	// Spawn level features (vault/forge/den/pitfall + merchant/fountain/shrine) via features.go.
 	// Centralized here so both rooms and cavern paths populate features; Level.Generate delegates here.
-	l.Features = MaybeSpawnFeatures(l, floor, rng)
+	// Preserve special vault/merchant rooms carved in generateRooms (doors + features) and append random features.
+	existing := l.Features
+	l.Features = append(existing, MaybeSpawnFeatures(l, floor, rng)...)
 	// Spawn floor loot using same weighted table as wizard debug spawns.
 	SpawnFloorLoot(l, rng, floor, biome)
 	// Debug helper
@@ -791,6 +793,315 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 			for x := min(ax, bx); x <= max(ax, bx); x++ {
 				l.Tiles[by][x] = TileFloor
 			}
+		}
+	}
+	// --- Special rooms: vault (>=5x5) and merchant (3x3..4x4) with locked doors ---
+	if l.Doors == nil {
+		l.Doors = make(map[Pos]bool)
+	}
+	overlaps := func(r rect) bool {
+		for _, o := range rooms {
+			if r.x < o.x+o.w+1 && r.x+r.w+1 > o.x && r.y < o.y+o.h+1 && r.y+r.h+1 > o.y {
+				return true
+			}
+		}
+		return false
+	}
+	trySpecialRoom := func(w, h int) (rect, Pos, bool) {
+		for range 40 {
+			x := 1 + rng.IntN(l.W-w-2)
+			y := 1 + rng.IntN(l.H-h-2)
+			r := rect{x, y, w, h}
+			if overlaps(r) {
+				continue
+			}
+			hitStairs := false
+			for yy := r.y - 1; yy <= r.y+r.h; yy++ {
+				for xx := r.x - 1; xx <= r.x+r.w; xx++ {
+					pp := Pos{xx, yy}
+					if pp == l.StairsUp || pp == l.StairsDown {
+						hitStairs = true
+						break
+					}
+				}
+				if hitStairs {
+					break
+				}
+			}
+			if hitStairs {
+				continue
+			}
+			for yy := r.y; yy < r.y+r.h; yy++ {
+				for xx := r.x; xx < r.x+r.w; xx++ {
+					l.Tiles[yy][xx] = TileFloor
+				}
+			}
+			side := rng.IntN(4)
+			var door Pos
+			switch side {
+			case 0:
+				door = Pos{r.x + rng.IntN(r.w), r.y - 1}
+				if r.w > 2 && door.X == r.x {
+					door.X++
+				}
+				if r.w > 2 && door.X == r.x+r.w-1 {
+					door.X--
+				}
+			case 1:
+				door = Pos{r.x + rng.IntN(r.w), r.y + r.h}
+			case 2:
+				door = Pos{r.x - 1, r.y + rng.IntN(r.h)}
+			case 3:
+				door = Pos{r.x + r.w, r.y + rng.IntN(r.h)}
+			}
+			if !l.InBounds(door) {
+				for yy := r.y; yy < r.y+r.h; yy++ {
+					for xx := r.x; xx < r.x+r.w; xx++ {
+						l.Tiles[yy][xx] = TileWall
+					}
+				}
+				continue
+			}
+			l.Tiles[door.Y][door.X] = TileDoor
+			l.Doors[door] = false
+			var outside Pos
+			switch side {
+			case 0:
+				outside = Pos{door.X, door.Y - 1}
+			case 1:
+				outside = Pos{door.X, door.Y + 1}
+			case 2:
+				outside = Pos{door.X - 1, door.Y}
+			case 3:
+				outside = Pos{door.X + 1, door.Y}
+			}
+			if l.InBounds(outside) && l.At(outside) == TileWall {
+				l.Tiles[outside.Y][outside.X] = TileFloor
+				for range 3 {
+					nxt := Pos{outside.X, outside.Y}
+					switch side {
+					case 0:
+						nxt.Y--
+					case 1:
+						nxt.Y++
+					case 2:
+						nxt.X--
+					case 3:
+						nxt.X++
+					}
+					if !l.InBounds(nxt) {
+						break
+					}
+					if l.At(nxt) == TileFloor || l.At(nxt) == TileStairsDown || l.At(nxt) == TileStairsUp {
+						break
+					}
+					if l.At(nxt) == TileWall {
+						l.Tiles[nxt.Y][nxt.X] = TileFloor
+					}
+					outside = nxt
+					found := false
+					for _, d := range []Dir{DirN, DirS, DirE, DirW} {
+						if l.InBounds(outside.Add(d)) && l.At(outside.Add(d)) == TileFloor {
+							found = true
+							break
+						}
+					}
+					if found {
+						break
+					}
+				}
+			}
+			rooms = append(rooms, r)
+			return r, door, true
+		}
+		return rect{}, Pos{}, false
+	}
+	vw := 5 + rng.IntN(3)
+	vh := 5 + rng.IntN(3)
+	if vr, vdoor, ok := trySpecialRoom(vw, vh); ok {
+		center := Pos{vr.x + vr.w/2, vr.y + vr.h/2}
+		l.Features = append(l.Features, Feature{Pos: center, Type: FeatureVault, Locked: true, Treasure: 25 + rng.IntN(56), Trapped: rng.Float64() < 0.2})
+		_ = vdoor
+	} else if len(rooms) > 2 {
+		idx := rng.IntN(len(rooms))
+		r := rooms[idx]
+		if r.w < 5 || r.h < 5 {
+			expandW := 5
+			if r.w > 5 {
+				expandW = r.w
+			}
+			expandH := 5
+			if r.h > 5 {
+				expandH = r.h
+			}
+			for yy := r.y; yy < r.y+expandH && yy < l.H-1; yy++ {
+				for xx := r.x; xx < r.x+expandW && xx < l.W-1; xx++ {
+					if l.At(Pos{xx, yy}) == TileWall {
+						l.Tiles[yy][xx] = TileFloor
+					}
+				}
+			}
+			r.w = expandW
+			r.h = expandH
+			rooms[idx] = r
+		}
+		center := Pos{r.x + r.w/2, r.y + r.h/2}
+		side := rng.IntN(4)
+		var door Pos
+		switch side {
+		case 0:
+			door = Pos{r.x + r.w/2, r.y - 1}
+		case 1:
+			door = Pos{r.x + r.w/2, r.y + r.h}
+		case 2:
+			door = Pos{r.x - 1, r.y + r.h/2}
+		case 3:
+			door = Pos{r.x + r.w, r.y + r.h/2}
+		}
+		if l.InBounds(door) {
+			if l.At(door) == TileWall || l.At(door) == TileFloor {
+				l.Tiles[door.Y][door.X] = TileDoor
+				if l.Doors == nil {
+					l.Doors = make(map[Pos]bool)
+				}
+				l.Doors[door] = false
+				var outside Pos
+				switch side {
+				case 0:
+					outside = Pos{door.X, door.Y - 1}
+				case 1:
+					outside = Pos{door.X, door.Y + 1}
+				case 2:
+					outside = Pos{door.X - 1, door.Y}
+				case 3:
+					outside = Pos{door.X + 1, door.Y}
+				}
+				if l.InBounds(outside) && l.At(outside) == TileWall {
+					l.Tiles[outside.Y][outside.X] = TileFloor
+				}
+			}
+		}
+		l.Features = append(l.Features, Feature{Pos: center, Type: FeatureVault, Locked: true, Treasure: 25 + rng.IntN(56), Trapped: rng.Float64() < 0.2})
+	}
+	mw := 3 + rng.IntN(2)
+	mh := 3 + rng.IntN(2)
+	if mr, mdoor, ok := trySpecialRoom(mw, mh); ok {
+		center := Pos{mr.x + mr.w/2, mr.y + mr.h/2}
+		l.Features = append(l.Features, Feature{Pos: center, Type: FeatureMerchant})
+		_ = mdoor
+	} else if len(rooms) > 1 {
+		idx := rng.IntN(len(rooms))
+		r := rooms[idx]
+		// avoid picking same room as vault if possible
+		if len(l.Features) > 0 {
+			for _, f := range l.Features {
+				if f.IsVault() && f.Pos == (Pos{r.x + r.w/2, r.y + r.h/2}) {
+					idx = (idx + 1) % len(rooms)
+					r = rooms[idx]
+					break
+				}
+			}
+		}
+		center := Pos{r.x + r.w/2, r.y + r.h/2}
+		// ensure merchant room 3x3..4x4 by maybe shrinking? just use center
+		side := rng.IntN(4)
+		var door Pos
+		switch side {
+		case 0:
+			door = Pos{r.x + r.w/2, r.y - 1}
+		case 1:
+			door = Pos{r.x + r.w/2, r.y + r.h}
+		case 2:
+			door = Pos{r.x - 1, r.y + r.h/2}
+		case 3:
+			door = Pos{r.x + r.w, r.y + r.h/2}
+		}
+		if l.InBounds(door) && (l.At(door) == TileWall || l.At(door) == TileFloor) {
+			l.Tiles[door.Y][door.X] = TileDoor
+			if l.Doors == nil {
+				l.Doors = make(map[Pos]bool)
+			}
+			l.Doors[door] = false
+		}
+		// avoid duplicate merchant feature if already present at center
+		has := false
+		for _, f := range l.Features {
+			if f.Pos == center && f.IsMerchant() {
+				has = true
+				break
+			}
+		}
+		if !has {
+			l.Features = append(l.Features, Feature{Pos: center, Type: FeatureMerchant})
+		}
+	}
+	// Hallway doors at corridor ends (rooms biomes)
+	for i := 1; i < len(rooms); i++ {
+		if rng.Float64() > 0.55 {
+			continue
+		}
+		a := rooms[i-1]
+		b := rooms[i]
+		ay := a.y + a.h/2
+		by := b.y + b.h/2
+		candidates := []Pos{}
+		if a.x+a.w < l.W-1 {
+			candidates = append(candidates, Pos{a.x + a.w, ay})
+		}
+		if a.x > 1 {
+			candidates = append(candidates, Pos{a.x - 1, ay})
+		}
+		if a.y+a.h < l.H-1 {
+			candidates = append(candidates, Pos{a.x + a.w/2, a.y + a.h})
+		}
+		if a.y > 1 {
+			candidates = append(candidates, Pos{a.x + a.w/2, a.y - 1})
+		}
+		if b.x+b.w < l.W-1 {
+			candidates = append(candidates, Pos{b.x + b.w, by})
+		}
+		if b.x > 1 {
+			candidates = append(candidates, Pos{b.x - 1, by})
+		}
+		if b.y+b.h < l.H-1 {
+			candidates = append(candidates, Pos{b.x + b.w/2, b.y + b.h})
+		}
+		if b.y > 1 {
+			candidates = append(candidates, Pos{b.x + b.w/2, b.y - 1})
+		}
+		bx := b.x + b.w/2
+		ax := a.x + a.w/2
+		candidates = append(candidates, Pos{bx, ay}, Pos{ax, by})
+		var viable []Pos
+		for _, p := range candidates {
+			if !l.InBounds(p) {
+				continue
+			}
+			if l.At(p) != TileFloor {
+				continue
+			}
+			if p == l.StairsUp || p == l.StairsDown {
+				continue
+			}
+			if l.IsDoor(p) {
+				continue
+			}
+			wallAdj := 0
+			for _, d := range []Dir{DirN, DirS, DirE, DirW} {
+				nb := p.Add(d)
+				if l.InBounds(nb) && l.At(nb) == TileWall {
+					wallAdj++
+				}
+			}
+			if wallAdj == 0 {
+				continue
+			}
+			viable = append(viable, p)
+		}
+		if len(viable) > 0 {
+			chosen := viable[rng.IntN(len(viable))]
+			l.Tiles[chosen.Y][chosen.X] = TileDoor
+			l.Doors[chosen] = false
 		}
 	}
 	if len(rooms) > 0 {

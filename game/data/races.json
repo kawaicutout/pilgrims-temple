@@ -1,0 +1,44 @@
+{
+  "races": [
+    {
+      "id": "human",
+      "name": "Human",
+      "desc": "Versatile and adaptable",
+      "charBuff": {"hp":1,"atk":1,"def":0,"mdef":0,"light":0,"carry":0},
+      "partyBuff": {"hp":1,"atk":0,"def":0,"light":0},
+      "synergyBuff": {"desc":"+2 HP each when 2+ humans","threshold":2,"hp":2,"atk":0,"def":0,"light":0,"mdef":0,"carry":0,"xpBonus":0}
+    },
+    {
+      "id": "elf",
+      "name": "Elf",
+      "desc": "Keen senses and arcane affinity",
+      "charBuff": {"hp":0,"atk":0,"def":0,"mdef":1,"light":1,"carry":0},
+      "partyBuff": {"hp":0,"atk":0,"def":0,"light":1},
+      "synergyBuff": {"desc":"+10% XP when 2+ elves","threshold":2,"hp":0,"atk":0,"def":0,"light":0,"mdef":0,"carry":0,"xpBonus":0.1}
+    },
+    {
+      "id": "dwarf",
+      "name": "Dwarf",
+      "desc": "Stalwart and resilient",
+      "charBuff": {"hp":2,"atk":0,"def":1,"mdef":0,"light":0,"carry":0},
+      "partyBuff": {"hp":0,"atk":0,"def":1,"light":0},
+      "synergyBuff": {"desc":"+2 HP each when 2+ dwarves","threshold":2,"hp":2,"atk":0,"def":0,"light":0,"mdef":0,"carry":0,"xpBonus":0}
+    },
+    {
+      "id": "halfling",
+      "name": "Halfling",
+      "desc": "Nimble and light-footed",
+      "charBuff": {"hp":0,"atk":0,"def":0,"mdef":0,"light":1,"carry":2},
+      "partyBuff": {"hp":0,"atk":1,"def":0,"light":0},
+      "synergyBuff": {"desc":"+1 carry each when 2+ halflings","threshold":2,"hp":0,"atk":0,"def":0,"light":0,"mdef":0,"carry":1,"xpBonus":0}
+    },
+    {
+      "id": "gnome",
+      "name": "Gnome",
+      "desc": "Inventive and curious",
+      "charBuff": {"hp":0,"atk":0,"def":0,"mdef":1,"light":0,"carry":1},
+      "partyBuff": {"hp":0,"atk":0,"def":0,"light":1},
+      "synergyBuff": {"desc":"+1 MDEF each when 2+ gnomes","threshold":2,"hp":0,"atk":0,"def":0,"light":0,"mdef":1,"carry":0,"xpBonus":0}
+    }
+  ]
+}

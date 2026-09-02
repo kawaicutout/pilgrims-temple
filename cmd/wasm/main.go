@@ -56,6 +56,7 @@ const (
 	stateThrowMenu
 	stateThrowCursor
 	stateMerchant
+	stateShrine
 )
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -156,6 +157,15 @@ const (
 			return
 		}
 		frame := g.RenderMerchantMenu()
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderShrine := func() {
+		if g == nil {
+			return
+		}
+		frame := g.RenderShrineMenu()
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -346,6 +356,11 @@ const (
 			if g.Merchant.Active {
 				state = stateMerchant
 				renderMerchant()
+				break
+			}
+			if g.Shrine.Active {
+				state = stateShrine
+				renderShrine()
 				break
 			}
 			if g.HelpActive {
@@ -565,6 +580,70 @@ const (
 				}
 			default:
 				renderMerchant()
+			}
+		case stateShrine:
+			if g == nil {
+				state = statePlaying
+				renderGame()
+				break
+			}
+			switch k {
+			case game.KeyUp:
+				if g.Shrine.Active {
+					g.Shrine.Selected--
+					if g.Shrine.Selected < 0 {
+						g.Shrine.Selected = 3
+					}
+				}
+				renderShrine()
+			case game.KeyDown:
+				if g.Shrine.Active {
+					g.Shrine.Selected++
+					if g.Shrine.Selected > 3 {
+						g.Shrine.Selected = 0
+					}
+				}
+				renderShrine()
+			case game.KeyQuit:
+				g.CancelShrine()
+				state = statePlaying
+				renderGame()
+			case game.KeyEnter:
+				if g.Shrine.Active {
+					sel := g.Shrine.Selected
+					if sel == 3 {
+						g.CancelShrine()
+						state = statePlaying
+						renderGame()
+					} else {
+						if g.ExecuteShrineChoice(sel) {
+							g.EndPlayerTurn("")
+							state = statePlaying
+							renderGame()
+							if g.LevelUpPending != nil {
+								renderLevelUp()
+							}
+							if g.Quit {
+								state = stateMenu
+								g = nil
+								renderMenu()
+							} else if g.Over {
+								if k == game.KeyQuit || k == game.KeyEnter {
+									state = stateMenu
+									g = nil
+									renderMenu()
+								}
+							}
+						} else {
+							renderShrine()
+						}
+					}
+				} else {
+					state = statePlaying
+					renderGame()
+				}
+			default:
+				renderShrine()
 			}
 		case stateWizard:
 			switch k {

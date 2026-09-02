@@ -325,13 +325,45 @@ func (g *Game) TryUseAppearance(appearance string) bool {
 				g.Logf("Identify scroll: nothing left to identify.")
 			}
 		case "teleport":
+			// Verification 2026-09-01: teleport destination is filtered to
+			// InBounds && Walkable only (Walkable => TileFloor/StairsDown/StairsUp + !BlocksMovement).
+			// Walkable returns false for TileWall and for litter.BlocksMovement;
+			// explicit InBounds guard asserts legal level area and prevents out-of-bounds picks.
+			// Enemy-occupied tiles are excluded so the party never lands on an alive EnemyParty.
+			// After move, UpdateFOV is called. Bounds assert: candidate set never contains TileWall.
 			if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
 				var cands []Pos
 				for y := range lvl.H {
 					for x := range lvl.W {
 						p := Pos{x, y}
-						if lvl.Walkable(p) {
-							cands = append(cands, p)
+						if !lvl.InBounds(p) {
+							continue
+						}
+						if !lvl.Walkable(p) {
+							continue
+						}
+						occupied := false
+						for _, e := range lvl.Enemies {
+							if e != nil && e.IsAlive() && e.Pos == p {
+								occupied = true
+								break
+							}
+						}
+						if occupied {
+							continue
+						}
+						cands = append(cands, p)
+					}
+				}
+				// Fallback: if every walkable tile is enemy-occupied (vanishingly rare),
+				// allow any walkable tile rather than failing to teleport.
+				if len(cands) == 0 {
+					for y := range lvl.H {
+						for x := range lvl.W {
+							p := Pos{x, y}
+							if lvl.InBounds(p) && lvl.Walkable(p) {
+								cands = append(cands, p)
+							}
 						}
 					}
 				}
@@ -515,14 +547,39 @@ func (g *Game) TryUseItem() bool {
 				g.Logf("Identify scroll: nothing left to identify.")
 			}
 		case "teleport":
+			// Verification 2026-09-01: see TryUseAppearance/teleport for invariants
+			// (InBounds && Walkable, skip enemy-occupied, UpdateFOV, never TileWall).
 			if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
-				// Find random walkable tile
 				var cands []Pos
 				for y := range lvl.H {
 					for x := range lvl.W {
 						p := Pos{x, y}
-						if lvl.Walkable(p) {
-							cands = append(cands, p)
+						if !lvl.InBounds(p) {
+							continue
+						}
+						if !lvl.Walkable(p) {
+							continue
+						}
+						occupied := false
+						for _, e := range lvl.Enemies {
+							if e != nil && e.IsAlive() && e.Pos == p {
+								occupied = true
+								break
+							}
+						}
+						if occupied {
+							continue
+						}
+						cands = append(cands, p)
+					}
+				}
+				if len(cands) == 0 {
+					for y := range lvl.H {
+						for x := range lvl.W {
+							p := Pos{x, y}
+							if lvl.InBounds(p) && lvl.Walkable(p) {
+								cands = append(cands, p)
+							}
 						}
 					}
 				}

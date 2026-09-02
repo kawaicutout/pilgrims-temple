@@ -8,24 +8,27 @@ import (
 
 // Member is one character in the party.
 type Member struct {
-	Name         string
-	Class        string
-	HP           int
-	MaxHP        int
-	ATK          [2]int // min,max
-	DEF          int
-	MDEF         int
-	Light        int
-	Carry        int
-	Alive        bool
-	Talents      []string
-	Affixes      []string
-	DamageType   string // physical or magic; empty means physical
-	Effect       string
-	EffectChance float64
-	Regen        bool
-	XP           int
-	Color        string
+	Name           string
+	Class          string
+	Race           string `json:"race"`
+	HP             int
+	MaxHP          int
+	ATK            [2]int // min,max
+	DEF            int
+	MDEF           int
+	Light          int
+	Carry          int
+	Alive          bool
+	Talents        []string
+	Affixes        []string
+	DamageType     string // physical or magic; empty means physical
+	Effect         string
+	EffectChance   float64
+	Regen          bool
+	XP             int
+	Color          string
+	AppliedParty   Buff `json:"appliedParty"`
+	AppliedSynergy Buff `json:"appliedSynergy"`
 }
 
 func (m *Member) HasTalent(id string) bool {
@@ -253,7 +256,9 @@ func GeneratePartyWithClasses(rng *rand.Rand, classes []string, level int) *Part
 		used[m.Name] = true
 		members = append(members, m)
 	}
-	return &Party{Members: members, Pos: Pos{0, 0}, Selected: 0, Active: 0}
+	p := &Party{Members: members, Pos: Pos{0, 0}, Selected: 0, Active: 0}
+	ApplyRaceBuffs(p)
+	return p
 }
 
 // classStats holds per-class tuning from classes.json.
@@ -325,7 +330,6 @@ func generateMember(rng *rand.Rand, class string, level int, used map[string]boo
 		level = 1
 	}
 	stats := loadClassStats()[class]
-	// Defaults if class not found
 	sides := hitDiceSides(stats.HitDice)
 	if stats.HitDice == "" {
 		sides = 6
@@ -342,7 +346,6 @@ func generateMember(rng *rand.Rand, class string, level int, used map[string]boo
 	baseATK := stats.Attack
 	baseDEF := stats.Defense
 	baseMDEF := stats.MagicDefense
-	// Fallbacks if JSON missing fields
 	if stats.HitDice == "" && stats.Attack == 0 && stats.Defense == 0 && stats.MagicDefense == 0 {
 		switch class {
 		case "fighter":
@@ -365,22 +368,21 @@ func generateMember(rng *rand.Rand, class string, level int, used map[string]boo
 			baseATK, baseDEF, baseMDEF = 2, 1, 1
 		}
 	}
-	// HP: 10 + 3*HD at level 1, +1 HD per additional level
 	diceCount := 3 + (level - 1)
 	hp := 10
 	for range diceCount {
 		hp += rollHD(rng, sides)
 	}
-	// Attack range: base + (level-1) with small variance
 	atkMin := baseATK + (level - 1)
 	atkMax := atkMin + 2 + rng.IntN(2)
 	if used == nil {
 		used = map[string]bool{}
 	}
 	name := GenerateName(rng, used)
-	return &Member{
+	m := &Member{
 		Name:       name,
 		Class:      class,
+		Race:       randomRace(rng),
 		HP:         hp,
 		MaxHP:      hp,
 		ATK:        [2]int{atkMin, atkMax},
@@ -391,4 +393,6 @@ func generateMember(rng *rand.Rand, class string, level int, used map[string]boo
 		Alive:      true,
 		DamageType: "physical",
 	}
+	applyCharBuff(m, m.Race)
+	return m
 }

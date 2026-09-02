@@ -42,10 +42,18 @@ func (g *Game) Render() Frame {
 			}
 			if !vis {
 				// Seen but not currently visible: dim
-				glyph = lvl.At(p).Glyph()
+				if lvl.IsDoor(p) {
+					glyph = lvl.DoorGlyph(p)
+				} else {
+					glyph = lvl.At(p).Glyph()
+				}
 				fg = "gray-3"
 			} else {
-				glyph = lvl.At(p).Glyph()
+				if lvl.IsDoor(p) {
+					glyph = lvl.DoorGlyph(p)
+				} else {
+					glyph = lvl.At(p).Glyph()
+				}
 				// Check enemy at pos
 				for _, e := range lvl.Enemies {
 					if e.IsAlive() && e.Pos == p {
@@ -692,6 +700,115 @@ func (g *Game) RenderMerchantMenu() Frame {
 	}
 	status := "Merchant"
 	hints := "Up/Down: move  Enter: buy  Esc: leave"
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
+}
+
+func (g *Game) RenderShrineMenu() Frame {
+	t := g.Tuning
+	w, h := t.Map.Width, t.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	title := "SHRINE"
+	sub := "Choose a blessing -- shrine vanishes after use"
+	if !g.Shrine.Active {
+		sub = "No shrine"
+	}
+	drawCentered(cells, w, 2, title, "gold-bright")
+	drawCentered(cells, w, 3, sub, "gray-1")
+	if !g.Shrine.Active {
+		drawCentered(cells, w, 5, "(no shrine)", "gray-2")
+	} else {
+		selected := g.Shrine.Selected
+		if selected < 0 {
+			selected = 0
+		}
+		if selected > 3 {
+			selected = 3
+		}
+		opts := []struct {
+			Name string
+			Desc string
+		}{
+			{"Add new party member", "Recruit random outsider at current level"},
+			{"Resurrect fallen member", "Restore most recent fallen"},
+			{"Gain level (XP unchanged)", "Level+1, XP same, talent pick"},
+			{"Leave shrine intact", "Step away, shrine remains"},
+		}
+		hasDead := false
+		for _, m := range g.Party.Members {
+			if !m.IsAlive() {
+				hasDead = true
+				break
+			}
+		}
+		canAdd := len(g.Party.Members) < 4
+		canLevel := g.LevelUpPending == nil
+		startY := 5
+		for i, opt := range opts {
+			fg := "gray-1"
+			prefix := "  "
+			if i == selected {
+				prefix = "> "
+				fg = "gold-bright"
+			}
+			disabled := false
+			switch i {
+			case 0:
+				if !canAdd {
+					disabled = true
+				}
+			case 1:
+				if !hasDead {
+					disabled = true
+				}
+			case 2:
+				if !canLevel {
+					disabled = true
+				}
+			}
+			if disabled {
+				fg = "slate"
+				if i == selected {
+					fg = "red-bright"
+				}
+			}
+			line := prefix + opt.Name
+			if len(line) > w-4 {
+				line = line[:w-7] + "..."
+			}
+			drawCentered(cells, w, startY+i*2, line, fg)
+			if i == selected {
+				desc := opt.Desc
+				if disabled {
+					switch i {
+					case 0:
+						desc = "Party full (4)"
+					case 1:
+						desc = "No fallen pilgrims"
+					case 2:
+						desc = "Level up already pending"
+					}
+				}
+				if len(desc) > w-4 {
+					desc = desc[:w-7] + "..."
+				}
+				drawCentered(cells, w, startY+i*2+1, desc, "gray-2")
+			}
+		}
+	}
+	panel := []string{"", "Shrine", "Enter: choose", "Esc: leave", "Up/Down: move"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	status := "Shrine"
+	hints := "Up/Down: move  Enter: choose  Esc: leave"
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
 }
 

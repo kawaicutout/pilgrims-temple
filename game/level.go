@@ -24,6 +24,9 @@ type Level struct {
 	BiomeID string      `json:"biomeId"`
 	Floor   int         `json:"floor"`
 	Litter  []LitterObj `json:"litter"`
+
+	// Doors holds door open state: true = open, false/absent = closed.
+	Doors map[Pos]bool `json:"doors"`
 }
 
 func NewLevel(w, h int) *Level {
@@ -38,7 +41,41 @@ func NewLevel(w, h int) *Level {
 			tiles[y][x] = TileWall
 		}
 	}
-	return &Level{W: w, H: h, Tiles: tiles, Seen: seen, Visible: vis}
+	return &Level{W: w, H: h, Tiles: tiles, Seen: seen, Visible: vis, Doors: make(map[Pos]bool)}
+}
+
+func (l *Level) IsDoor(p Pos) bool { return l.At(p) == TileDoor }
+
+func (l *Level) IsDoorOpen(p Pos) bool {
+	if !l.IsDoor(p) {
+		return false
+	}
+	if l.Doors == nil {
+		return false
+	}
+	return l.Doors[p]
+}
+
+func (l *Level) IsDoorClosed(p Pos) bool { return l.IsDoor(p) && !l.IsDoorOpen(p) }
+
+func (l *Level) SetDoorOpen(p Pos, open bool) {
+	if l.Doors == nil {
+		l.Doors = make(map[Pos]bool)
+	}
+	if !l.IsDoor(p) {
+		return
+	}
+	l.Doors[p] = open
+}
+
+func (l *Level) DoorGlyph(p Pos) rune {
+	if !l.IsDoor(p) {
+		return l.At(p).Glyph()
+	}
+	if l.IsDoorOpen(p) {
+		return '\''
+	}
+	return '+'
 }
 
 func (l *Level) InBounds(p Pos) bool { return p.X >= 0 && p.X < l.W && p.Y >= 0 && p.Y < l.H }
@@ -54,7 +91,13 @@ func (l *Level) Set(p Pos, t Tile) {
 	}
 }
 func (l *Level) Walkable(p Pos) bool {
-	if !l.At(p).Walkable() {
+	t := l.At(p)
+	if t == TileDoor {
+		if l.IsDoorClosed(p) {
+			return false
+		}
+		// open door is walkable (subject to litter)
+	} else if !t.Walkable() {
 		return false
 	}
 	for _, lit := range l.Litter {
@@ -65,6 +108,12 @@ func (l *Level) Walkable(p Pos) bool {
 	return true
 }
 func (l *Level) BlocksFOV(p Pos) bool {
+	if l.At(p) == TileDoor {
+		if l.IsDoorClosed(p) {
+			return true
+		}
+		return false
+	}
 	if l.At(p).BlocksFOV() {
 		return true
 	}

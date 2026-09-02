@@ -499,67 +499,122 @@ func (g *Game) RenderUseMenu(selected int) Frame {
 			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
 		}
 	}
-	entries := g.InventoryUseEntries()
+	potionEntries := g.InventoryPotionEntries()
+	scrollEntries := g.InventoryScrollEntries()
+	total := len(potionEntries) + len(scrollEntries)
 	title := "USE ITEM"
 	sub := "Select potion/scroll to use"
-	if len(entries) == 0 {
+	if total == 0 {
 		sub = "No potions or scrolls"
 	}
 	drawCentered(cells, w, 2, title, "gold-bright")
 	drawCentered(cells, w, 3, sub, "gray-1")
-	if len(entries) == 0 {
-		drawCentered(cells, w, 5, "(empty)", "gray-2")
+	if total == 0 {
+		startY := 5
+		drawCentered(cells, w, startY, "Potions:", "gold-bright")
+		drawCentered(cells, w, startY+1, "(none)", "gray-2")
+		drawCentered(cells, w, startY+2, "Scrolls:", "gold-bright")
+		drawCentered(cells, w, startY+3, "(none)", "gray-2")
 	} else {
 		startY := 5
 		if selected < 0 {
 			selected = 0
 		}
-		if selected >= len(entries) {
-			selected = len(entries) - 1
+		if selected >= total {
+			selected = total - 1
 		}
 		maxRows := h - 7
 		if maxRows < 1 {
 			maxRows = 1
 		}
+		maxEntries := maxRows - 2
+		if maxEntries < 1 {
+			maxEntries = 1
+		}
 		start := 0
-		if len(entries) > maxRows {
-			start = selected - maxRows/2
+		if total > maxEntries {
+			start = selected - maxEntries/2
 			if start < 0 {
 				start = 0
 			}
-			if start+maxRows > len(entries) {
-				start = len(entries) - maxRows
+			if start+maxEntries > total {
+				start = total - maxEntries
 			}
 		}
-		end := start + maxRows
-		if end > len(entries) {
-			end = len(entries)
+		end := start + maxEntries
+		if end > total {
+			end = total
 		}
-		for i := start; i < end; i++ {
-			e := entries[i]
-			fg := "gray-1"
-			prefix := "  "
-			if i == selected {
-				prefix = "> "
-				fg = "gold-bright"
+		potionsHeaderY := startY
+		drawCentered(cells, w, potionsHeaderY, "Potions:", "gold-bright")
+		var scrollHeaderY int
+		if len(potionEntries) == 0 {
+			drawCentered(cells, w, startY+1, "(none)", "gray-2")
+			scrollHeaderY = startY + 2
+		} else {
+			for i, e := range potionEntries {
+				globalIdx := i
+				if globalIdx < start || globalIdx >= end {
+					continue
+				}
+				y := startY + 1 + i*2
+				fg := "gray-1"
+				prefix := "  "
+				if globalIdx == selected {
+					prefix = "> "
+					fg = "gold-bright"
+				}
+				var line string
+				if e.Count > 1 {
+					line = fmt.Sprintf("%s%s (x%d)", prefix, e.DisplayName, e.Count)
+				} else {
+					line = fmt.Sprintf("%s%s", prefix, e.DisplayName)
+				}
+				if len(line) > w-4 {
+					line = line[:w-7] + "..."
+				}
+				drawCentered(cells, w, y, line, fg)
+				if globalIdx == selected && IsIdentified(e.Appearance) && e.DisplayName != e.Appearance {
+					detail := fmt.Sprintf("(%s)", e.Appearance)
+					drawCentered(cells, w, y+1, detail, "gray-2")
+				}
 			}
-			var line string
-			if e.Count > 1 {
-				line = fmt.Sprintf("%s%s (x%d)", prefix, e.DisplayName, e.Count)
-			} else {
-				line = fmt.Sprintf("%s%s", prefix, e.DisplayName)
-			}
-			if len(line) > w-4 {
-				line = line[:w-7] + "..."
-			}
-			drawCentered(cells, w, startY+(i-start)*2, line, fg)
-			if i == selected && IsIdentified(e.Appearance) && e.DisplayName != e.Appearance {
-				detail := fmt.Sprintf("(%s)", e.Appearance)
-				drawCentered(cells, w, startY+(i-start)*2+1, detail, "gray-2")
+			scrollHeaderY = startY + 1 + len(potionEntries)*2
+		}
+		drawCentered(cells, w, scrollHeaderY, "Scrolls:", "gold-bright")
+		if len(scrollEntries) == 0 {
+			drawCentered(cells, w, scrollHeaderY+1, "(none)", "gray-2")
+		} else {
+			for j, e := range scrollEntries {
+				globalIdx := len(potionEntries) + j
+				if globalIdx < start || globalIdx >= end {
+					continue
+				}
+				y := scrollHeaderY + 1 + j*2
+				fg := "gray-1"
+				prefix := "  "
+				if globalIdx == selected {
+					prefix = "> "
+					fg = "gold-bright"
+				}
+				var line string
+				if e.Count > 1 {
+					line = fmt.Sprintf("%s%s (x%d)", prefix, e.DisplayName, e.Count)
+				} else {
+					line = fmt.Sprintf("%s%s", prefix, e.DisplayName)
+				}
+				if len(line) > w-4 {
+					line = line[:w-7] + "..."
+				}
+				drawCentered(cells, w, y, line, fg)
+				if globalIdx == selected && IsIdentified(e.Appearance) && e.DisplayName != e.Appearance {
+					detail := fmt.Sprintf("(%s)", e.Appearance)
+					drawCentered(cells, w, y+1, detail, "gray-2")
+				}
 			}
 		}
-		if len(entries) > maxRows {
-			more := fmt.Sprintf("(%d/%d)", selected+1, len(entries))
+		if total > maxEntries {
+			more := fmt.Sprintf("(%d/%d)", selected+1, total)
 			drawCentered(cells, w, h-3, more, "gray-2")
 		}
 	}

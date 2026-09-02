@@ -1353,19 +1353,14 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 			}
 		}
 	}
-	// Final door post-pass: remove any remaining doors without opposite walls (after vault re-enforce).
+	// Final door post-pass: remove any remaining doors without opposite walls or not single-wide.
 	for y := range l.H {
 		for x := range l.W {
 			p := Pos{x, y}
 			if l.At(p) != TileDoor {
 				continue
 			}
-			nWall := l.InBounds(Pos{x, y - 1}) && l.At(Pos{x, y - 1}) == TileWall
-			sWall := l.InBounds(Pos{x, y + 1}) && l.At(Pos{x, y + 1}) == TileWall
-			wWall := l.InBounds(Pos{x - 1, y}) && l.At(Pos{x - 1, y}) == TileWall
-			eWall := l.InBounds(Pos{x + 1, y}) && l.At(Pos{x + 1, y}) == TileWall
-			hasOpposite := (nWall && sWall) || (wWall && eWall)
-			if !hasOpposite {
+			if !isSingleWideDoor(l, p) {
 				l.Tiles[y][x] = TileFloor
 				if l.Doors != nil {
 					delete(l.Doors, p)
@@ -1373,7 +1368,11 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 			}
 		}
 	}
-	// Spawn enemies (depth-appropriate plus special).
+	// Spawn enemies (depth-appropriate plus special) BEFORE litter/features so
+	// candidates are all walkable floors (hallways included) not yet blocked
+	// by litter impassables or feature placements. Doors are TileDoor and
+	// excluded via At check, so closed doors do not reduce floor candidates.
+	l.spawnEnemiesWithBiome(rng, floor, biome)
 	// Spawn litter with BFS guard.
 	spawnLitter(l, rng, biome)
 	// Spawn level features (vault/forge/den/pitfall + merchant/fountain/shrine) via features.go.
@@ -1394,8 +1393,108 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 			panic(fmt.Sprintf("GenerateWithBiome floor %d failed to guarantee exit (up %v down %v)", floor, l.StairsUp, l.StairsDown))
 		}
 	}
+
+	// Final width-aware door cleanup after emergency corridors (which may have widened hallways).
+	for y := range l.H {
+		for x := range l.W {
+			p := Pos{x, y}
+			if l.At(p) != TileDoor {
+				continue
+			}
+			if !isSingleWideDoor(l, p) {
+				l.Tiles[y][x] = TileFloor
+				if l.Doors != nil {
+					delete(l.Doors, p)
+				}
+			}
+		}
+	}
+
 	// Debug helper
 	_ = fmt.Sprintf("biome %s floor %d", biome.ID, floor)
+}
+
+// isWallForDoor reports whether pos is a wall or out of bounds (treated as wall for door width checks).
+func isWallForDoor(l *Level, p Pos) bool {
+	if !l.InBounds(p) {
+		return true
+	}
+	return l.At(p) == TileWall
+}
+
+// isFloorLikeForDoor reports whether pos is floor-like (floor or stairs) for corridor width checks.
+func isFloorLikeForDoor(l *Level, p Pos) bool {
+	if !l.InBounds(p) {
+		return false
+	}
+	t := l.At(p)
+	return t == TileFloor || t == TileStairsUp || t == TileStairsDown
+}
+
+// isSingleWideDoor reports whether a door at p is in a single-wide corridor segment.
+// It requires opposite walls (N-S or E-W) at p and that the adjacent corridor segment
+// is also 1-wide (orthogonal walls on the corridor side). This prevents doors in
+// double-wide (2-tile) hallways where the second lane would be floor instead of wall.
+func isSingleWideDoor(l *Level, p Pos) bool {
+	x, y := p.X, p.Y
+	nWall := isWallForDoor(l, Pos{x, y - 1})
+	sWall := isWallForDoor(l, Pos{x, y + 1})
+	wWall := isWallForDoor(l, Pos{x - 1, y})
+	eWall := isWallForDoor(l, Pos{x + 1, y})
+	hasNS := nWall && sWall
+	hasWE := wWall && eWall
+	if !hasNS && !hasWE {
+		return false
+	}
+	if hasNS && !hasWE {
+		eastFloor := isFloorLikeForDoor(l, Pos{x + 1, y})
+		westFloor := isFloorLikeForDoor(l, Pos{x - 1, y})
+		if eastFloor || westFloor {
+			narrowEast := isWallForDoor(l, Pos{x + 1, y - 1}) && isWallForDoor(l, Pos{x + 1, y + 1})
+			narrowWest := isWallForDoor(l, Pos{x - 1, y - 1}) && isWallForDoor(l, Pos{x - 1, y + 1})
+			eastOK := eastFloor && narrowEast
+			westOK := westFloor && narrowWest
+			if !eastOK && !westOK {
+				return false
+			}
+		}
+		return true
+	}
+	if hasWE && !hasNS {
+		northFloor := isFloorLikeForDoor(l, Pos{x, y - 1})
+		southFloor := isFloorLikeForDoor(l, Pos{x, y + 1})
+		if northFloor || southFloor {
+			narrowNorth := isWallForDoor(l, Pos{x - 1, y - 1}) && isWallForDoor(l, Pos{x + 1, y - 1})
+			narrowSouth := isWallForDoor(l, Pos{x - 1, y + 1}) && isWallForDoor(l, Pos{x + 1, y + 1})
+			northOK := northFloor && narrowNorth
+			southOK := southFloor && narrowSouth
+			if !northOK && !southOK {
+				return false
+			}
+		}
+		return true
+	}
+	eastFloor := isFloorLikeForDoor(l, Pos{x + 1, y})
+	westFloor := isFloorLikeForDoor(l, Pos{x - 1, y})
+	northFloor := isFloorLikeForDoor(l, Pos{x, y - 1})
+	southFloor := isFloorLikeForDoor(l, Pos{x, y + 1})
+	horizOK := true
+	vertOK := true
+	if eastFloor || westFloor {
+		narrowEast := isWallForDoor(l, Pos{x + 1, y - 1}) && isWallForDoor(l, Pos{x + 1, y + 1})
+		narrowWest := isWallForDoor(l, Pos{x - 1, y - 1}) && isWallForDoor(l, Pos{x - 1, y + 1})
+		if !(eastFloor && narrowEast) && !(westFloor && narrowWest) {
+			horizOK = false
+		}
+	}
+	if northFloor || southFloor {
+		narrowNorth := isWallForDoor(l, Pos{x - 1, y - 1}) && isWallForDoor(l, Pos{x + 1, y - 1})
+		narrowSouth := isWallForDoor(l, Pos{x - 1, y + 1}) && isWallForDoor(l, Pos{x + 1, y + 1})
+		if !(northFloor && narrowNorth) && !(southFloor && narrowSouth) {
+			vertOK = false
+		}
+	}
+	return horizOK && vertOK
 }
 
 // generateRooms is extracted rooms+corridors generator (logic from original Generate).
@@ -1941,14 +2040,7 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 			if l.IsDoor(p) {
 				continue
 			}
-			wallAdj := 0
-			for _, d := range []Dir{DirN, DirS, DirE, DirW} {
-				nb := p.Add(d)
-				if l.InBounds(nb) && l.At(nb) == TileWall {
-					wallAdj++
-				}
-			}
-			if wallAdj == 0 {
+			if !isSingleWideDoor(l, p) {
 				continue
 			}
 			viable = append(viable, p)
@@ -1959,19 +2051,16 @@ func (l *Level) generateRooms(rng *rand.Rand, floor int) {
 			l.Doors[chosen] = false
 		}
 	}
-	// Post-pass: remove doors without opposite walls (N-S or E-W walls).
+	// Post-pass: remove doors without opposite walls and not single-wide.
+	// Ensures doors are in 1-tile corridors: opposite walls (N-S or E-W) and
+	// adjacent corridor segment width is 1 (orthogonal walls on corridor side).
 	for y := range l.H {
 		for x := range l.W {
 			p := Pos{x, y}
 			if l.At(p) != TileDoor {
 				continue
 			}
-			nWall := l.InBounds(Pos{x, y - 1}) && l.At(Pos{x, y - 1}) == TileWall
-			sWall := l.InBounds(Pos{x, y + 1}) && l.At(Pos{x, y + 1}) == TileWall
-			wWall := l.InBounds(Pos{x - 1, y}) && l.At(Pos{x - 1, y}) == TileWall
-			eWall := l.InBounds(Pos{x + 1, y}) && l.At(Pos{x + 1, y}) == TileWall
-			hasOpposite := (nWall && sWall) || (wWall && eWall)
-			if !hasOpposite {
+			if !isSingleWideDoor(l, p) {
 				l.Tiles[y][x] = TileFloor
 				if l.Doors != nil {
 					delete(l.Doors, p)
@@ -2464,13 +2553,27 @@ func (l *Level) drunkardWalk(rng *rand.Rand, steps int) []Pos {
 
 // spawnEnemiesWithBiome spawns depth-appropriate plus biome special enemies.
 func (l *Level) spawnEnemiesWithBiome(rng *rand.Rand, floor int, biome *Biome) {
-	// Collect walkable room/cavern positions for placement.
+	// Collect walkable floor positions for placement.
+	// Must include hallway tiles (TileFloor) and exclude stairs/enemy/feature/door
+	// but not over-exclude vault interior. Called BEFORE litter so Walkable
+	// does not reject floor due to impassable litter; doors are TileDoor and
+	// already excluded via At check. Exclude existing Features (vault/merchant
+	// centers from generateRooms) so enemies don't stack on features.
+	featureSet := make(map[Pos]bool, len(l.Features))
+	for _, f := range l.Features {
+		featureSet[f.Pos] = true
+	}
 	var candidates []Pos
-	// Use largest floor set: scan all floors.
 	for y := range l.H {
 		for x := range l.W {
 			p := Pos{x, y}
 			if p == l.StairsUp || p == l.StairsDown {
+				continue
+			}
+			if featureSet[p] {
+				continue
+			}
+			if l.IsDoor(p) {
 				continue
 			}
 			if l.At(p) != TileFloor {

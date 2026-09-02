@@ -1616,6 +1616,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 						base = 2
 					}
 					dmg := base + g.RNG.IntN(3)
+					obj.HP -= dmg
 					g.Party.Active = g.Party.Selected
 					if obj.HP <= 0 {
 						g.Logf("You smash the %s for %d damage -- it shatters! (%d/%d)", FriendlyID(obj.Kind), dmg, 0, obj.MaxHP)

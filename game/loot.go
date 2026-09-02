@@ -270,8 +270,24 @@ func (g *Game) InventoryPotionEntries() []UseEntry {
 			out = append(out, e)
 		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Appearance < out[j].Appearance })
 	return out
 }
+
+
+// InventoryScrollEntries returns scroll-only grouped entries for the use menu, sorted by appearance.
+func (g *Game) InventoryScrollEntries() []UseEntry {
+	entries := g.InventoryUseEntries()
+	var out []UseEntry
+	for _, e := range entries {
+		if e.Kind == "scroll" {
+			out = append(out, e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Appearance < out[j].Appearance })
+	return out
+}
+
 
 
 // TryUseAppearance consumes one item of the given appearance, identifies it, applies effect and advances turn.

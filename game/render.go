@@ -242,9 +242,9 @@ func (g *Game) Render() Frame {
 			line2 = fmt.Sprintf("  %s", combo)
 		}
 		t1, t2 := buildTalentLines(m.Talents)
-		line5 := ""
-		panel = append(panel, line1, line2, t1, t2, line5)
-		panelFG = append(panelFG, fg, classFG, classFG, classFG, "gray-1")
+		statsLine := fmt.Sprintf("  ATK %d-%d | DEF %d | MDEF %d", m.ATK[0], m.ATK[1], m.DEF, m.MDEF)
+		panel = append(panel, line1, line2, t1, t2, statsLine)
+		panelFG = append(panelFG, fg, classFG, classFG, classFG, classFG)
 	}
 	potionCounts := map[string]int{}
 	scrollCounts := map[string]int{}

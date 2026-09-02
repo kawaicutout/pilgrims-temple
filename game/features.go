@@ -140,7 +140,7 @@ func (f Feature) Glyph() rune {
 	case FeatureFountain:
 		return '&'
 	case FeatureShrine:
-		return '+'
+		return '_'
 	case FeatureVault:
 		return '$'
 	case FeatureForge:

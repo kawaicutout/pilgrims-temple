@@ -124,6 +124,66 @@ func (l *Level) BlocksFOV(p Pos) bool {
 	}
 	return false
 }
+// TeleportReachable returns the set of tiles reachable from StairsUp via Walkable tiles.
+// Tiles inside a vault whose door is locked (closed) are not reachable because the
+// closed door tile is not Walkable, so the BFS never enters the interior.
+func (l *Level) TeleportReachable() map[Pos]bool {
+	visited := make(map[Pos]bool, l.W*l.H)
+	if l == nil || !l.InBounds(l.StairsUp) {
+		return visited
+	}
+	queue := []Pos{l.StairsUp}
+	visited[l.StairsUp] = true
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, d := range AllDirs {
+			np := Pos{cur.X + d.DX, cur.Y + d.DY}
+			if !l.InBounds(np) || visited[np] {
+				continue
+			}
+			if !l.Walkable(np) {
+				continue
+			}
+			visited[np] = true
+			queue = append(queue, np)
+		}
+	}
+	return visited
+}
+
+// IsWalkableForTeleport reports whether p is a legal teleport destination:
+// InBounds, Walkable, and reachable from StairsUp via Walkable tiles.
+// Vault interiors with locked doors are excluded via reachability.
+func (l *Level) IsWalkableForTeleport(p Pos) bool {
+	if !l.InBounds(p) || !l.Walkable(p) {
+		return false
+	}
+	// Use reachability: BFS from StairsUp must reach p.
+	// Fast path for StairsUp itself.
+	if p == l.StairsUp {
+		return true
+	}
+	visited := l.TeleportReachable()
+	return visited[p]
+}
+
+// isVaultLockedInterior reports whether p is inside a locked vault interior
+// (heuristic: within cheb distance 3 of a locked vault feature) and thus
+// should be excluded even if Walkable. Used as secondary guard if BFS not used.
+func (l *Level) isVaultLockedInterior(p Pos) bool {
+	for _, f := range l.Features {
+		if f.IsVault() && f.Locked {
+			if max(abs(p.X-f.Pos.X), abs(p.Y-f.Pos.Y)) <= 3 {
+				// Confirm door is closed (locked vault doors are closed until rogue opens)
+				// If any adjacent door of this vault is open, interior would be reachable and not excluded by BFS,
+				// but cheb check would over-exclude; BFS is primary. This helper is conservative fallback.
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // LitterAt returns litter at p if any.
 func (l *Level) LitterAt(p Pos) *LitterObj {
@@ -138,9 +198,10 @@ func (l *Level) LitterAt(p Pos) *LitterObj {
 // EnemyParty is a party of 1-4 monsters sharing one tile (DESIGN 3.1).
 // Members share Pos; Active selects the actor per turn.
 type EnemyParty struct {
-	Pos     Pos
-	Members []*Member
-	Active  int
+	Pos      Pos
+	Members  []*Member
+	Active   int
+	Statuses map[string]int `json:"statuses"`
 }
 
 func (e *EnemyParty) IsAlive() bool {

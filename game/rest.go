@@ -37,6 +37,17 @@ func RestBatch(g *Game) int {
 
 		g.Turn++
 		g.tickFood()
+		// Troll regen every 3 ticks (mirrors EndPlayerTurn)
+		if g.Turn%3 == 0 {
+			for _, m := range g.Party.Members {
+				if m.IsAlive() && normalizeRaceID(m.Race) == "troll" && m.HP < m.MaxHP {
+					m.HP++
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+				}
+			}
+		}
 
 		heal := base
 		if completed < rem {
@@ -61,6 +72,27 @@ func RestBatch(g *Game) int {
 						m.HP = m.MaxHP
 					}
 				}
+			}
+		}
+		// Elf identify ticker during rest as well
+		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
+			if g.NextElfIdentifyTurn == 0 {
+				g.NextElfIdentifyTurn = g.Turn + iv
+			}
+			if g.Turn >= g.NextElfIdentifyTurn {
+				found := ""
+				for _, it := range g.Party.Inventory {
+					app := appearanceFromItem(it)
+					if !IsIdentified(app) {
+						found = app
+						break
+					}
+				}
+				if found != "" {
+					IdentifyOnUse(found)
+					g.Logf("Elven keen senses identify %s as %s.", found, friendlyTypeName(TypeForAppearance(found), "potion"))
+				}
+				g.NextElfIdentifyTurn = g.Turn + iv
 			}
 		}
 

@@ -48,14 +48,25 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 	target := enemy.Members[hitIdx]
 	isMagic := atk.DamageType == "magic"
 	dmg = RollRaw(rng, atk.ATK[0], atk.ATK[1])
-	// Apply DEF or MDEF of target
+	if party.HasStatus(StatusStrength) {
+		dmg += 2
+	}
+	// Apply DEF or MDEF of target, with enemy hex/bless/curse.
 	def := target.DEF
 	if isMagic {
 		def = target.MDEF
 	}
+	def += enemy.effectiveDEFDelta()
 	actual := dmg - def
 	if actual < 1 {
 		actual = 1
+	}
+	// Enemy fire resist reduces fire damage (heuristic: magic fire)
+	if enemy.HasStatus(StatusFireResist) && isMagic {
+		actual = (actual * 7) / 10
+		if actual < 1 {
+			actual = 1
+		}
 	}
 	target.HP -= actual
 	dmg = actual // return actual after DEF for log

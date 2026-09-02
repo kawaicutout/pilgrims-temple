@@ -2,7 +2,7 @@
   "notes": "Pilgrim's Temple — scroll appearance pool. Run-random: appearances are generated via conlang.json weighted onsets/nuclei/codas (GenerateConlangWord) — 1-2 word tokens like \"thae khor\", \"branel\", \"zae of orin\". 8 appearances, 8 types, bijection per run. JSON appearances may be empty; generation is preferred. Fallback static pool is lower-case conlang style to keep potion/scroll namespaces distinct.",
   "appearances": [],
   "types": [
-    { "id": "identify", "name": "Identify", "desc": "Identifies one held appearance" },
+    { "id": "identify", "name": "Identify", "desc": "Identifies all items in inventory" },
     { "id": "teleport", "name": "Teleport", "desc": "Teleports to a random floor tile" },
     { "id": "fireball", "name": "Fireball", "desc": "Deals 10 fire damage to adjacent enemies" },
     { "id": "enchant", "name": "Enchant", "desc": "Grants a random affix to one member" },

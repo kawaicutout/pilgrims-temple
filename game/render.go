@@ -215,15 +215,27 @@ func (g *Game) Render() Frame {
 			line1 = fmt.Sprintf("%d %s %d/%d", slot+1, m.Name, m.HP, m.MaxHP)
 		}
 		classFriendly := FriendlyID(m.Class)
+		raceFriendly := ""
+		if m.Race != "" {
+			if r, ok := GetRace(m.Race); ok {
+				raceFriendly = r.Name
+			} else {
+				raceFriendly = FriendlyID(m.Race)
+			}
+		}
 		var affixFriendly []string
 		for _, a := range m.Affixes {
 			affixFriendly = append(affixFriendly, FriendlyID(a))
 		}
 		var line2 string
+		combo := classFriendly
+		if raceFriendly != "" {
+			combo = fmt.Sprintf("%s %s", raceFriendly, classFriendly)
+		}
 		if len(affixFriendly) > 0 {
-			line2 = fmt.Sprintf("  %s %s", classFriendly, strings.Join(affixFriendly, ", "))
+			line2 = fmt.Sprintf("  %s %s", combo, strings.Join(affixFriendly, ", "))
 		} else {
-			line2 = fmt.Sprintf("  %s", classFriendly)
+			line2 = fmt.Sprintf("  %s", combo)
 		}
 		t1, t2 := buildTalentLines(m.Talents)
 		line5 := ""

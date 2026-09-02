@@ -51,6 +51,7 @@ type Game struct {
 	TransitionFiredForLevel map[int]bool  `json:"transitionFiredForLevel"`
 	RelicCollected          bool          `json:"relicCollected"`
 	NextAmbienceTurn        int           `json:"nextAmbienceTurn"`
+	NextElfIdentifyTurn     int           `json:"nextElfIdentifyTurn"`
 	Merchant                MerchantState `json:"merchant"`
 	Shrine                  ShrineState   `json:"shrine"`
 }
@@ -75,14 +76,15 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	// Place relic on final floor down stairs
 	final := g.Levels[tuning.Floors-1]
 	g.Relic = final.StairsDown
-	// Place party at stairs up of floor 0
 	g.Party = GenerateParty(rng, 1)
 	ApplyRaceBuffs(g.Party)
+	// Init elf identify ticker: 250 -50 per extra elf when >=2
+	if iv := ElfIdentifyInterval(g.Party); iv > 0 {
+		g.NextElfIdentifyTurn = g.Turn + iv
+	}
 	start := g.Levels[0].StairsUp
-	// Find nearby free tile if stairs blocked by enemy (rare)
 	g.Party.Pos = start
 	g.Floor = 0
-	// Mark starting floor visited and transition-fired so re-entry does not re-fire before relic.
 	g.VisitedFloors[0] = true
 	g.TransitionFiredForLevel[0] = true
 	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
@@ -243,47 +245,42 @@ func (g *Game) TryThrowAppearance(appearance string, target Pos) bool {
 		}
 	case "strength":
 		if targetEnemy != nil {
-			var members []*Member
-			for _, m := range targetEnemy.Members {
-				if m.IsAlive() {
-					members = append(members, m)
-				}
-			}
-			if len(members) > 0 {
-				m := members[g.RNG.IntN(len(members))]
-				m.ATK[0] += 2
-				m.ATK[1] += 2
-				g.Logf("Strength potion: %s gains +2 ATK.", m.Name)
-			}
+			targetEnemy.ApplyStatus(StatusStrength, 41)
+			g.Logf("Strength potion: %s gains +2 ATK for 40 turns.", targetEnemy.DisplayName())
 		} else {
 			g.Logf("Potion shatters on ground.")
 		}
 	case "invisibility":
 		if targetEnemy != nil {
-			g.Logf("Invisibility potion: %s fades from sight briefly.", targetEnemy.DisplayName())
+			targetEnemy.ApplyStatus(StatusInvisibility, 21)
+			g.Logf("Invisibility potion: %s fades from sight for 20 turns.", targetEnemy.DisplayName())
 		} else {
 			g.Logf("Potion shatters on ground.")
 		}
 	case "fire_resist":
 		if targetEnemy != nil {
-			g.Logf("Fire resistance potion splashes on %s.", targetEnemy.DisplayName())
+			targetEnemy.ApplyStatus(StatusFireResist, 61)
+			g.Logf("Fire resistance potion splashes on %s (+30%% for 60 turns).", targetEnemy.DisplayName())
 		} else {
 			g.Logf("Potion shatters on ground.")
 		}
 	case "paralysis":
 		if targetEnemy != nil {
-			g.Logf("Paralysis potion: %s is paralyzed briefly!", targetEnemy.DisplayName())
+			targetEnemy.ApplyStatus(StatusParalysis, 4)
+			g.Logf("Paralysis potion: %s is paralyzed for 3 turns!", targetEnemy.DisplayName())
 		} else {
 			g.Logf("Potion shatters on ground.")
 		}
 	case "levitation":
 		if targetEnemy != nil {
-			g.Logf("Levitation potion: %s floats above traps.", targetEnemy.DisplayName())
+			targetEnemy.ApplyStatus(StatusLevitation, 26)
+			g.Logf("Levitation potion: %s floats above traps for 25 turns.", targetEnemy.DisplayName())
 		} else {
 			g.Logf("Potion shatters on ground.")
 		}
 	case "enlightenment":
 		if targetEnemy != nil {
+			targetEnemy.ApplyStatus(StatusEnlightenment, 16)
 			g.Logf("Enlightenment potion splashes on %s.", targetEnemy.DisplayName())
 		} else {
 			g.Logf("Potion shatters on ground.")
@@ -346,6 +343,10 @@ func (g *Game) LevelUp() {
 			continue
 		}
 		hpGain := 1 + g.RNG.IntN(2)
+		// Human +1 HP per level
+		if normalizeRaceID(m.Race) == "human" {
+			hpGain += 1
+		}
 		m.MaxHP += hpGain
 		m.HP += hpGain
 		if g.RNG.IntN(2) == 0 {
@@ -381,6 +382,14 @@ func (g *Game) LevelUp() {
 		g.Logf("Level up pending: %d talent picks. Press Tab to choose.", len(picks))
 	}
 	ApplyRaceBuffs(g.Party)
+	// Refresh elf identify interval after level up (party may have changed)
+	if iv := ElfIdentifyInterval(g.Party); iv > 0 {
+		if g.NextElfIdentifyTurn == 0 || g.NextElfIdentifyTurn <= g.Turn {
+			g.NextElfIdentifyTurn = g.Turn + iv
+		}
+	} else {
+		g.NextElfIdentifyTurn = 0
+	}
 }
 
 func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
@@ -474,6 +483,16 @@ func (g *Game) CurLevel() *Level { return g.Levels[g.Floor] }
 
 func (g *Game) UpdateFOV() {
 	lvl := g.CurLevel()
+	if g.Party != nil && g.Party.HasStatus(StatusEnlightenment) {
+		// Enlightenment reveals entire floor.
+		for y := range lvl.H {
+			for x := range lvl.W {
+				lvl.Seen[y][x] = true
+				lvl.Visible[y][x] = true
+			}
+		}
+		return
+	}
 	ComputeFOV(lvl, g.Party.Pos, g.Party.BestLight())
 	if g.WizardReveal {
 		for y := range lvl.H {
@@ -539,9 +558,20 @@ func (g *Game) tickFood() {
 	if g.FoodFloat == 0 && g.Food != 0 {
 		g.FoodFloat = float64(g.Food)
 	}
-	living := g.Party.LivingCount()
+	living := EffectiveLivingCount(g.Party)
 	if living == 0 {
-		// No consumption if no living, but keep Food sync.
+		// fallback to actual living if effective zero (should not happen)
+		living = g.Party.LivingCount()
+		if living == 0 {
+			g.Food = int(g.FoodFloat)
+			if g.FoodFloat < 0 {
+				g.FoodFloat = 0
+				g.Food = 0
+			}
+			return
+		}
+	}
+	if g.Party.LivingCount() == 0 {
 		g.Food = int(g.FoodFloat)
 		if g.FoodFloat < 0 {
 			g.FoodFloat = 0
@@ -1180,6 +1210,10 @@ func (g *Game) handleShrine(f *Feature) {
 	if f == nil || !f.IsShrine() {
 		return
 	}
+	if g.Party.HasStatus(StatusCurse) {
+		g.Party.RemoveStatus(StatusCurse)
+		g.Logf("Shrine cleanses your curse.")
+	}
 	// Try resurrection if any dead member, else recruitment if space.
 	hasDead := false
 	deadIdx := -1
@@ -1305,6 +1339,13 @@ func (g *Game) handleFountain(f *Feature) {
 	} else {
 		g.Logf("Fountain %s: %s", o.Name, o.Desc)
 	}
+	if o.Effect == "bless" {
+		g.Party.ApplyStatus(StatusBless, 101)
+		g.Logf("Blessed waters grant +1 DEF for 100 turns.")
+	} else if o.Effect == "curse" {
+		g.Party.ApplyStatus(StatusCurse, 201)
+		g.Logf("Cursed waters weaken you -1 DEF until cured.")
+	}
 	g.removeFeatureAt(f.Pos, FeatureFountain)
 }
 
@@ -1391,6 +1432,10 @@ func (g *Game) handlePitfall(f *Feature) bool {
 	if f == nil || !f.IsPitfall() {
 		return false
 	}
+	if g.Party.HasStatus(StatusLevitation) {
+		g.Logf("You float over the pitfall.")
+		return false
+	}
 	// Detection: rogue/wizard or wizard mode reveal.
 	aware := !f.Hidden || g.Party.HasRogue() || g.Party.HasWizard() || g.Wizard
 	if f.Hidden && !aware {
@@ -1452,6 +1497,21 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		return ActionResult{}
 	}
 	lvl := g.CurLevel()
+	if g.Party.HasStatus(StatusParalysis) {
+		g.Logf("You are paralyzed and cannot move!")
+		g.EndPlayerTurn("")
+		return ActionResult{}
+	}
+	if g.Party.HasStatus(StatusEntangle) || g.Party.HasStatus(StatusSleep) {
+		g.Logf("You are rooted and cannot move!")
+		g.EndPlayerTurn("")
+		return ActionResult{}
+	}
+	if g.Party.HasStatus(StatusConfusion) {
+		dirs := []Dir{DirN, DirS, DirW, DirE}
+		dir = dirs[g.RNG.IntN(len(dirs))]
+		g.Logf("You stumble %s in confusion.", dirName(dir))
+	}
 	next := g.Party.Pos.Add(dir)
 	if lvl.IsDoor(next) && lvl.IsDoorClosed(next) {
 		// Check vault lock near door
@@ -1517,11 +1577,13 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 					// Second+ bump: attack it; requires value (HP) to break.
 					mem := g.Party.Members[g.Party.Selected]
 					base := (mem.ATK[0] + mem.ATK[1]) / 2
+					if g.Party.HasStatus(StatusStrength) {
+						base += 2
+					}
 					if base < 2 {
 						base = 2
 					}
 					dmg := base + g.RNG.IntN(3)
-					obj.HP -= dmg
 					g.Party.Active = g.Party.Selected
 					if obj.HP <= 0 {
 						g.Logf("You smash the %s for %d damage -- it shatters! (%d/%d)", FriendlyID(obj.Kind), dmg, 0, obj.MaxHP)
@@ -1547,6 +1609,35 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			attackerMember := g.Party.Members[g.Party.Active]
 			attacker := attackerMember.Name
 			dmg, hitIdx, killed := PlayerBumpEnemy(g.RNG, g.Party, e)
+			// Dwarf +2 dmg when below 50% HP
+			if normalizeRaceID(attackerMember.Race) == "dwarf" && attackerMember.MaxHP > 0 && attackerMember.HP*2 < attackerMember.MaxHP {
+				// apply extra 2 damage to the hit enemy member if still alive
+				if hitIdx >= 0 && hitIdx < len(e.Members) {
+					tgt := e.Members[hitIdx]
+					if tgt.IsAlive() {
+						tgt.HP -= 2
+						dmg += 2
+						if tgt.HP <= 0 {
+							tgt.HP = 0
+							tgt.Alive = false
+							killed = true
+						}
+					}
+				} else {
+					// fallback: apply to first alive
+					for _, m := range e.Members {
+						if m.IsAlive() {
+							m.HP -= 2
+							dmg += 2
+							if m.HP <= 0 {
+								m.HP = 0
+								m.Alive = false
+							}
+							break
+						}
+					}
+				}
+			}
 			memberName := e.MemberDisplayName(hitIdx)
 			if !e.IsAlive() {
 				g.Logf("%s hits %s for %d -- party slain!", attacker, e.DisplayName(), dmg)
@@ -1566,11 +1657,25 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 				if effect == "" {
 					effect = "hex"
 				}
-				// defender for placeholder is the hit member name
-				defenderName := memberName
-				g.Logf("%s tries to %s %s", attacker, effect, defenderName)
+				// Apply status to enemy party based on effect.
+				switch effect {
+				case "hex":
+					e.ApplyStatus(StatusHex, 10)
+					g.Logf("%s hexes %s (-1 DEF 10t)", attacker, memberName)
+				case "rend":
+					e.ApplyStatus(StatusRend, 6)
+					e.ApplyStatus(StatusBleed, 6)
+					g.Logf("%s rends %s (bleed 6t)", attacker, memberName)
+				case "entangle":
+					e.ApplyStatus(StatusEntangle, 4)
+					g.Logf("%s entangles %s (root 4t)", attacker, memberName)
+				case "spore":
+					e.ApplyStatus(StatusSpore, 8)
+					g.Logf("%s spores %s (poison 8t)", attacker, memberName)
+				default:
+					g.Logf("%s tries to %s %s", attacker, effect, memberName)
+				}
 			}
-			// If level up pending, pause before enemy turn (world pauses)
 			if g.LevelUpPending != nil {
 				g.Turn++
 				g.tickFood()
@@ -1845,6 +1950,82 @@ func (g *Game) EndPlayerTurn(msg string) {
 	}
 	g.Turn++
 	g.tickFood()
+	// Troll regen every 3 ticks
+	if g.Turn%3 == 0 {
+		healed := false
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && normalizeRaceID(m.Race) == "troll" && m.HP < m.MaxHP {
+				m.HP++
+				if m.HP > m.MaxHP {
+					m.HP = m.MaxHP
+				}
+				healed = true
+			}
+		}
+		if healed {
+			// optional log? keep silent or minimal
+		}
+	}
+	// Tick party statuses and apply DoTs.
+	if g.Party != nil {
+		expired := g.Party.TickStatuses()
+		for _, id := range expired {
+			switch id {
+			case StatusStrength:
+				g.Logf("Strength fades.")
+			case StatusInvisibility:
+				g.Logf("Invisibility fades.")
+			case StatusFireResist:
+				g.Logf("Fire resistance fades.")
+			case StatusLevitation:
+				g.Logf("Levitation fades.")
+			case StatusEnlightenment:
+				g.Logf("Enlightenment fades.")
+			case StatusParalysis:
+				g.Logf("Paralysis wears off.")
+			case StatusSummon:
+				for i, m := range g.Party.Members {
+					if len(m.Name) >= 8 && m.Name[:8] == "Summoned" {
+						g.Party.Members = append(g.Party.Members[:i], g.Party.Members[i+1:]...)
+						g.Logf("Summoned ally departs.")
+						break
+					}
+				}
+			}
+		}
+		if g.Party.HasStatus(StatusEnlightenment) {
+			if lvl := g.CurLevel(); lvl != nil {
+				for y := range lvl.H {
+					for x := range lvl.W {
+						lvl.Seen[y][x] = true
+					}
+				}
+			}
+		}
+		if g.Party.HasStatus(StatusRend) || g.Party.HasStatus(StatusBleed) {
+			_, actual := g.Party.ApplyDamage(g.RNG, 2)
+			g.Logf("Bleed deals %d damage!", actual)
+			if g.Party.LivingCount() == 0 {
+				g.Over = true
+				g.Logf("You have bled out. Seed %d.", g.Seed)
+			}
+		}
+		if g.Party.HasStatus(StatusSpore) || g.Party.HasStatus(StatusPoison) {
+			_, actual := g.Party.ApplyDamage(g.RNG, 1)
+			g.Logf("Poison deals %d damage!", actual)
+			if g.Party.LivingCount() == 0 {
+				g.Over = true
+				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+			}
+		}
+	}
+	if lvl := g.CurLevel(); lvl != nil {
+		for _, e := range lvl.Enemies {
+			if e != nil && e.IsAlive() {
+				_ = e.TickStatuses()
+			}
+		}
+	}
 	// Natural regen: 1 HP every 10 ticks per living member
 	if g.Turn%10 == 0 {
 		for _, m := range g.Party.Members {
@@ -1867,6 +2048,30 @@ func (g *Game) EndPlayerTurn(msg string) {
 			}
 		}
 	}
+	// Elf identify ticker: every 250 ticks -50 per extra elf when >=2
+	if iv := ElfIdentifyInterval(g.Party); iv > 0 {
+		if g.NextElfIdentifyTurn == 0 {
+			g.NextElfIdentifyTurn = g.Turn + iv
+		}
+		if g.Turn >= g.NextElfIdentifyTurn {
+			// find an unidentified held appearance
+			found := ""
+			for _, it := range g.Party.Inventory {
+				app := appearanceFromItem(it)
+				if !IsIdentified(app) {
+					found = app
+					break
+				}
+			}
+			if found != "" {
+				IdentifyOnUse(found)
+				g.Logf("Elven keen senses identify %s as %s.", found, friendlyTypeName(TypeForAppearance(found), "potion"))
+			}
+			g.NextElfIdentifyTurn = g.Turn + iv
+		}
+	} else {
+		g.NextElfIdentifyTurn = 0
+	}
 	g.applyStarvation()
 	g.MaybeTickAmbience()
 	g.EnemyTurn()
@@ -1886,12 +2091,59 @@ func (g *Game) EnemyTurn() {
 		// Regen tick for troll and similar
 		e.RegenTick()
 		e.EnsureActive()
+		// Enemy DoTs from bleed/rend/spore
+		if e.HasStatus(StatusRend) || e.HasStatus(StatusBleed) {
+			for _, m := range e.Members {
+				if m.IsAlive() {
+					m.HP -= 2
+					if m.HP <= 0 {
+						m.HP = 0
+						m.Alive = false
+					}
+				}
+			}
+			if !e.IsAlive() {
+				g.Logf("%s bleeds out!", e.DisplayName())
+				g.AddKill()
+				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
+				continue
+			}
+		}
+		if e.HasStatus(StatusSpore) || e.HasStatus(StatusPoison) {
+			for _, m := range e.Members {
+				if m.IsAlive() {
+					m.HP -= 1
+					if m.HP <= 0 {
+						m.HP = 0
+						m.Alive = false
+					}
+				}
+			}
+			if !e.IsAlive() {
+				g.Logf("%s succumbs to poison!", e.DisplayName())
+				g.AddKill()
+				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
+				continue
+			}
+		}
+		// Status skip: paralysis/entangle/sleep prevent action.
+		if e.HasStatus(StatusParalysis) || e.HasStatus(StatusEntangle) || e.HasStatus(StatusSleep) {
+			continue
+		}
+		// Invisibility prevents enemy targeting entirely.
+		if g.Party.HasStatus(StatusInvisibility) {
+			continue
+		}
 		dx := g.Party.Pos.X - e.Pos.X
 		dy := g.Party.Pos.Y - e.Pos.Y
 		cheb := max(abs(dx), abs(dy))
 		if cheb == 1 {
 			atk := e.Members[e.Active]
-			raw := RollRaw(g.RNG, atk.ATK[0], atk.ATK[1])
+			bonus := 0
+			if e.HasStatus(StatusStrength) {
+				bonus = 2
+			}
+			raw := RollRaw(g.RNG, atk.ATK[0]+bonus, atk.ATK[1]+bonus)
 			isMagic := atk.DamageType == "magic"
 			hitIdx, actual := g.Party.ApplyDamageWithType(g.RNG, raw, isMagic)
 			defender := "you"
@@ -1906,13 +2158,56 @@ func (g *Game) EnemyTurn() {
 					if effect == "" {
 						effect = "hex"
 					}
-					g.Logf("%s tries to %s %s", attackerName, effect, defender)
+					isMagicEff := atk.DamageType == "magic"
+					if !g.Party.resistsStatus(isMagicEff, g.RNG) {
+						switch effect {
+						case "hex":
+							g.Party.ApplyStatus(StatusHex, 10)
+							g.Logf("%s hexes %s (-1 DEF 10t)", attackerName, defender)
+						case "rend":
+							g.Party.ApplyStatus(StatusRend, 6)
+							g.Party.ApplyStatus(StatusBleed, 6)
+							g.Logf("%s rends %s (bleed 2/turn 6t)", attackerName, defender)
+						case "entangle":
+							g.Party.ApplyStatus(StatusEntangle, 4)
+							g.Logf("%s entangles %s (root 4t)", attackerName, defender)
+						case "spore":
+							g.Party.ApplyStatus(StatusSpore, 8)
+							g.Logf("%s spores %s (poison 1/turn 8t)", attackerName, defender)
+						case "regenerate":
+							// no status, regen already via flag
+							g.Logf("%s tries to %s %s", attackerName, effect, defender)
+						default:
+							g.Logf("%s tries to %s %s", attackerName, effect, defender)
+						}
+					} else {
+						g.Logf("%s resists %s!", defender, effect)
+					}
 				}
 			}
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
 				g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
 				return
+			}
+			continue
+		}
+		// Confusion: random movement instead of BFS.
+		if e.HasStatus(StatusConfusion) {
+			dirs := []Dir{DirN, DirS, DirW, DirE}
+			d := dirs[g.RNG.IntN(len(dirs))]
+			nxt := e.Pos.Add(d)
+			if lvl.Walkable(nxt) && nxt != g.Party.Pos {
+				coll := false
+				for _, o := range lvl.Enemies {
+					if o != e && o.IsAlive() && o.Pos == nxt {
+						coll = true
+						break
+					}
+				}
+				if !coll {
+					e.Pos = nxt
+				}
 			}
 			continue
 		}
@@ -1951,7 +2246,6 @@ func (g *Game) EnemyTurn() {
 		}
 		// Move toward if within 8 using BFS cardinal
 		if cheb <= 8 {
-			// BFS cardinal
 			parent := make(map[Pos]Pos)
 			visited := make(map[Pos]bool)
 			queue := []Pos{e.Pos}

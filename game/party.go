@@ -59,6 +59,7 @@ type Party struct {
 	Selected int
 	Active   int
 	Inventory []GroundItem `json:"inventory"`
+	Statuses map[string]int `json:"statuses"`
 }
 
 func (p *Party) LivingCount() int {
@@ -172,7 +173,12 @@ func (p *Party) ApplyDamage(rng *rand.Rand, raw int) (hitIdx int, actual int) {
 }
 
 // ApplyDamageWithType applies raw damage choosing DEF vs MDEF based on isMagic.
+// Halfling 5% avoid: if party has living halfling, 5% chance to avoid damage/negative.
 func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitIdx int, actual int) {
+	// Halfling avoid roll before targeting
+	if p != nil && p.HasRace("halfling") && rng != nil && rng.Float64() < 0.05 {
+		return -1, 0
+	}
 	// Active-weighted targeting (DESIGN 3.4). raw is pre-DEF roll; DEF/MDEF of the hit member is subtracted here.
 	n := p.LivingCount()
 	if n == 0 {
@@ -215,9 +221,18 @@ func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitI
 	if isMagic {
 		def = target.MDEF
 	}
+	// Status modifiers: hex -1, bless +1, curse -1.
+	def += p.effectiveDEFDelta()
 	actual = raw - def
 	if actual < 1 {
 		actual = 1
+	}
+	// Fire resistance reduces damage by 30%.
+	if p.HasStatus(StatusFireResist) {
+		actual = (actual * 7) / 10
+		if actual < 1 {
+			actual = 1
+		}
 	}
 	target.HP -= actual
 	if target.HP <= 0 {

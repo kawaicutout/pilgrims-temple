@@ -3,7 +3,6 @@ package game
 import (
 	"fmt"
 	"math/rand/v2"
-	"strings"
 	"unicode"
 )
 
@@ -89,12 +88,12 @@ func NewGame(seed int64, tuning Tuning) *Game {
 			for _, m := range e.Members {
 				if len(m.Talents) > 0 {
 					for _, tl := range m.Talents {
-						g.Logf("enemy gains talent %s (%s floor %d)", tl, m.Class, fi+1)
+						g.Logf("enemy gains talent %s (%s floor %d)", FriendlyID(tl), FriendlyID(m.Class), fi+1)
 					}
 				}
 				if len(m.Affixes) > 0 {
 					for _, af := range m.Affixes {
-						g.Logf("enemy gains affix %s (%s floor %d)", af, m.Class, fi+1)
+						g.Logf("enemy gains affix %s (%s floor %d)", FriendlyID(af), FriendlyID(m.Class), fi+1)
 					}
 				}
 			}
@@ -228,6 +227,8 @@ func (g *Game) TryThrowAppearance(appearance string, target Pos) bool {
 			g.Logf("Poison potion deals %d damage to %s!", dmgTotal, targetEnemy.DisplayName())
 			if !targetEnemy.IsAlive() {
 				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
+				g.AddKill()
+				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			}
 		} else {
 			g.Logf("Poison potion shatters on ground.")
@@ -352,7 +353,7 @@ func (g *Game) LevelUp() {
 			if g.RNG.Float64() < g.Tuning.LevelUp.AffixReplaceChance {
 				pick.IsAffix = true
 				pick.Options = []string{GetRandomAffix(g.RNG)}
-				g.Logf("%s will gain an affix: %s", m.Name, pick.Options[0])
+				g.Logf("%s will gain an affix: %s", m.Name, FriendlyID(pick.Options[0]))
 			} else {
 				pick.IsAffix = false
 				pick.Options = GetTalentOptions(g.RNG, m.Class, 3)
@@ -376,7 +377,7 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 		m := g.Party.Members[pick.MemberIdx]
 		affixID := pick.Options[0]
 		m.Affixes = append(m.Affixes, affixID)
-		g.Logf("%s gains affix %s.", m.Name, affixID)
+		g.Logf("%s gains affix %s.", m.Name, FriendlyID(affixID))
 		switch affixID {
 		case "veteran":
 			m.ATK[0]++
@@ -403,7 +404,7 @@ func (g *Game) ApplyTalentPick(pickIdx int, optionIdx int) {
 		talentID := pick.Options[optionIdx]
 		m := g.Party.Members[pick.MemberIdx]
 		m.Talents = append(m.Talents, talentID)
-		g.Logf("%s learns talent %s.", m.Name, talentID)
+		g.Logf("%s learns talent %s.", m.Name, FriendlyID(talentID))
 		switch talentID {
 		case "tough":
 			m.MaxHP += 4
@@ -637,7 +638,7 @@ func (g *Game) handleVault(f *Feature) bool {
 		g.Logf("Vault treasure +%d gold! Trap springs for %d damage!", treasure, actual)
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
-			g.Logf("You have fallen. Seed %d.", g.Seed)
+			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
 		}
 	} else {
 		g.Logf("Vault opened +%d gold!", treasure)
@@ -1104,7 +1105,7 @@ func (g *Game) handleFountain(f *Feature) {
 		g.Logf("Fountain %s: %s (%d damage)", o.Name, o.Desc, actual)
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
-			g.Logf("You have fallen. Seed %d.", g.Seed)
+			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
 		}
 	} else {
 		g.Logf("Fountain %s: %s", o.Name, o.Desc)
@@ -1206,7 +1207,7 @@ func (g *Game) handlePitfall(f *Feature) bool {
 		g.Logf("Hidden pitfall! You fall -- %d damage!", actual)
 		if g.Party.LivingCount() == 0 {
 			g.Over = true
-			g.Logf("You have fallen. Seed %d.", g.Seed)
+			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
 			return true
 		}
 		// One-way fall to next level if possible.
@@ -1269,7 +1270,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 				if msg, ok := litterAltBump(lit.Kind); ok {
 					g.Logf("%s", msg)
 				} else {
-					g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
+					g.Logf("You bump into a %s.", FriendlyID(lit.Kind))
 				}
 				return ActionResult{}
 			}
@@ -1286,7 +1287,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 					obj := &lvl.Litter[idx]
 					obj.Hits++
 					if obj.Hits == 1 {
-						g.Logf("The %s blocks the way.", strings.ReplaceAll(obj.Kind, "_", " "))
+						g.Logf("The %s blocks the way.", FriendlyID(obj.Kind))
 						return ActionResult{}
 					}
 					// Second+ bump: attack it; requires value (HP) to break.
@@ -1299,18 +1300,18 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 					obj.HP -= dmg
 					g.Party.Active = g.Party.Selected
 					if obj.HP <= 0 {
-						g.Logf("You smash the %s for %d damage -- it shatters! (%d/%d)", strings.ReplaceAll(obj.Kind, "_", " "), dmg, 0, obj.MaxHP)
+						g.Logf("You smash the %s for %d damage -- it shatters! (%d/%d)", FriendlyID(obj.Kind), dmg, 0, obj.MaxHP)
 						lvl.Litter = append(lvl.Litter[:idx], lvl.Litter[idx+1:]...)
 					} else {
-						g.Logf("You strike the %s for %d damage (%d/%d HP).", strings.ReplaceAll(obj.Kind, "_", " "), dmg, obj.HP, obj.MaxHP)
+						g.Logf("You strike the %s for %d damage (%d/%d HP).", FriendlyID(obj.Kind), dmg, obj.HP, obj.MaxHP)
 					}
 					g.EndPlayerTurn("")
 					return ActionResult{Attacked: true}
 				}
-				g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
+				g.Logf("You bump into a %s.", FriendlyID(lit.Kind))
 				return ActionResult{}
 			}
-			g.Logf("You bump into a %s.", strings.ReplaceAll(lit.Kind, "_", " "))
+			g.Logf("You bump into a %s.", FriendlyID(lit.Kind))
 		} else {
 			g.Logf("You bump the wall.")
 		}
@@ -1325,14 +1326,17 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			memberName := e.MemberDisplayName(hitIdx)
 			if !e.IsAlive() {
 				g.Logf("%s hits %s for %d -- party slain!", attacker, e.DisplayName(), dmg)
+				g.AddKill()
 				g.GainXP(20 + g.Floor*10)
+				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			} else if killed {
 				g.Logf("%s hits %s for %d -- slain!", attacker, memberName, dmg)
+				g.AddKill()
 				g.GainXP(10 + g.Floor*5)
+				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			} else {
 				g.Logf("%s hits %s for %d.", attacker, memberName, dmg)
 			}
-			// Player effect placeholder
 			if attackerMember.EffectChance > 0 && g.RNG.Float64() < attackerMember.EffectChance {
 				effect := attackerMember.Effect
 				if effect == "" {
@@ -1465,7 +1469,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		g.Over = true
 		g.Won = true
 		g.RelicCollected = true
-		g.Logf("You claim the relic! Victory - seed %d.", g.Seed)
+		g.Logf("You claim the relic! Victory - seed %d. Score %d.", g.Seed, g.CalculateScore())
 		// Reset transition tracking so old floors feel new again.
 		g.VisitedFloors = make(map[int]bool)
 		g.TransitionFiredForLevel = make(map[int]bool)
@@ -1480,7 +1484,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 				}
 			}
 		}
-		g.Logf("The temple stirs: old floors repopulate.")
+		g.Logf("The temple stirs: old floors repopulate. Final Score %d.", g.CalculateScore())
 		return ActionResult{Moved: true}
 	}
 	g.EndPlayerTurn("")
@@ -1685,7 +1689,7 @@ func (g *Game) EnemyTurn() {
 			}
 			if g.Party.LivingCount() == 0 {
 				g.Over = true
-				g.Logf("You have fallen. Seed %d.", g.Seed)
+				g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
 				return
 			}
 			continue

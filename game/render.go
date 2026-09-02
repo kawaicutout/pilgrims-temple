@@ -126,63 +126,102 @@ func (g *Game) Render() Frame {
 			cells[y][x] = Cell{Glyph: glyph, FG: fg, BG: "bg"}
 		}
 	}
-	// Panel
+	// Panel - right-side overhaul: 5 lines per member (20 total) + 6 potion/scroll lines = 26
 	var panel []string
 	var panelFG []string
-	for i, m := range g.Party.Members {
-		sel := " "
-		if i == g.Party.Selected {
-			sel = ">"
+	const panelWrap = 28
+	buildTalentLines := func(talents []string) (string, string) {
+		if len(talents) == 0 {
+			return "  ", "  "
 		}
-		affixStr := ""
-		if len(m.Affixes) > 0 {
-			affixStr = " " + strings.Join(m.Affixes, ",")
+		friendly := make([]string, len(talents))
+		for i, t := range talents {
+			friendly[i] = FriendlyID(t)
 		}
-		nameLine := fmt.Sprintf("%s %d %s%s", sel, i+1, m.Name, affixStr)
-		if len(nameLine) > 30 {
-			nameLine = nameLine[:27] + "..."
-		}
-		if !m.IsAlive() {
-			nameLine = fmt.Sprintf("  %d %s (fallen)", i+1, m.Name)
-			if len(nameLine) > 30 {
-				nameLine = nameLine[:27] + "..."
+		lines := []string{"  ", "  "}
+		cur := 0
+		for _, part := range friendly {
+			trimmed := strings.TrimSpace(lines[cur])
+			sep := ", "
+			if trimmed == "" {
+				sep = ""
+			}
+			needed := len(sep) + len(part)
+			if len(lines[cur])+needed <= panelWrap {
+				lines[cur] += sep + part
+			} else {
+				if cur == 0 {
+					cur = 1
+					trimmed2 := strings.TrimSpace(lines[cur])
+					sep2 := ""
+					if trimmed2 != "" {
+						sep2 = ", "
+					}
+					if len(lines[cur])+len(sep2)+len(part) <= panelWrap {
+						lines[cur] += sep2 + part
+					} else {
+						if trimmed2 == "" {
+							lines[cur] += part
+						} else {
+							lines[cur] += ", " + part
+						}
+					}
+				} else {
+					if strings.TrimSpace(lines[cur]) == "" {
+						lines[cur] += part
+					} else {
+						lines[cur] += ", " + part
+					}
+				}
 			}
 		}
-		// color decision after truncation
+		if len(lines[1]) > panelWrap {
+			if panelWrap > 3 {
+				lines[1] = lines[1][:panelWrap-3] + "..."
+			} else {
+				lines[1] = lines[1][:panelWrap]
+			}
+		}
+		return lines[0], lines[1]
+	}
+	for slot := 0; slot < len(g.Party.Members) && slot < 4; slot++ {
+		m := g.Party.Members[slot]
 		var fg string
 		if !m.IsAlive() {
 			fg = "slate"
-		} else if i == g.Party.Selected {
+		} else if slot == g.Party.Selected {
 			fg = "gold-bright"
 		} else if m.MaxHP > 0 && m.HP*4 <= m.MaxHP {
 			fg = "red-bright"
 		} else {
 			fg = "gray-1"
 		}
-		talentStr := ""
-		if len(m.Talents) > 0 {
-			talentStr = " " + strings.Join(m.Talents, ",")
-			if len(talentStr) > 30 {
-				talentStr = talentStr[:27] + "..."
-			}
-		}
-		classLine := fmt.Sprintf("  %s %d/%d%s", strings.Title(m.Class), m.HP, m.MaxHP, talentStr)
-		var classFG string
-		if fg == "slate" || fg == "red-bright" {
-			classFG = fg
-		} else {
+		classFG := fg
+		if fg != "slate" && fg != "red-bright" {
 			classFG = "gray-1"
 		}
-		statsLine := fmt.Sprintf("  ATK %d-%d DEF %d MDEF %d", m.ATK[0], m.ATK[1], m.DEF, m.MDEF)
-		panel = append(panel, nameLine, classLine, statsLine)
-		panelFG = append(panelFG, fg, classFG, classFG)
+		var line1 string
+		if !m.IsAlive() {
+			line1 = fmt.Sprintf("%d %s (fallen)", slot+1, m.Name)
+		} else {
+			line1 = fmt.Sprintf("%d %s %d/%d", slot+1, m.Name, m.HP, m.MaxHP)
+		}
+		classFriendly := FriendlyID(m.Class)
+		var affixFriendly []string
+		for _, a := range m.Affixes {
+			affixFriendly = append(affixFriendly, FriendlyID(a))
+		}
+		var line2 string
+		if len(affixFriendly) > 0 {
+			line2 = fmt.Sprintf("  %s %s", classFriendly, strings.Join(affixFriendly, ", "))
+		} else {
+			line2 = fmt.Sprintf("  %s", classFriendly)
+		}
+		t1, t2 := buildTalentLines(m.Talents)
+		line5 := ""
+		panel = append(panel, line1, line2, t1, t2, line5)
+		panelFG = append(panelFG, fg, classFG, classFG, classFG, "gray-1")
 	}
-	// Pad to 4 slots (each slot is 3 lines)
-	for len(panel) < 12 {
-		panel = append(panel, "")
-		panelFG = append(panelFG, "gray-1")
-	}
-	// Inventory - grouped by appearance, showing identified names when known
 	potionCounts := map[string]int{}
 	scrollCounts := map[string]int{}
 	for _, it := range g.Party.Inventory {
@@ -193,9 +232,9 @@ func (g *Game) Render() Frame {
 			scrollCounts[app]++
 		}
 	}
-	buildInvLine := func(header string, counts map[string]int, kind string) string {
+	buildInvLines := func(header string, counts map[string]int, kind string) []string {
 		if len(counts) == 0 {
-			return header + " (none)"
+			return []string{header + " (none)", "  ", "  "}
 		}
 		keys := make([]string, 0, len(counts))
 		for k := range counts {
@@ -219,17 +258,91 @@ func (g *Game) Render() Frame {
 				parts = append(parts, display)
 			}
 		}
-		line := header + " " + strings.Join(parts, ", ")
-		if len(line) > 30 {
-			line = line[:27] + "..."
+		lines := []string{header, "  ", "  "}
+		cur := 0
+		for _, part := range parts {
+			var sep string
+			if cur == 0 {
+				has := len(lines[0]) > len(header)
+				if has {
+					sep = ", "
+				} else {
+					sep = " "
+				}
+			} else {
+				if strings.TrimSpace(lines[cur]) == "" {
+					sep = ""
+				} else {
+					sep = ", "
+				}
+			}
+			needed := len(sep) + len(part)
+			if len(lines[cur])+needed <= panelWrap {
+				lines[cur] += sep + part
+			} else {
+				if cur < 2 {
+					cur++
+					var sep2 string
+					if strings.TrimSpace(lines[cur]) == "" {
+						sep2 = ""
+					} else {
+						sep2 = ", "
+					}
+					if len(lines[cur])+len(sep2)+len(part) <= panelWrap {
+						lines[cur] += sep2 + part
+					} else {
+						if cur == 1 && len(lines[cur])+len(sep2)+len(part) > panelWrap {
+							if len("  "+part) <= panelWrap {
+								cur = 2
+								lines[cur] += part
+							} else {
+								cur = 2
+								if strings.TrimSpace(lines[cur]) == "" {
+									lines[cur] += part
+								} else {
+									lines[cur] += ", " + part
+								}
+							}
+						} else {
+							if strings.TrimSpace(lines[cur]) == "" {
+								lines[cur] += part
+							} else {
+								lines[cur] += ", " + part
+							}
+						}
+					}
+				} else {
+					if strings.TrimSpace(lines[cur]) == "" {
+						lines[cur] += part
+					} else {
+						lines[cur] += ", " + part
+					}
+				}
+			}
 		}
-		return line
+		if len(lines[2]) > panelWrap {
+			if panelWrap > 3 {
+				lines[2] = lines[2][:panelWrap-3] + "..."
+			} else {
+				lines[2] = lines[2][:panelWrap]
+			}
+		}
+		return lines
 	}
-	potionsLine := buildInvLine("Potions:", potionCounts, "potion")
-	scrollsLine := buildInvLine("Scrolls:", scrollCounts, "scroll")
-	panel = append(panel, potionsLine, scrollsLine)
-	panelFG = append(panelFG, "gray-1", "gray-1")
-	// Status - Floor | Food | Carry | Level/XP | Gold (no Turn, no HP, no Seed)
+	potionLines := buildInvLines("Potions:", potionCounts, "potion")
+	scrollLines := buildInvLines("Scrolls:", scrollCounts, "scroll")
+	panel = append(panel, potionLines...)
+	panel = append(panel, scrollLines...)
+	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1")
+	for len(panel) < 26 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	if len(panel) > 26 {
+		panel = panel[:26]
+		panelFG = panelFG[:26]
+	}
+	// Status - Floor | Food | Carry | Level/XP | Gold | Score (no Turn, no HP, no Seed)
 	// Panel below map (status bar) shows Carry as "Carry C/M" in gold; Food is capitalized as "Food" not "FOOD".
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
 	foodStr := fmt.Sprintf("Food %d %s", g.Food, g.HungerState())
@@ -238,8 +351,8 @@ func (g *Game) Render() Frame {
 	carryStr := fmt.Sprintf("Carry %d/%d", carryUsed, carryMax)
 	levelStr := fmt.Sprintf("Level %d XP %d/%d", g.Level, g.XP, g.XPToNext)
 	goldStr := fmt.Sprintf("Gold %d", g.Gold)
-	status := fmt.Sprintf("%s | %s | %s | %s | %s", floorStr, foodStr, carryStr, levelStr, goldStr)
-	// Log padded to 8
+	scoreStr := fmt.Sprintf("Score %d", g.CalculateScore())
+	status := fmt.Sprintf("%s | %s | %s | %s | %s | %s", floorStr, foodStr, carryStr, levelStr, goldStr, scoreStr)
 	logLines := make([]string, t.Layout.LogLines)
 	for i := range logLines {
 		logLines[i] = ""
@@ -255,9 +368,9 @@ func (g *Game) Render() Frame {
 		hints = "Quit to menu. Seed " + fmt.Sprint(g.Seed) + " - Esc again or close window"
 	} else if g.Over {
 		if g.Won {
-			hints = "VICTORY! Press Esc to quit. Seed " + fmt.Sprint(g.Seed)
+			hints = fmt.Sprintf("VICTORY! Score %d. Press Esc to quit. Seed %d", g.CalculateScore(), g.Seed)
 		} else {
-			hints = "YOU DIED. Press Esc to quit. Seed " + fmt.Sprint(g.Seed)
+			hints = fmt.Sprintf("YOU DIED. Score %d. Press Esc to quit. Seed %d", g.CalculateScore(), g.Seed)
 		}
 	} else if f := g.featureAt(g.Party.Pos); f != nil {
 		if f.IsFountain() {

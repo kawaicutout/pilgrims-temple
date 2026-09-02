@@ -268,7 +268,7 @@ func ensureAffixDescCache() {
 	}
 }
 
-// GetTalentDesc returns "Name - Desc" for a talent id, falling back to id.
+// GetTalentDesc returns "Name - Desc" for a talent id, falling back to friendly ID.
 func GetTalentDesc(id string) string {
 	ensureTalentDescCache()
 	if e, ok := talentDescMap[id]; ok {
@@ -278,13 +278,13 @@ func GetTalentDesc(id string) string {
 		case e.Name != "":
 			return e.Name
 		case e.Desc != "":
-			return fmt.Sprintf("%s - %s", id, e.Desc)
+			return fmt.Sprintf("%s - %s", FriendlyID(id), e.Desc)
 		}
 	}
-	return id
+	return FriendlyID(id)
 }
 
-// GetAffixDesc returns "Name - Desc" for an affix id, falling back to id.
+// GetAffixDesc returns "Name - Desc" for an affix id, falling back to friendly ID.
 func GetAffixDesc(id string) string {
 	ensureAffixDescCache()
 	if e, ok := affixDescMap[id]; ok {
@@ -294,8 +294,8 @@ func GetAffixDesc(id string) string {
 		case e.Name != "":
 			return e.Name
 		case e.Desc != "":
-			return fmt.Sprintf("%s - %s", id, e.Desc)
+			return fmt.Sprintf("%s - %s", FriendlyID(id), e.Desc)
 		}
 	}
-	return id
+	return FriendlyID(id)
 }

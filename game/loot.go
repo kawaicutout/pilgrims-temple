@@ -166,7 +166,7 @@ func friendlyTypeName(typeID, kind string) string {
 		}
 	}
 	if typeID != "" {
-		return strings.Title(typeID)
+		return FriendlyID(typeID)
 	}
 	return "unknown"
 }
@@ -540,6 +540,7 @@ func (g *Game) TryUseItem() bool {
 						continue
 					}
 					if max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= 2 {
+						wasAlive := e.IsAlive()
 						for _, m := range e.Members {
 							if m.IsAlive() {
 								m.HP -= 10
@@ -549,8 +550,10 @@ func (g *Game) TryUseItem() bool {
 								}
 							}
 						}
-						if !e.IsAlive() {
+						if wasAlive && !e.IsAlive() {
 							g.Logf("Fireball slays %s!", e.DisplayName())
+							g.AddKill()
+							g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 						}
 					}
 				}
@@ -665,6 +668,8 @@ func (g *Game) TryThrowPotion(dir Dir) bool {
 			g.Logf("Poison potion deals %d damage to %s!", dmgTotal, targetEnemy.DisplayName())
 			if !targetEnemy.IsAlive() {
 				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
+				g.AddKill()
+				g.Logf("Score %d (Kills %d).", g.CalculateScore(), g.Kills)
 			}
 		} else {
 			g.Logf("Poison potion shatters on ground.")

@@ -148,27 +148,17 @@ func (g *Game) TryPickup() bool {
 			g.Food += f
 			g.FoodFloat += float64(f)
 			g.Logf("Picked up ration (+%d food).", f)
+		case "potion":
 			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
-				g.Logf("Carry full - cannot pick up potion: %s.", it.Name)
 				remaining = append(remaining, it)
 				continue
 			}
-			hadPotion := false
-			for _, inv := range g.Party.Inventory {
-				if inv.Kind == "potion" {
-					hadPotion = true
-					break
-				}
-			}
 			g.Party.Inventory = append(g.Party.Inventory, it)
 			g.Logf("Picked up potion: %s.", it.Name)
-			if !hadPotion {
-				g.Logf("Tip: potions look like '%s' — unidentified. Use 'u' to drink (or gamble on foe), 't' to throw; ? for help.", appearanceFromItem(it))
-			}
 			// Gnome 10% instant identify first of kind
 			if g.Party.HasRace("gnome") && !IsIdentified(appearanceFromItem(it)) {
-				isFirst := true
 				app := appearanceFromItem(it)
+				isFirst := true
 				for _, inv := range g.Party.Inventory[:len(g.Party.Inventory)-1] {
 					if appearanceFromItem(inv) == app {
 						isFirst = false
@@ -180,7 +170,6 @@ func (g *Game) TryPickup() bool {
 					g.Logf("Gnomish insight identifies %s as %s!", app, friendlyTypeName(TypeForAppearance(app), it.Kind))
 				}
 			}
-			// Halfling 10% extra item on pickup
 			if g.Party.HasRace("halfling") && g.RNG != nil && g.RNG.Float64() < 0.10 {
 				if g.Party.CarryUsed() < g.Party.CarryCapacity() {
 					dup := it

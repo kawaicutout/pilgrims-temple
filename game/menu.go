@@ -256,9 +256,7 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 		}
 	}
 	title := "PILGRIM'S TEMPLE"
-	sub := "Roguetemple's Fortnight 2"
-	drawCentered(cells, w, h/2-4, title, "gold-bright")
-	drawCentered(cells, w, h/2-3, sub, "gray-1")
+	drawCentered(cells, w, h/2-3, title, "gold-bright")
 	for i, opt := range GetMainMenuOptions() {
 		prefix := "  "
 		fg := "gray-1"
@@ -269,12 +267,12 @@ func RenderMainMenu(tuning Tuning, selected int) Frame {
 		line := prefix + opt
 		drawCentered(cells, w, h/2+1+i, line, fg)
 	}
-	panel := []string{"", "Pilgrim's Temple", "Select: Up/Down  Enter", "Esc: Quit"}
+	panel := []string{}
 	for len(panel) < 12 {
 		panel = append(panel, "")
 	}
 	status := "Main Menu"
-	hints := "Up/Down or k/j: move  Enter: select  Esc: quit  ?: help"
+	hints := ""
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
 // RenderMainMenuWithScores loads the Scoreboard via LoadScoreboard (handles missing file/localStorage gracefully)
@@ -291,9 +289,7 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 		}
 	}
 	title := "PILGRIM'S TEMPLE"
-	sub := "Roguetemple's Fortnight 2"
-	drawCentered(cells, w, h/2-4, title, "gold-bright")
-	drawCentered(cells, w, h/2-3, sub, "gray-1")
+	drawCentered(cells, w, h/2-3, title, "gold-bright")
 	for i, opt := range GetMainMenuOptions() {
 		prefix := "  "
 		fg := "gray-1"
@@ -357,16 +353,12 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 			drawString(cells, 1, y, line, fg)
 		}
 	}
-	panel := []string{"", "Pilgrim's Temple", "Select: Up/Down  Enter", "Esc: Quit"}
-	// Also show score count in panel if space.
-	if len(entries) > 0 {
-		panel = append(panel, fmt.Sprintf("Scores: %d", len(sb.Entries)))
-	}
+	panel := []string{}
 	for len(panel) < 12 {
 		panel = append(panel, "")
 	}
 	status := "Main Menu"
-	hints := "Up/Down or k/j: move  Enter: select  Esc: quit"
+	hints := ""
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
 

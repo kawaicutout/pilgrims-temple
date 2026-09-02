@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — enemy types. Colors are desaturated per design-guide. damageType physical rolls vs DEF, magic vs MDEF. effect is placeholder string (e.g. hex) applied on effectChance roll — log only. talentChance/affixChance per depth are base chances; level generation scales them for floor>=3. regen heals 1/turn if alive.",
+  "notes": "Pilgrim's Temple — enemy types. Colors are desaturated per design-guide. damageType physical rolls vs DEF, magic vs MDEF. hex/rend/entangle/spore apply debuffs (10/6/4/8t); regenerate uses regen:true flag; unknown effects log. talentChance/affixChance per depth are base chances; level generation scales them for floor>=3. regen heals 1/turn if alive.",
   "enemies": [
     {
       "id": "goblin",
@@ -59,8 +59,8 @@
       "glyph": "T",
       "color": "#6a8a6a",
       "damageType": "physical",
-      "effect": "regenerate",
-      "effectChance": 0.12,
+      "effect": "",
+      "effectChance": 0.0,
       "regen": true,
       "xp": 30,
       "talentChance": 0.18,

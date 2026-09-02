@@ -64,7 +64,7 @@ Consequences:
 
 - Acting draws attacks. The player trades power for exposure with every action and mitigates exposure by acting with durable members.
 - There are no ranks and no swap mechanic. Section 6.2 applies the same distribution to melee, ranged attacks, and spells, and to player attacks against enemy parties.
-- The paladin is the one exception: while a paladin is the active member, it absorbs all single-target damage — nothing gets through (Section 5.5).
+- The paladin is the one exception: while a paladin is the active member, it absorbs all single-target damage — nothing gets through (Section 5.5; **all BuffA wired per RM2** — paladin absorb, bard chorus +1 ATK/DEF plus 10% BuffA factor, `shining_armor` 10%, `healers_grace` HoT, `thick_skin` 30%, `potent_scrolls` 20% via `game/data/classes.json` + `game/data/talents.json`).
 - The rule is one sentence and holds at every party size, including party of one.
 
 ### 3.5 The two pressures
@@ -86,7 +86,7 @@ The party moves as one unit. Any member can be the mover: movement is a party ac
 
 - The run starts with 2 members.
 - Recruitment features in the dungeon add members up to the cap of 4. The specific features (prisons, captive adventurers) are jam content.
-- Shrines are chance-placed level features: each floor has a random chance of spawning one, so a run may see none at all. A shrine has two uses: recruit a new member, or restore a dead member. Restoration returns the member as they were — class, attributes, talents, affixes, and applied upgrades — with attributes re-scaled to the party level and the level-up awards missed while dead not granted (Section 5.3). It costs gold or food, randomized per shrine (sometimes both; jam content): restoring a favorite character spends resources that could otherwise go to merchants or rations, which is the decision (Section 4.4).
+- Shrines are chance-placed level features: each floor has a random chance of spawning one, so a run may see none at all. A shrine has four menu options via `game/game.go:986` `ExecuteShrineChoice` — recruit a new member, restore a dead member, grant a free level-up (XP unchanged), or leave intact. Shrines are data-driven per-shrine costs (`game/data/shrines.json:3-4` `recruit 0/0`, `resurrect 75/50`; `game/features.go:446` `ShrineUse` `GoldCost`/`FoodCost`) — **currently tuned free for balance (2026-09-02 decision)**. `game/data/shrines.json` retains 75/50 as balance reference but deduction is deferred; the recruit/resurrect/level-up paths are free (see `game/game.go:1338` “Recruit free — costs data-driven but tuned 0”). Restoration returns the member as they were — class, attributes, talents, affixes, and applied upgrades — with attributes re-scaled to the party level and the level-up awards missed while dead not granted (Section 5.3). The resource decision is specced for future tuning.
 - Recruits are generated at the current party level using the standard generation rules (Section 5.2), so a found member is useful immediately.
 - Members cannot be dismissed.
 - Party size trades power against food (Section 3.5). A fourth member adds attributes and passives but accelerates the food clock; a smaller party runs leaner. This tradeoff is deliberate and makes a careful solo run possible.
@@ -140,22 +140,22 @@ Enemy parties use the same generation rules and the same level budget as the pla
 
 A member's class assigns its unique ability and its attribute profile, and is the primary lever against the two pressures (Section 3.5). Combat classes shift the health curve; utility classes shift the food and dungeon-resource curve.
 
-The eight classes below are illustrative of the system, not the final content. The class roster grows inside the jam window. Exact numbers (resist chance, heal rate, food reduction) are jam content; the role each class plays is the design commitment:
+The eight classes below are illustrative of the system, now **shipped via `game/data/classes.json`** with BuffA/BuffB/Active per class. Exact numbers are data, not prose — `bardRule` chorus +1 ATK/DEF plus 10% BuffA factor (non-stacking) is in `game/data/classes.json:3-5`. The role each class plays is the design commitment; all BuffA are **wired per RM2** (paladin absorb, bard chorus, `shining_armor` 10% resist, `healers_grace` HoT, `thick_skin` 30% `potent_scrolls` 20% etc.):
 
-| Class | Role | Illustrative ability | Pressure it mitigates |
+| Class | Role | Illustrative ability (BuffA wired) | Pressure it mitigates |
 |---|---|---|---|
-| Fighter | Front-line durability | Shining Armor: chance to resist hits | Health |
-| Rogue | Utility, resources | Open locked containers and doors | Food and dungeon resources |
-| Cleric | Healing throughput | Heals over time; better with rest | Health |
-| Druid | Food economy | Reduces food consumption | Food |
-| Bard | Meta-class, force multiplier | Boosts other members' attributes and passives | Neither directly |
-| Wizard | Item economy | Boosts scroll effects; identifies items over time; opens locked routes | Food and dungeon resources |
-| Barbarian | Misuse safety | Natural resistance: chance to shrug off negative potion and spell effects | Health and item resources |
+| Fighter | Front-line durability | Shining Armor: 10% resist (11% with bard) | Health |
+| Rogue | Utility, resources | Nimble Fingers: open locks; +10% gold (11% with bard) | Food and dungeon resources |
+| Cleric | Healing throughput | Healers Grace: HoT; better with rest | Health |
+| Druid | Food economy | Verdant: reduces food consumption | Food |
+| Bard | Meta-class, force multiplier | Chorus: +1 ATK/DEF to others, +10% to all BuffA | Neither directly |
+| Wizard | Item economy | Potent Scrolls: +20% scroll effects; identifies over time; opens locks | Food and dungeon resources |
+| Barbarian | Misuse safety | Thick Skin: 30% resist to negative effects | Health and item resources |
 | Paladin | Absolute front-line | Vow of Protection: while active, absorbs all single-target damage | Health |
 
 Passive effects stack between members of the same or different classes. Most classes mitigate one pressure directly; the bard is a meta-class that mitigates neither directly but multiplies the other members' contribution to both. This makes party composition the core build decision: the player spends limited party slots and a shared food clock on a mix that survives the run's health pressure within its food budget.
 
-The barbarian makes unidentified-item misuse survivable — a counterweight to the identification systems of Section 11.1. The paladin is the one exception to active-weighted targeting (Section 3.4): while active it absorbs all single-target damage, so shielding the party costs the paladin's action every turn.
+The barbarian makes unidentified-item misuse survivable — a counterweight to the identification systems of Section 11.1. The paladin is the one exception to active-weighted targeting (Section 3.4): while active it absorbs all single-target damage, so shielding the party costs the paladin's action every turn (wired per RM2).
 
 ## 6. Combat
 
@@ -213,12 +213,12 @@ Gold is the run's currency. It appears wherever loot appears: defeated enemy par
 
 ## 8. Run Structure
 
-- The run descends through a fixed number of floors (default 8).
-- The final floor holds the relic; retrieving it wins the run. Escaping back to the surface afterwards is optional and grants a score bonus (tunable).
+- The run descends through a fixed number of floors (default 8, `game/data/tuning.json:3` `floors:8`).
+- The final floor holds the relic; stepping onto `TileRelic` sets `RelicCollected` (`game/game.go:1884`) and wins the run (`Won`; `Over` set — re-entry repopulates old floors). Ascent to floor 0 via `StairsUp` after relic grants `Escaped` and the escape bonus (`tuning.json:36` `escapeBonus:500`; `game/score.go:138` `escaped:=Escaped` wired per RM3a [currently `g.Won`, will be `Escaped` after RM3a]).
 - Death of all members ends the run. The death screen shows the seed and the score.
-- A run can be suspended and resumed: a local save file on desktop, browser storage on web. One slot; the game saves on exit and the save is consumed on load, so a finished run cannot be reloaded (no save-scumming). Saving and score records are not meta-progression: a save suspends one run, and scores are records; neither affects the next run's gameplay (Section 2).
+- A run can be suspended and resumed: save lib `game/save*.go` (`game/save.go:14` `SaveSlot`, `game/save_desktop.go:86` `HasSave`, `game/save_js.go:86` `HasSave`) — **wired per RM3 (Wave 2)**. One slot; the game saves on exit and the save is consumed on load (`game/save_desktop.go:33` `LoadFromFile` deletes file), so a finished run cannot be reloaded (no save-scumming). Saving and score records are not meta-progression: a save suspends one run, and scores are records; neither affects the next run's gameplay (Section 2).
 - Hit points regenerate slowly per member, once per world turn (Section 6.1). The rest command accelerates regeneration at the risk of encounters (Section 11.3). Rest is slower than combat and its healing does not improve with party level, so its value fades as the run deepens (Section 3.5).
-- The score formula rewards floors reached, kills, and surviving members, plus a bonus for escaping back to the surface; the relative weights are tuning (Open Questions).
+- The score formula rewards floors reached, kills, and surviving members, plus a bonus for escaping back to the surface; the relative weights are tuning (`game/data/tuning.json:32-36` `scoreWeights: floor 100 / kill 10 / survivor 50 / escapeBonus 500`; `game/score.go:106` `scoreForPure`).
 - The score table is per device — a local file on desktop, browser storage on web — and lists the best runs (score, seed, floor reached). It records; it does not progress. Scores are trust-based: the editable data folder (Section 13.1) makes desktop tampering trivial, so they are personal records, not competition.
 
 ## 9. World Generation
@@ -294,17 +294,20 @@ Key map principles:
 
 | Key | Action |
 |---|---|
-| Numpad / number row 1–9 | Move, numpad layout: 7 NW · 8 N · 9 NE / 4 W · 5 wait · 6 E / 1 SW · 2 S · 3 SE |
-| Arrows / hjkl | Move (cardinal aliases) |
-| `.` | Wait (alias for 5) |
-| q/w/e/r | Select member (free) |
-| `R` | Rest: a 10-turn batch that ends early when a hostile appears or hunger advances |
-| `g` | Pick up |
-| `i` | Inventory |
-| `u` | Use item: opens an inventory selector over the held potions and scrolls |
-| `v` | Examine |
-| `>` / `<` | Descend / ascend stairs |
-| `?` | Help |
+| Numpad / number row 1–9 | Move, numpad layout: 7 NW · 8 N · 9 NE / 4 W · 5 wait · 6 E / 1 SW · 2 S · 3 SE (`game/input.go:264-283` `NormalizeKey` Numpad*/Digit*) |
+| Arrows / hjkl | Move (cardinal aliases; `h`/`j`/`k`/`l` per `game/input.go:295-303`) |
+| `y` / `b` / `n` + `7`/`9`/`1`/`3` | Diagonals: `y`/`7` NW, `9` NE, `b`/`1` SW, `n`/`3` SE — `u` is **Use**, not NE (`game/input.go:304-313` `u/U→KeyUse`; `game/input.go:308` `KeyUpRight` only on `9`+Numpad9) |
+| `.` / `5` / `Space` | Wait 1 turn (alias for 5; `game/input.go:314` `5/./ /Space→KeyWait`; `game/render.go:961` `5 / . / Space - wait`) |
+| `z` / `Z` | Rest: 10-turn batch, 15 HP, ends early on hostile/hunger (`game/input.go:316-317` `z/Z→KeyRest`; `game/render.go:962` `z / Z - rest`) |
+| `q`/`w`/`e`/`r` (`Q`/`W`/`E`/`R` also) | Select member 1–4 (free; `game/input.go:324-331` `q/Q→Select1` etc.; `R` is **select 4**, not Rest) |
+| `g` / `G` | Contextual: pickup (`game/loot.go:61` `TryPickup` at `g.Party.Pos`) or on-feature — fountain/merchant/forge/shrine + close door (`game/input.go:198-216` `KeyPickup` tries door→fountain→merchant→forge→shrine→pickup; `game/render.go:963` `g - contextual use`) |
+| `u` / `U` | Use item: opens inventory selector over held potions/scrolls (no auto-consume; `game/input.go:220-230` `KeyUse` opens menu via `InventoryUseEntries`) |
+| `t` / `T` | Throw potion (menu + cursor; `game/input.go:232-245` `KeyThrow`) |
+| `v` / `V` | Examine / look mode (`game/input.go:189` `KeyLook`) |
+| `>` / `<` | Descend / ascend stairs (`game/input.go:318-321` `>→StairsDown` `<→StairsUp`; ascent from floor 0 blocked per `game/game.go:1943`) |
+| `?` | Help overlay (`game/render.go:956-969`) |
+| `Esc` | Quit to menu (`game/input.go:288,340` `Escape→KeyQuit`) |
+| `]` / `}` / `BracketRight` | Wizard menu (8 entries, no `wizard.json` override; `game/wizard.go:15-16`) |
 
 The use command is a single selector over the held potions and scrolls; examine lives at `v`.
 
@@ -322,12 +325,9 @@ the near-black backing.
 The web build meets the same rule through the page chrome: the `body` element
 carries `--bg` from `web/tokens.css` across the entire viewport, and the grid
 paints on top of it.
-
-Rule for any future surface: the background token covers the full surface, not only the cells the interface happens to draw. The rule holds for every painted screen — the main menu and shell screens (Section 10.5), help, inventory, and death and victory screens — and for fog of war: cells outside the light radius render as plain styled background, never the host default.
-
 ### 10.5 Main menu and shell screens
 
-The game opens on a main menu: New game, Load game (enabled when a save exists — a save file on desktop, browser storage on web), Scores, and Exit. Exit applies to the desktop build only; web players close the tab. Menu navigation is arrows or j/k to move, Enter to select, and Escape to go back.
+The game opens on a main menu (4 entries post-Wave 2): **New Game**, **Load** (gated on `HasSave` — `game/save_desktop.go:86` `HasSave` / `game/save_js.go:86` `HasSave` / `game/save.go:14` `SaveSlot`), **Scores**, and **Exit**. Load is enabled only when a save exists (a `save.json` file on desktop, `localStorage` key `pilgrims_save` on web per `game/save*.go:8-9`). Exit applies to the desktop build only; web players close the tab. Menu navigation is arrows or j/k to move, Enter to select, and Escape to go back.
 
 Death and victory screens show the seed and score and return to the main menu. Every shell screen follows the surface rule (Section 10.4) and the palette rules of the design guide. The web build renders shell controls (start, load, scores, data upload and reset) as plain native HTML.
 
@@ -374,11 +374,8 @@ Each run starts from a shown seed. The death and victory screens display the see
 - `game` package: pure Go core, no I/O, deterministic given a seed.
 - Terminal frontend: `tcell` TUI, compiled to a single static binary per platform (Linux, macOS, Windows).
 - Web frontend: the same core compiled to WASM with `syscall/js`, rendered into an HTML shell; deployed as an itch.io HTML5 upload.
-- Content and tuning are data, not code: dungeon generation parameters, class definitions, enemy definitions, item tables, affix and talent lists, and other jam content live in plain data files (JSON is the default format) loaded by the core — never hardcoded in Go.
-- Desktop builds read a `data/` folder placed alongside the executable, so players can read and edit the files (mod support by default on desktop).
-- Web builds bake the same data files into the WASM at compile time (`go:embed`). Players can also upload a data zip to replace the data in-browser; a reset button restores the embedded defaults. Uploaded data persists in browser storage until reset. Both builds consume identical data; only the loading path differs.
-- A simple data editor is a stretch goal: a small UI that edits the data files so content can be tuned without touching code; web builds then rebuild with the edited data embedded.
-
+- Web builds bake the same data files into the WASM at compile time (`go:embed`). Players can also upload a data zip to replace the data in-browser; a reset button restores the embedded defaults. Uploaded data persists in browser storage until reset. Both builds consume identical data; only the loading path differs. — **Implemented per RM10 (Wave 6)** (anticipatory true after Wave 6: `archive/zip` inside WASM + `localStorage` + reset; see scope §14).
+- A simple data editor is a stretch goal: a small UI that edits the data files so content can be tuned without touching code; web builds then rebuild with the edited data embedded. — **Implemented per RM10 (Wave 6)** (same zip/upload infra; editor UI if any is follow-up).
 ### 13.2 Milestone 0 — prototype gate (passed pre-jam)
 
 The pre-jam prototype rendered a room and moved an `@` in both frontends from one core, validating the Go-to-WASM layering and the dual distribution path. It contained no game systems and has been cleared; the implementation notes it produced are in Section 13.3.
@@ -417,7 +414,7 @@ The pre-jam prototype rendered a room and moved an `@` in both frontends from on
   and the reset button clears that storage and falls back to the embedded
   files.
 
-## 14. Scope and Milestones
+## 14. Scope and Milestones — **re-dated 2026-09-02** (supersedes pre-jam cut list)
 
 | Milestone | Content | Window |
 |---|---|---|
@@ -429,7 +426,13 @@ The pre-jam prototype rendered a room and moved an `@` in both frontends from on
 | M5 | World generation plus content and balance (jam content) | Days 12–13 |
 | M6 | UI polish, main menu and shell screens, web build, itch page, screenshots | Day 14 |
 
-Cut lines, in order: affix gain on level up, escape bonus, floor count, level features (merchants, fountains, resurrection shrines), game data editor, web data upload.
+Cut lines (original order, now **re-dated 2026-09-02** — most **delivered**):
+- Affix gain on level up — **delivered** (`game/data/affixes.json` 7+7; `game/talents.go:1044` `AffixReplaceChance` 0.10).
+- Escape bonus — **delivered** (`tuning.json:36` `escapeBonus:500`; `game/score.go:138` `escaped:=Escaped` per RM3a).
+- Floor count (8) — **delivered** (`tuning.json:3` `floors:8`).
+- Level features (merchants, fountains, resurrection shrines) — **delivered** (`game/features.go:13-14`; `game/data/features.json` `fountains 0.2` `shrines 0.25` `merchants 0.15`; shrine 4-option menu `game/game.go:960`).
+- `perBiomeVariants` — **implemented per RM8a** (`game/data/features.json:9-14` `crypt {vaultRate 0.15 forgeRate 0.08}` `ossuary {vaultRate 0.1 denRate 0.15}` `fungal {pitfallRate 0.12 denRate 0.14}` etc.; wired via `game/features.go:219` `PerBiomeVariants`).
+- Game data editor + web data upload — **implemented per RM10 (Wave 6)** (anticipatory true after Wave 6: `archive/zip` parsing inside WASM + `localStorage` persistence + reset; see §13.1/13.3).
 
 ## 15. Open Questions
 
@@ -441,4 +444,4 @@ Cut lines, in order: affix gain on level up, escape bonus, floor count, level fe
 - Class balance: whether players can reach the relic without a combat class, and whether the druid's food reduction makes large parties too cheap.
 - Shrine spawn rate: how often shrines appear per floor — the dial that sets how often death's permanence bends (Sections 4.2 and 4.4).
 
-**Deferred, not planned (post-jam candidates).** Races (darkvision, regeneration, dodge profiles), ranged combat, ritual spellcasting, and audio are outside the jam scope — noted so they are not forgotten, not planned.
+**Deferred, not planned (post-jam candidates).** Ranged combat, ritual spellcasting, and audio are outside the jam scope — noted so they are not forgotten, not planned. **Races shipped** per RM8a: `game/data/races.json` + `game/race.go` + `game/menu.go:616` “CHOOSE RACES” (7 races: human/elf/dwarf/halfling/gnome/half_orc/troll; charBuff/partyBuff/synergyBuff data-driven).

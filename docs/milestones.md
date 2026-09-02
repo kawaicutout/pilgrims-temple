@@ -1,8 +1,8 @@
 # Milestones — Pilgrim's Temple
 
-## M5 Audit — Floor Items & WizardSpawnLoot
+> **Superseded 2026-09-01 — Level.Items @ `game/biome.go:1019` + `TryPickup` @ `game/loot.go:61` + `WizardSpawnLootItems` @ `game/loot.go:1393`** — The 2026-09-01 audit below claimed floor items were absent; they have since been implemented. History is retained verbatim below for changelog.
 
-**Date:** 2026-09-01  
+## M5 Audit — Floor Items & WizardSpawnLoot (historical, superseded)
 **Finding:** `game/economy.go:WizardSpawnLoot()` currently does `AddGold(50)` only — no floor item spawn.
 
 Floor item system (Level.Items, potion/scroll/ration on ground, pickup via `g` key, `WizardSpawnLoot` random loot drop, `Level.Generate` floor loot placement) is **not yet implemented**:

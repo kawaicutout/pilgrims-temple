@@ -138,6 +138,7 @@ func (rs *RaceSelectState) Back() bool {
 func (rs *RaceSelectState) Done() bool { return len(rs.Classes) > 0 && len(rs.Picks) == len(rs.Classes) }
 
 func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
+	SetGlobalTuning(tuning)
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
 	InitIdentificationSeed(seed)
 	g := &Game{
@@ -175,6 +176,7 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 }
 
 func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, races []string) *Game {
+	SetGlobalTuning(tuning)
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
 	InitIdentificationSeed(seed)
 	g := &Game{

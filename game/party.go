@@ -204,7 +204,17 @@ func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitI
 			}
 		}
 		r := rng.Float64()
-		if r < 0.5 {
+		weight := GetTuning().Targeting.ActiveWeight
+		if weight <= 0 || weight > 1 {
+			if weight == 0 {
+				weight = 0.5
+			} else if weight < 0 {
+				weight = 0
+			} else {
+				weight = 1
+			}
+		}
+		if r < weight {
 			if p.Members[activeIdx].IsAlive() {
 				target = p.Members[activeIdx]
 				idx = activeIdx

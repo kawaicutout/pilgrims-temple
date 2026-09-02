@@ -68,6 +68,63 @@ func LoadTuning() (Tuning, error) {
 	return t, nil
 }
 
+// globalTuning caches the tuning from the active Game for package accessors
+// that lack a Game reference (e.g., combat targeting). Set via NewGame.
+var globalTuning *Tuning
+
+// SetGlobalTuning caches t for GetTuning consumers.
+func SetGlobalTuning(t Tuning) {
+	c := t
+	globalTuning = &c
+}
+
+// GetTuning returns the cached global tuning if set, otherwise loads from
+// data/tuning.json. Defaults ActiveWeight to 0.5 if missing so callers can
+// safely use Tuning.Targeting.ActiveWeight.
+func GetTuning() Tuning {
+	if globalTuning != nil {
+		return *globalTuning
+	}
+	t, err := LoadTuning()
+	if err != nil {
+		t = Tuning{}
+		t.Food.RationRefill = 50
+		t.LevelUp.XPBase = 100
+		t.LevelUp.XPFactor = 1.5
+		t.Targeting.ActiveWeight = 0.5
+		return t
+	}
+	if t.Targeting.ActiveWeight == 0 {
+		t.Targeting.ActiveWeight = 0.5
+	}
+	if t.Food.RationRefill == 0 {
+		t.Food.RationRefill = 50
+	}
+	if t.LevelUp.XPBase == 0 {
+		t.LevelUp.XPBase = 100
+	}
+	if t.LevelUp.XPFactor == 0 {
+		t.LevelUp.XPFactor = 1.5
+	}
+	return t
+}
+
+// ActiveWeight returns the current targeting active weight from GetTuning(),
+// clamped to [0,1] with 0.5 fallback.
+func ActiveWeight() float64 {
+	w := GetTuning().Targeting.ActiveWeight
+	if w < 0 {
+		w = 0
+	}
+	if w > 1 {
+		w = 1
+	}
+	if w == 0 {
+		return 0.5
+	}
+	return w
+}
+
 // RawJSON returns the raw bytes for a data file (for generic consumers / web upload overlay).
 func RawJSON(name string) ([]byte, error) {
 	return dataFS.ReadFile("data/" + name)

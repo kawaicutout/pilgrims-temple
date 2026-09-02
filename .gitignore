@@ -16,3 +16,5 @@ Thumbs.db
 
 # Go
 vendor/
+# local review docs (never commit or push; see localdoc/README.md)
+/localdoc/

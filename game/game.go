@@ -59,6 +59,7 @@ type Game struct {
 }
 
 func NewGame(seed int64, tuning Tuning) *Game {
+	SetGlobalTuning(tuning)
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
 	InitIdentificationSeed(seed)
 	g := &Game{
@@ -345,7 +346,25 @@ type TalentPick struct {
 }
 
 func (g *Game) xpForNext() int {
-	return 100 + 50*(g.Level-1)
+	base := g.Tuning.LevelUp.XPBase
+	if base <= 0 {
+		base = GetTuning().LevelUp.XPBase
+		if base <= 0 {
+			base = 100
+		}
+	}
+	factor := g.Tuning.LevelUp.XPFactor
+	if factor <= 0 {
+		factor = GetTuning().LevelUp.XPFactor
+		if factor <= 0 {
+			factor = 1.5
+		}
+	}
+	step := int(float64(base) * (factor - 1))
+	if step <= 0 {
+		step = 50
+	}
+	return base + step*(g.Level-1)
 }
 func (g *Game) GainXP(amount int) {
 	if g.Over || g.LevelUpPending != nil {
@@ -875,9 +894,16 @@ func (g *Game) BuySelectedMerchant(index int) bool {
 	// Apply ware effect
 	switch w.ID {
 	case "ration":
-		g.Food += 50
-		g.FoodFloat += 50
-		g.Logf("Merchant sells %s for %dg (+50 food).", w.Name, w.Price)
+		refill := g.Tuning.Food.RationRefill
+		if refill <= 0 {
+			refill = GetTuning().Food.RationRefill
+			if refill <= 0 {
+				refill = 50
+			}
+		}
+		g.Food += refill
+		g.FoodFloat += float64(refill)
+		g.Logf("Merchant sells %s for %dg (+%d food).", w.Name, w.Price, refill)
 	case "potion_heal":
 		healed := 0
 		for _, mem := range g.Party.Members {
@@ -1309,7 +1335,7 @@ func (g *Game) handleShrine(f *Feature) {
 		return
 	}
 	if canRecruit {
-		// Recruit costs nothing for now (shrine recruit free).
+		// Recruit free — costs data-driven but tuned 0 (2026-09-02 balance)
 		classes, err := LoadClasses()
 		pick := "fighter"
 		if err == nil && len(classes) > 0 && g.RNG != nil {
@@ -1437,9 +1463,16 @@ func (g *Game) handleMerchant(f *Feature) {
 	// Apply ware effect
 	switch w.ID {
 	case "ration":
-		g.Food += 50
-		g.FoodFloat += 50
-		g.Logf("Merchant sells %s for %dg (+50 food).", w.Name, w.Price)
+		refill := g.Tuning.Food.RationRefill
+		if refill <= 0 {
+			refill = GetTuning().Food.RationRefill
+			if refill <= 0 {
+				refill = 50
+			}
+		}
+		g.Food += refill
+		g.FoodFloat += float64(refill)
+		g.Logf("Merchant sells %s for %dg (+%d food).", w.Name, w.Price, refill)
 	case "potion_heal":
 		healed := 0
 		for _, mem := range g.Party.Members {
@@ -2283,10 +2316,10 @@ func (g *Game) EnemyTurn() {
 			for _, d := range []Dir{DirN, DirS, DirW, DirE} {
 				np := e.Pos.Add(d)
 				if lvl.IsDoor(np) && lvl.IsDoorClosed(np) {
-					// Check vault lock near door - enemies can open non-locked doors or locked if they have rogue? Simplify: enemies can open any door if within 3 of player
+					// vault lock enemy-side deferred — enemies can open non-locked doors; locked vault doors remain blocked (game/features.go:195 Locked)
 					distToPlayer := max(abs(g.Party.Pos.X-np.X), abs(g.Party.Pos.Y-np.Y))
 					if distToPlayer <= 3 || cheb <= 3 {
-						// Check vault lock - if locked, still block unless enemy has rogue? For now allow
+						// vault lock check — if locked, defer (still block)
 						locked := false
 						for _, f := range lvl.Features {
 							if f.IsVault() && f.Locked {

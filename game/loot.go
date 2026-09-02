@@ -87,7 +87,14 @@ func (g *Game) TryPickup() bool {
 			if amt <= 0 {
 				amt = 1
 			}
-			f := amt * 50
+			refill := g.Tuning.Food.RationRefill
+			if refill <= 0 {
+				refill = GetTuning().Food.RationRefill
+				if refill <= 0 {
+					refill = 50
+				}
+			}
+			f := amt * refill
 			g.Food += f
 			g.FoodFloat += float64(f)
 			g.Logf("Picked up ration (+%d food).", f)

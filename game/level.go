@@ -374,12 +374,13 @@ func loadEnemies() []enemyEntry {
 	}
 	b, err := RawJSON("enemies.json")
 	if err != nil {
+		// Fallback entries mirrored from enemies.json: hex/rend/entangle/spore apply debuffs (10/6/4/8t); troll regen via regen:true (effect empty).
 		enemiesCache = []enemyEntry{
 			{ID: "goblin", Name: "Goblin", Glyph: "g", Color: "#5a7a5a", DamageType: "physical", Effect: "hex", EffectChance: 0.08, XP: 10, TalentChance: 0.08, AffixChance: 0.04},
 			{ID: "orc", Name: "Orc", Glyph: "o", Color: "#8a7a6a", DamageType: "physical", Effect: "rend", EffectChance: 0.10, XP: 15, TalentChance: 0.10, AffixChance: 0.05},
 			{ID: "kobold", Name: "Kobold", Glyph: "k", Color: "#6a7a7a", DamageType: "magic", Effect: "hex", EffectChance: 0.20, XP: 12, TalentChance: 0.12, AffixChance: 0.06},
 			{ID: "rat", Name: "Rat", Glyph: "r", Color: "#7a7a7a", DamageType: "physical", Effect: "", EffectChance: 0.0, XP: 8, TalentChance: 0.04, AffixChance: 0.02},
-			{ID: "troll", Name: "Troll", Glyph: "T", Color: "#6a8a6a", DamageType: "physical", Effect: "regenerate", EffectChance: 0.12, Regen: true, XP: 30, TalentChance: 0.18, AffixChance: 0.09},
+			{ID: "troll", Name: "Troll", Glyph: "T", Color: "#6a8a6a", DamageType: "physical", Effect: "", EffectChance: 0.0, Regen: true, XP: 30, TalentChance: 0.18, AffixChance: 0.09},
 		}
 		return enemiesCache
 	}

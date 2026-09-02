@@ -15,8 +15,8 @@ for the itch.io web build.
 
 ## Status
 
-The pre-jam M0 prototype (a room renderer and mock interface in both
-frontends) was cleared to leave a clean slate for the jam window. The
-implementation starts fresh on September 1, 2026; build and run instructions
-will land with the first milestone. `web/tokens.css` is kept as the canonical
-design tokens mirroring the design guide.
+**Pre-jam M0 cleared** — the room-renderer mock from before the jam was cleared for a clean slate (see `DESIGN.md` §13.2). Jam window Sept 1–15, 2026.
+
+- Run: `./run.sh` — opens the default terminal at the data-driven size (`game/data/tuning.json` `layout.minCols`/`minRows`, default 110×34; `run.sh:13-28` reads via `jq` then falls back). Or run the binary directly after `make terminal` (`Makefile:23` `bin/pilgrims-temple`) / `make wasm` / `make web` (brotli).
+- Build: `make terminal` (native), `make wasm`, `make wasm-br`, `make web`, `make zip` (itch upload per `DESIGN.md` §13.3). `make vet` / `make test` for checks.
+- Tokens: `web/tokens.css` is the canonical design tokens mirroring `docs/design-guide.md`.

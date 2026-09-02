@@ -117,5 +117,6 @@ func (g *Game) UnmarshalJSON(data []byte) error {
 	g.RelicCollected = aux.RelicCollected
 	// Recreate RNG deterministically from seed (same PCG as NewGame).
 	g.RNG = rand.New(rand.NewPCG(uint64(g.Seed), 0x9e3779b97f4a7c15))
+	SetGlobalTuning(g.Tuning)
 	return nil
 }

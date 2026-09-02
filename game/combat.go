@@ -1,9 +1,6 @@
 package game
 
-import (
-	"fmt"
-	"math/rand/v2"
-)
+import "math/rand/v2"
 
 // RollRaw picks uniformly in [min,max] (no DEF).
 func RollRaw(rng *rand.Rand, atkMin, atkMax int) int {
@@ -76,18 +73,6 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 		killed = true
 		// EnsureActive will be called next turn
 	}
-	// Effect placeholder roll
-	if atk.Effect != "" && atk.EffectChance > 0 && atk.EffectChance <= 1.0 {
-		if rng.Float64() < atk.EffectChance {
-			// Placeholder log string, game layer will emit if desired; we store for debug
-			_ = fmt.Sprintf("%s tries to hex %s", atk.Name, target.Name)
-		}
-	} else if atk.EffectChance > 0 {
-		// Legacy: if effect string empty but chance set, use hex placeholder
-		if rng.Float64() < atk.EffectChance {
-			_ = fmt.Sprintf("%s tries to hex %s", atk.Name, target.Name)
-		}
-	}
 	return dmg, hitIdx, killed
 }
 
@@ -104,8 +89,18 @@ func pickEnemyTarget(rng *rand.Rand, e *EnemyParty) int {
 			}
 		}
 	}
-	// 50% to active, 50% uniform
-	if rng.Float64() < 0.5 {
+	// Active-weighted via Tuning.Targeting.ActiveWeight (default 0.5).
+	weight := GetTuning().Targeting.ActiveWeight
+	if weight <= 0 || weight > 1 {
+		if weight == 0 {
+			weight = 0.5
+		} else if weight < 0 {
+			weight = 0
+		} else {
+			weight = 1
+		}
+	}
+	if rng.Float64() < weight {
 		if e.Members[e.Active].IsAlive() {
 			return e.Active
 		}
@@ -134,27 +129,6 @@ func EnemyAttack(rng *rand.Rand, enemy *EnemyParty, party *Party) (attackerIdx i
 	return
 }
 
-// TryEnemyEffect checks if attacker's effect triggers against defender.
-func TryEnemyEffect(rng *rand.Rand, attacker *Member, defender *Member) (triggered bool, msg string) {
-	if attacker.EffectChance <= 0 || attacker.EffectChance > 0.3 {
-		// Clamp to 0-0.3 per spec; out-of-range treated as no effect
-		if attacker.EffectChance > 0.3 {
-			attacker.EffectChance = 0.3
-		} else {
-			return false, ""
-		}
-	}
-	if rng.Float64() >= attacker.EffectChance {
-		return false, ""
-	}
-	effect := attacker.Effect
-	if effect == "" {
-		effect = "hex"
-	}
-	// Placeholder string per spec: "{attacker} tries to hex {defender}"
-	msg = fmt.Sprintf("%s tries to %s %s", attacker.Name, effect, defender.Name)
-	return true, msg
-}
 
 // DefenderDefense returns DEF or MDEF based on attacker damage type.
 func DefenderDefense(attacker *Member, defender *Member) int {

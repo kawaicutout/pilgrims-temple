@@ -20,7 +20,7 @@ The project uses data-driven types in `game/data`. The lists below quote those f
 
 Notes: `effect` is a placeholder string. Combat rolls the chance and logs `"{attacker} tries to {effect} {defender}"`. `regen` heals 1 HP per turn when alive (troll, spore_mother). `talentChance` and `affixChance` scale with depth (floor >= 3).
 
-### 1.2 Potion types (`game/data/potions.json`)
+### 1.2 Potion types (`game/data/potions.json`) — **> Status 2026-09-01 snapshot — superseded. Potions/scrolls/statuses now wired per `game/status.go` / `game/loot.go:359` (`TryUseAppearance`) / `game/game.go:2214` (DoT tick). History retained below.**
 
 The data file defines 8 types. Appearances are 8 color names (Mottled Jade, Vivid Yellow, Smoky Grey, Pale Violet, Deep Amber, Murky Brown, Bright Red, Dark Blue) shuffled onto types per run.
 
@@ -35,9 +35,9 @@ The data file defines 8 types. Appearances are 8 color names (Mottled Jade, Vivi
 | levitation | Levitation | Float over traps for 25 turns |
 | enlightenment | Enlightenment | Reveals map for 15 turns |
 
-Current code: healing restores 12 HP to each living member; poison applies 6 damage via `ApplyDamage`; other potions log a message only (no mechanical status yet).
+Current code (2026-09-01 snapshot, now superseded): healing restores 12 HP to each living member; poison applies 6 damage via `ApplyDamage`; other potions log a message only (no mechanical status yet). **Now wired per `game/status.go` + `game/loot.go:359` + `game/game.go:2214`.**
 
-### 1.3 Scroll types (`game/data/scrolls.json`)
+### 1.3 Scroll types (`game/data/scrolls.json`) — **> Status 2026-09-01 snapshot — superseded. Potions/scrolls/statuses now wired per `game/status.go` / `game/loot.go:359` / `game/game.go:2214`. History retained below.**
 
 The data file defines 8 types. Appearances are generated via `conlang.json` per run.
 
@@ -52,7 +52,7 @@ The data file defines 8 types. Appearances are generated via `conlang.json` per 
 | greater_healing | Greater Healing | Restores 20 HP to all living members |
 | summon | Summon Aid | Summons a temporary ally for 15 turns |
 
-Current code: identify reveals one unidentified held appearance; teleport picks a random `InBounds && Walkable` tile that is not blocked by litter and not occupied by an alive enemy, then calls `UpdateFOV` (verification 2026-09-01, see `game/loot.go`); fireball deals 10 damage within Chebyshev 2; mapping sets `Seen` for the floor; greater_healing restores 20 HP to all living members; other scrolls log only.
+Current code (2026-09-01 snapshot, now superseded): identify reveals one unidentified held appearance; teleport picks a random `InBounds && Walkable` tile that is not blocked by litter and not occupied by an alive enemy, then calls `UpdateFOV` (verification 2026-09-01, see `game/loot.go`); fireball deals 10 damage within Chebyshev 2; mapping sets `Seen` for the floor; greater_healing restores 20 HP to all living members; other scrolls log only. **Now wired per `game/status.go` + `game/loot.go:359` + `game/game.go:2214`.**
 
 ### 1.4 Talents, classes, and affixes
 
@@ -68,7 +68,7 @@ Classes (`game/data/classes.json`) define Buff A (passive from start), Buff B an
 
 Affixes (`game/data/affixes.json`): 7 prefixes (Veteran +2 attack, Hardy +3 max HP, Keen +1 damage, Stout +1 defense, Nimble +5% dodge, Bright +1 light radius, Burdened +3 carry) and 7 suffixes (of Wrath +2 damage when sole survivor, of Warding 5% to negate magic, of the Hollow +5 HP -1 light, of Thorns return 1 damage on hit, of Plenty -0.25 food tick, of Mending +1 HP per rest batch, of the Martyr blocked damage spills as 1 thorns).
 
-### 1.5 Fountains, shrines, forges, and other level features
+### 1.5 Fountains, shrines, forges, and other level features — **> Status 2026-09-01 snapshot — superseded. Fountains/shrines/forges/statuses now wired per `game/status.go` / `game/loot.go:359` / `game/game.go:2214` + shrine data-driven costs per `game/data/shrines.json`. History retained below.**
 
 - Fountains (`game/data/fountains.json`, rate 0.2): Healing Waters (+10 HP), Tainted Waters (-5 HP), Blessed Spring (+5 HP + bless), Cursed Pool (-2 HP + curse).
 - Shrines (`game/data/shrines.json`, rate 0.25): Recruitment (recruit a new member), Resurrection (75 gold, 50 food).
@@ -79,8 +79,7 @@ Affixes (`game/data/affixes.json`): 7 prefixes (Veteran +2 attack, Hardy +3 max 
 - Merchants (rate 0.15, scarce true; wares in `merchants.json`: Ration 25, Healing Draught 40, Scroll of Might 75).
 - Per-biome variants adjust rates: crypt (vaultRate 0.15 forgeRate 0.08), ossuary (vaultRate 0.1 denRate 0.15), fungal (pitfallRate 0.12 denRate 0.14), jungle (forgeRate 0.12 denRate 0.13), cinder (forgeRate 0.15 vaultRate 0.08).
 
-Most effects above are log-only or instant HP deltas. No persistent status counters exist yet.
-
+Most effects above (2026-09-01 snapshot) were log-only or instant HP deltas; persistent status counters are now wired per `game/status.go` + `game/game.go:2214` DoT tick.
 ### 1.6 Verification note — teleport
 
 `game/loot.go:TryUseAppearance` and `TryUseItem` filter candidates to `InBounds && Walkable`. `Walkable` returns false for `TileWall`, `TileDoor` closed, and `litter.BlocksMovement`. The filter also skips tiles occupied by an alive `EnemyParty`. The candidate set therefore never contains `TileWall` or out-of-bounds positions. After the move the code calls `UpdateFOV`. A fallback uses any walkable tile if every walkable tile is enemy-occupied. This prevents illegal teleport destinations.

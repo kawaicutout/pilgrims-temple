@@ -12,9 +12,7 @@ type WizardState struct {
 	Selected int `json:"selected"`
 }
 
-// WizardOptions is the data-driven list (7 entries). If game/data/wizard.json
-// exists it would override, but we ship a hardcoded fallback so the menu works
-// without a file.
+// WizardOptions is the hard-coded fallback list (8 entries, no wizard.json override exists; fallback hard-coded).
 var WizardOptions = []WizardOption{
 	{ID: "instant_level", Name: "Instant Level", Desc: "Gain one level immediately"},
 	{ID: "spawn_loot", Name: "Spawn Random Loot", Desc: "Spawn randomized treasure nearby"},

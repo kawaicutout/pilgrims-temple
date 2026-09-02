@@ -388,7 +388,7 @@ func loadFeaturesConfig() FeaturesConfig {
 func GetFeaturesConfig() FeaturesConfig { return loadFeaturesConfig() }
 
 // ---------------------------------------------------------------------------
-// Fountain / Shrine data (placeholder outcomes)
+// Outcome types for fountain/shrine (data-driven)
 // ---------------------------------------------------------------------------
 
 // FountainOutcome is one possible fountain result.
@@ -504,6 +504,44 @@ func MaybeSpawnFeatures(lvl *Level, floor int, rng *rand.Rand) []Feature {
 	}
 	_ = floor
 	cfg := loadFeaturesConfig()
+	// Per-biome overlay: if lvl has BiomeID, apply PerBiomeVariants[biomeID] rates.
+	// Falls back to top-level rates when biome key missing. Keeps _comment entry intact.
+	if lvl != nil && lvl.BiomeID != "" && len(cfg.PerBiomeVariants) > 0 {
+		if raw, ok := cfg.PerBiomeVariants[lvl.BiomeID]; ok {
+			var ov struct {
+				VaultRate    *float64 `json:"vaultRate"`
+				ForgeRate    *float64 `json:"forgeRate"`
+				DenRate      *float64 `json:"denRate"`
+				PitfallRate  *float64 `json:"pitfallRate"`
+				MerchantRate *float64 `json:"merchantRate"`
+				FountainRate *float64 `json:"fountainRate"`
+				ShrineRate   *float64 `json:"shrineRate"`
+			}
+			if err := json.Unmarshal(raw, &ov); err == nil {
+				if ov.VaultRate != nil {
+					cfg.Vaults.Rate = *ov.VaultRate
+				}
+				if ov.ForgeRate != nil {
+					cfg.Forges.Rate = *ov.ForgeRate
+				}
+				if ov.DenRate != nil {
+					cfg.Dens.Rate = *ov.DenRate
+				}
+				if ov.PitfallRate != nil {
+					cfg.Pitfalls.Rate = *ov.PitfallRate
+				}
+				if ov.MerchantRate != nil {
+					cfg.Merchants.Rate = *ov.MerchantRate
+				}
+				if ov.FountainRate != nil {
+					cfg.Fountains.Rate = *ov.FountainRate
+				}
+				if ov.ShrineRate != nil {
+					cfg.Shrines.Rate = *ov.ShrineRate
+				}
+			}
+		}
+	}
 
 	// Collect walkable candidates avoiding stairs and enemies.
 	candidates := make([]Pos, 0, lvl.W*lvl.H/2)

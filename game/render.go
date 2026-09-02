@@ -471,7 +471,12 @@ func (g *Game) Render() Frame {
 	}
 	levelStr := fmt.Sprintf("Level %d XP %d/%d", g.Level, g.XP, g.XPToNext)
 	goldStr := fmt.Sprintf("Gold %d", g.Gold)
-	scoreStr := fmt.Sprintf("Score %d", g.CalculateScore())
+	scoreStr := ""
+	if HasModifiedData() || g.Wizard {
+		scoreStr = "MOD"
+	} else {
+		scoreStr = fmt.Sprintf("Score %d", g.CalculateScore())
+	}
 	var status string
 	if aware != "" {
 		status = fmt.Sprintf("%s | %s %s | %s | %s | %s | %s | %s", floorStr, lightStr, aware, foodStr, carryStr, levelStr, goldStr, scoreStr)

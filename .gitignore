@@ -1,6 +1,8 @@
 # binaries and local run data (rebuilt by make; never commit)
 /pilgrims-temple
 /pilgrims-temple.exe
+/terminal
+/wasm
 pilgrims-temple-web.zip
 bin/
 scores.json

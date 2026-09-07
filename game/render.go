@@ -1175,7 +1175,7 @@ func (g *Game) RenderHelpOverlay() Frame {
 		}
 	}
 	lines := []struct{ text, fg string }{
-		{"PILGRIM'S TEMPLE - HELP", "gold-bright"},
+		{"PILGRIMS' TEMPLE - HELP", "gold-bright"},
 		{"", "bg"},
 		{"q / w / e / r  - select member 1-4 (free)", "gray-1"},
 		{"Move: arrows, numpad 1-9, hjkl + y b n + 9 (NE)", "gray-1"},

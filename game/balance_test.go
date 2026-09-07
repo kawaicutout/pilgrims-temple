@@ -4,7 +4,7 @@ package game
 //
 // This file is not a test. It is a vet-clean doc helper that lists the
 // invariants enforced by world generation and the manual/automated checks
-// that verify them. It exists so reviewers can confirm Pilgrim's Temple
+// that verify them. It exists so reviewers can confirm Pilgrims' Temple
 // M5 balance without reading the entire generator.
 //
 // 1. Stairs reachable via BFS (StairsUp → StairsDown on every floor)

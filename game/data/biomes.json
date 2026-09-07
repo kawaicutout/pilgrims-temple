@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — biomes. 14 biomes picked per floor from the levelBiomes table in world.json (run-seeded, so runs differ), desaturated palettes, litter categories (shared rubble + uniques like vines/mushroom caps), generationMethod rooms vs cavern (cellular automata), special enemies per biome, and slate-blue ambience lines every 30-60 turns. eligibleLevelRange is advisory fallback only.",
+  "notes": "Pilgrims' Temple — biomes. 14 biomes picked per floor from the levelBiomes table in world.json (run-seeded, so runs differ), desaturated palettes, litter categories (shared rubble + uniques like vines/mushroom caps), generationMethod rooms vs cavern (cellular automata), special enemies per biome, and slate-blue ambience lines every 30-60 turns. eligibleLevelRange is advisory fallback only.",
   "biomes": [
     {
       "id": "crypt",

@@ -23,7 +23,7 @@ func HasModifiedData() bool {
 		"tuning.json", "classes.json", "races.json", "affixes.json", "talents.json",
 		"enemies.json", "potions.json", "scrolls.json", "biomes.json", "floorThemes.json",
 		"litter.json", "features.json", "fountains.json", "shrines.json", "merchants.json",
-		"world.json", "statuses.json",
+		"world.json", "statuses.json", "title.txt",
 	}
 	for _, name := range names {
 		if b, ok := overlayJSON(name); ok {

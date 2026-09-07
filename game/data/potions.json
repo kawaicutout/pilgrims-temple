@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — potion appearance pool. Run-random: appearances are shuffled onto potion types at generation (DESIGN 7.2/11.1). Appearance is \"{Adjective} {Color}\" combinatorial from adjective and color pools (12×12=144). 9 appearances, 9 types, bijection per run via shuffle. Effect holds authoritative numerics; JSON stores visible turns — code applies turns+1 to account for TickStatuses decrement on creation turn. See consumables.go.",
+  "notes": "Pilgrims' Temple — potion appearance pool. Run-random: appearances are shuffled onto potion types at generation (DESIGN 7.2/11.1). Appearance is \"{Adjective} {Color}\" combinatorial from adjective and color pools (12×12=144). 9 appearances, 9 types, bijection per run via shuffle. Effect holds authoritative numerics; JSON stores visible turns — code applies turns+1 to account for TickStatuses decrement on creation turn. See consumables.go.",
   "appearances": [
     "Mottled Jade",
     "Vivid Yellow",

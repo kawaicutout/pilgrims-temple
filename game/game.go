@@ -92,7 +92,7 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	g.Floor = 0
 	g.VisitedFloors[0] = true
 	g.TransitionFiredForLevel[0] = true
-	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
+	g.Logf("Seed %d -- Pilgrims' Temple, %d floors.", seed, tuning.Floors)
 	g.Logf("You stand at the temple threshold.")
 	// Debug log for deeper enemy talents/affixes
 	for fi, lvl := range g.Levels {
@@ -757,7 +757,7 @@ type HelpEntry struct {
 // HelpLines returns help overlay lines table used by RenderHelpOverlay and frontends (DUP-11).
 func HelpLines() []HelpEntry {
 	return []HelpEntry{
-		{Text: "PILGRIM'S TEMPLE - HELP", FG: "gold-bright"},
+		{Text: "PILGRIMS' TEMPLE - HELP", FG: "gold-bright"},
 		{Text: "q / w / e / r  - select member 1-4 (free)", FG: "gray-1"},
 		{Text: "Move: arrows, numpad 1-9, hjkl + y b n + 9 (NE)", FG: "gray-1"},
 		{Text: "5 / . / Space  - wait 1 turn", FG: "gray-1"},

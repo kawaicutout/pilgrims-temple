@@ -1,6 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Libertinus+Mono&display=swap");
 
-/* Design tokens — Pilgrim's Temple (Party Roguelike) web build.
+/* Design tokens — Pilgrims' Temple (Party Roguelike) web build.
    Mirror of docs/design-guide.md. Core background with gold/red/slate accents,
    all colors desaturated. Both builds (terminal and web) share this identity. */
 
@@ -37,7 +37,7 @@
 
   /* Layout */
   --map-cell:       16px;
-  --map-line-height: 1.15;
+  --map-line-height: 1; /* cell grids tile seamlessly like a terminal; block art (title banner) stripes at anything above 1 */
 }
 
 /* Accessibility floor: informational glyphs never fall below 3:1 against

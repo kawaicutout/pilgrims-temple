@@ -1,4 +1,4 @@
-# Milestones — Pilgrim's Temple
+# Milestones — Pilgrims' Temple
 
 > **Superseded 2026-09-01 — Level.Items @ `game/biome.go:1019` + `TryPickup` @ `game/loot.go:61` + `WizardSpawnLootItems` @ `game/loot.go:1393`** — The 2026-09-01 audit below claimed floor items were absent; they have since been implemented. History is retained verbatim below for changelog.
 

@@ -60,7 +60,7 @@ func main() {
 			}
 		}
 		if w < minW || h < minH {
-			msg := " Pilgrim's Temple - resize to " + itoa(minW) + "x" + itoa(minH) + " (you have " + itoa(w) + "x" + itoa(h) + ") "
+			msg := " Pilgrims' Temple - resize to " + itoa(minW) + "x" + itoa(minH) + " (you have " + itoa(w) + "x" + itoa(h) + ") "
 			for i, ch := range msg {
 				if i < w {
 					s.SetContent(i, 0, ch, nil, styleGoldBr)

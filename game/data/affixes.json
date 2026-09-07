@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — affixes. Prefix = flat stat (common). Suffix = conditional behavior (rare, sometimes replaces a talent pick on level-up ~10%). Illustrative content; jam-tunable. Affixes belong to the member and are lost on death (DESIGN 5.2/7.3).",
+  "notes": "Pilgrims' Temple — affixes. Prefix = flat stat (common). Suffix = conditional behavior (rare, sometimes replaces a talent pick on level-up ~10%). Illustrative content; jam-tunable. Affixes belong to the member and are lost on death (DESIGN 5.2/7.3).",
   "prefixes": [
     { "id": "veteran",  "name": "Veteran",  "desc": "+2 STR (damage)",      "mod": { "attack": 2 } },
     { "id": "hardy",    "name": "Hardy",    "desc": "+3 max HP",            "mod": { "maxHP": 3 } },

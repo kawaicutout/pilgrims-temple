@@ -1,5 +1,5 @@
 @echo off
-REM Pilgrim's Temple — launch at 110x34 (DESIGN 10.2).
+REM Pilgrims' Temple — launch at 110x34 (DESIGN 10.2).
 REM Requires modern Windows Terminal or conhost. Uses `mode` to request size.
 setlocal
 set COLS=110

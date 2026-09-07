@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — status definitions. Central numeric source for durations, DEF deltas, DoT ticks, and resists. JSON stores visible turns — code applies visible+1 via StatusAppliedDuration to account for TickStatuses decrement on creation turn (H19). Effects with duration 0 are instantaneous/removal.",
+  "notes": "Pilgrims' Temple — status definitions. Central numeric source for durations, DEF deltas, DoT ticks, and resists. JSON stores visible turns — code applies visible+1 via StatusAppliedDuration to account for TickStatuses decrement on creation turn (H19). Effects with duration 0 are instantaneous/removal.",
   "statuses": [
     { "id": "hex", "name": "Hex", "desc": "-1 DEF", "duration": 10, "defDelta": -1 },
     { "id": "curse", "name": "Curse", "desc": "-1 DEF until cured (fountain/shrine/greater_healing)", "duration": 200, "defDelta": -1 },

@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — world pacing. 8 floors (0-7). recruitmentRate 0.3 per floor, enemyScaling lone 0.7@0 -> 0.2@7 (party size grows with depth), itemWeighting per depth with seed jitter.",
+  "notes": "Pilgrims' Temple — world pacing. 8 floors (0-7). recruitmentRate 0.3 per floor, enemyScaling lone 0.7@0 -> 0.2@7 (party size grows with depth), itemWeighting per depth with seed jitter.",
   "recruitmentRate": 0.3,
   "recruitmentRatePerFloor": [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
   "levelBiomes": [

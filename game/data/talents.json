@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — talent pools. Pools are rolled on level-up (DESIGN 5.3): each living member has 25% to receive a pick; pick chooses 1 from (class pool + tagged pools + generic). Occasionally replaced by affix gain (~10%). Talent cadence/content is jam-tunable.",
+  "notes": "Pilgrims' Temple — talent pools. Pools are rolled on level-up (DESIGN 5.3): each living member has 25% to receive a pick; pick chooses 1 from (class pool + tagged pools + generic). Occasionally replaced by affix gain (~10%). Talent cadence/content is jam-tunable.",
   "generic": [
     { "id": "tough",          "name": "Tough",          "desc": "+4 max HP" },
     { "id": "keen",           "name": "Keen",           "desc": "+1 damage" },

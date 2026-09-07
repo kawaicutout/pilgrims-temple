@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-//go:embed data/*.json
+//go:embed data/*.json data/*.txt
 var dataFS embed.FS
 
 // Tuning mirrors data/tuning.json.

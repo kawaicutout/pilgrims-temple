@@ -1,5 +1,5 @@
 {
-  "title": "Pilgrim's Temple",
+  "title": "Pilgrims' Temple",
   "floors": 8,
   "map": { "width": 80, "height": 24 },
   "layout": { "minCols": 110, "minRows": 34, "logLines": 8 },

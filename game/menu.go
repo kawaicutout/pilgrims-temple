@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type ClassInfo struct {
@@ -59,6 +60,163 @@ func (m *MainMenuState) Move(dir int) {
 	}
 	if m.Selected < 0 {
 		m.Selected = 0
+	}
+}
+// ---------------------------------------------------------------------------
+// Animated title banner (game/data/title.txt, two stacked halves).
+// ---------------------------------------------------------------------------
+
+var (
+	titleOnce         sync.Once
+	titleTop          []string
+	titleBottom       []string
+	titleOK           bool
+)
+
+// loadTitleArt reads the wide banner and splits it into two stacked halves
+// along the widest all-blank column band, so letterforms stay intact.
+func loadTitleArt() (top, bottom []string, ok bool) {
+	titleOnce.Do(func() {
+		b, err := dataFS.ReadFile("data/title.txt")
+		if err != nil {
+			return
+		}
+		lines := strings.Split(string(b), "\n")
+		var rows []string
+		for _, ln := range lines {
+			ln = strings.TrimRight(ln, " ")
+			if ln == "" {
+				continue
+			}
+			rows = append(rows, ln)
+		}
+		if len(rows) == 0 {
+			return
+		}
+		top, bottom, ok = splitTitleArt(rows)
+		if ok {
+			titleTop, titleBottom, titleOK = top, bottom, true
+		}
+	})
+	return titleTop, titleBottom, titleOK
+}
+
+// splitTitleArt cuts rows along the widest all-blank column band of width 2+,
+// keeping original column alignment inside each half.
+func splitTitleArt(rows []string) (top, bottom []string, ok bool) {
+	w := 0
+	for _, ln := range rows {
+		if n := len([]rune(ln)); n > w {
+			w = n
+		}
+	}
+	if w == 0 {
+		return nil, nil, false
+	}
+	grid := make([][]rune, len(rows))
+	for i, ln := range rows {
+		r := []rune(ln)
+		for len(r) < w {
+			r = append(r, ' ')
+		}
+		grid[i] = r
+	}
+	bestStart, bestEnd := -1, -1
+	for c := 0; c < w; {
+		if gridBlankCol(grid, c) {
+			s := c
+			for c < w && gridBlankCol(grid, c) {
+				c++
+			}
+			if c-s >= 2 && c-s > bestEnd-bestStart {
+				bestStart, bestEnd = s, c-1
+			}
+		} else {
+			c++
+		}
+	}
+	if bestStart < 0 {
+		return nil, nil, false
+	}
+	for _, r := range grid {
+		top = append(top, string(r[:bestStart]))
+		bottom = append(bottom, string(r[bestEnd+1:]))
+	}
+	return top, bottom, true
+}
+
+func gridBlankCol(grid [][]rune, c int) bool {
+	for _, r := range grid {
+		if c < len(r) && r[c] != ' ' {
+			return false
+		}
+	}
+	return true
+}
+
+func titleWidth(lines []string) int {
+	w := 0
+	for _, ln := range lines {
+		if n := len([]rune(ln)); n > w {
+			w = n
+		}
+	}
+	return w
+}
+
+// titleBevelColor chisels the banner: lit yellow upper-left edges, deep red
+// lower-right edges, brown/gold faces. Static — no phase. Hex colors render
+// on both builds (terminal parses #.., web passes through).
+func titleBevelColor(ch rune, lit, dark bool) string {
+	if lit {
+		if ch == '█' {
+			return "#f0d080"
+		}
+		return "#d3ad6b"
+	}
+	if dark {
+		if ch == '█' {
+			return "#a8564a"
+		}
+		return "#7a3a2a"
+	}
+	if ch == '█' {
+		return "#b8975a"
+	}
+	return "#8a6f42"
+}
+
+func drawTitleBlock(cells [][]Cell, w, x0, y0 int, lines []string) {
+	h := len(cells)
+	grid := make([][]rune, len(lines))
+	for i, ln := range lines {
+		grid[i] = []rune(ln)
+	}
+	at := func(r, c int) rune {
+		if r < 0 || r >= len(grid) || c < 0 || c >= len(grid[r]) {
+			return ' '
+		}
+		return grid[r][c]
+	}
+	for r, ln := range lines {
+		y := y0 + r
+		if y < 0 || y >= h {
+			continue
+		}
+		col := 0
+		for _, ch := range ln {
+			x := x0 + col
+			lit := at(r-1, col) == ' ' || at(r, col-1) == ' '
+			dark := at(r+1, col) == ' ' || at(r, col+1) == ' '
+			col++
+			if ch == ' ' {
+				continue
+			}
+			if x < 0 || x >= w {
+				continue
+			}
+			cells[y][x] = Cell{Glyph: ch, FG: titleBevelColor(ch, lit, dark), BG: "bg"}
+		}
 	}
 }
 
@@ -125,6 +283,51 @@ func NewRaceSelect(classes []string) (*RaceSelectState, error) {
 	return &RaceSelectState{Classes: cp, Races: races, Cursor: 0, Picks: []string{}}, nil
 }
 
+func RenderMainMenu(tuning Tuning, selected int) Frame {
+	w, h := tuning.Layout.MinCols, tuning.Layout.MinRows
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	optY := h/2 - 1
+	if top, bottom, ok := loadTitleArt(); ok && len(top) > 0 && len(bottom) > 0 {
+		y0 := 1
+		drawTitleBlock(cells, w, (w-titleWidth(top))/2, y0, top)
+		drawTitleBlock(cells, w, (w-titleWidth(bottom))/2, y0+len(top)+1, bottom)
+		optY = y0 + len(top) + 1 + len(bottom) + 2
+	} else {
+		title := "PILGRIMS' TEMPLE"
+		drawCentered(cells, w, h/2-4, title, "gold-bright")
+	}
+	for i, opt := range GetMainMenuOptions() {
+		prefix := "  "
+		fg := "gray-1"
+		if i == selected {
+			prefix = "> "
+			fg = "gold-bright"
+		}
+		line := prefix + opt
+		y := optY + i
+		if y < 0 || y >= h-1 {
+			continue
+		}
+		drawCentered(cells, w, y, line, fg)
+	}
+	if HasModifiedData() {
+		drawCentered(cells, w, h-3, "MODDED — scores disabled", "red-bright")
+	}
+	panel := []string{}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+	}
+	status := ""
+	hints := ""
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+
 func (rs *RaceSelectState) Move(dir int) {
 	n := len(rs.Races)
 	if n == 0 {
@@ -181,7 +384,7 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 	g.Floor = 0
 	g.VisitedFloors[0] = true
 	g.TransitionFiredForLevel[0] = true
-	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
+	g.Logf("Seed %d -- Pilgrims' Temple, %d floors.", seed, tuning.Floors)
 	names := ""
 	for i, m := range g.Party.Members {
 		if i > 0 {
@@ -222,7 +425,7 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 	g.Floor = 0
 	g.VisitedFloors[0] = true
 	g.TransitionFiredForLevel[0] = true
-	g.Logf("Seed %d -- Pilgrim's Temple, %d floors.", seed, tuning.Floors)
+	g.Logf("Seed %d -- Pilgrims' Temple, %d floors.", seed, tuning.Floors)
 	names := ""
 	for i, m := range g.Party.Members {
 		if i > 0 {
@@ -247,38 +450,6 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 	return g
 }
 
-func RenderMainMenu(tuning Tuning, selected int) Frame {
-	w, h := tuning.Layout.MinCols, tuning.Layout.MinRows
-	cells := make([][]Cell, h)
-	for y := range h {
-		cells[y] = make([]Cell, w)
-		for x := range w {
-			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
-		}
-	}
-	title := "PILGRIM'S TEMPLE"
-	drawCentered(cells, w, h/2-4, title, "gold-bright")
-	for i, opt := range GetMainMenuOptions() {
-		prefix := "  "
-		fg := "gray-1"
-		if i == selected {
-			prefix = "> "
-			fg = "gold-bright"
-		}
-		line := prefix + opt
-		drawCentered(cells, w, h/2-1+i, line, fg)
-	}
-	if HasModifiedData() {
-		drawCentered(cells, w, h-3, "MODDED — scores disabled", "red-bright")
-	}
-	panel := []string{}
-	for len(panel) < 12 {
-		panel = append(panel, "")
-	}
-	status := ""
-	hints := ""
-	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
-}
 // RenderMainMenuWithScores loads the Scoreboard via LoadScoreboard (handles missing file/localStorage gracefully)
 // and renders recent entries (top 5 by score descending) with columns: Rank, Score, PartyLevel, Gold, Depth, Seed, Victory/Cause, Members summary.
 // Keeps existing menu options above scores and uses available map width for scoreboard footer.
@@ -292,7 +463,7 @@ func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
 			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
 		}
 	}
-	title := "PILGRIM'S TEMPLE"
+	title := "PILGRIMS' TEMPLE"
 	drawCentered(cells, w, h/2-3, title, "gold-bright")
 	for i, opt := range GetMainMenuOptions() {
 		prefix := "  "

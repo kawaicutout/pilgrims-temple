@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — scroll appearance pool. Run-random: appearances are generated via conlang.json weighted onsets/nuclei/codas (GenerateConlangWord) — 1-2 word tokens like \"thae khor\", \"branel\", \"zae of orin\". 8 appearances, 8 types, bijection per run. JSON appearances may be empty; generation is preferred. Fallback static pool is lower-case conlang style to keep potion/scroll namespaces distinct. Effect holds authoritative numerics; JSON stores visible turns — code applies turns+1. See consumables.go.",
+  "notes": "Pilgrims' Temple — scroll appearance pool. Run-random: appearances are generated via conlang.json weighted onsets/nuclei/codas (GenerateConlangWord) — 1-2 word tokens like \"thae khor\", \"branel\", \"zae of orin\". 8 appearances, 8 types, bijection per run. JSON appearances may be empty; generation is preferred. Fallback static pool is lower-case conlang style to keep potion/scroll namespaces distinct. Effect holds authoritative numerics; JSON stores visible turns — code applies turns+1. See consumables.go.",
   "appearances": [],
   "types": [
     { "id": "identify", "name": "Identify", "desc": "Identifies all items in inventory", "effect": { "kind": "identify" } },

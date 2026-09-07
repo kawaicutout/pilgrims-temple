@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — themed floors. 8 themes, one per depth (floor 0-7). Each theme carries wall/floor glyph variants (wall stays \"#\" family), a desaturated tint (muted, low saturation), and baseline enemy/item weights used with seed variation. Variation per seed is applied in code (glyph variant roll, weight jitter).",
+  "notes": "Pilgrims' Temple — themed floors. 8 themes, one per depth (floor 0-7). Each theme carries wall/floor glyph variants (wall stays \"#\" family), a desaturated tint (muted, low saturation), and baseline enemy/item weights used with seed variation. Variation per seed is applied in code (glyph variant roll, weight jitter).",
   "themes": [
     {
       "id": "crypt",

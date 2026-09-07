@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pilgrim's Temple - minimal launcher, opens default terminal at size from tuning.json
+# Pilgrims' Temple - minimal launcher, opens default terminal at size from tuning.json
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BIN="$SCRIPT_DIR/bin/pilgrims-temple"

@@ -1665,18 +1665,19 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 	if panelMax < 10 {
 		panelMax = 29
 	}
-	html := `<div style="display:flex;gap:16px;align-items:flex-start"><div style="font-family:var(--font-monospace);line-height:var(--map-line-height);white-space:pre">`
+	html := `<div style="display:flex;gap:16px;align-items:flex-start"><div style="font-family:var(--font-monospace);font-size:var(--map-cell);line-height:var(--map-line-height);white-space:pre">`
 	for y := range frame.H {
+		html += `<div style="height:var(--map-cell);line-height:var(--map-line-height);overflow:hidden;white-space:pre">`
 		for x := range frame.W {
 			cell := frame.Cells[y][x]
 			col := colorForToken(cell.FG)
 			ch := string(cell.Glyph)
-			bgStyle := ""
+			bgStyle := ";display:inline-block;width:1ch;line-height:1;overflow:hidden;vertical-align:top"
 			if cell.BG == "cursor" {
-				bgStyle = ";background:var(--gold-bright);color:var(--bg);font-weight:bold"
+				bgStyle += ";background:var(--gold-bright);color:var(--bg);font-weight:bold"
 				html += `<span style="color:` + col + bgStyle + `">` + esc(ch) + `</span>`
 			} else {
-				html += `<span style="color:` + col + `">` + esc(ch) + `</span>`
+				html += `<span style="color:` + col + bgStyle + `">` + esc(ch) + `</span>`
 			}
 		}
 		if y < len(frame.Panel) {
@@ -1701,7 +1702,7 @@ func buildHTML(frame game.Frame, tuning game.Tuning) string {
 			}
 			html += `<span style="color:` + col + `"> ` + esc(line) + `</span>`
 		}
-		html += "\n"
+		html += `</div>`
 	}
 	html += `</div></div>`
 	return html

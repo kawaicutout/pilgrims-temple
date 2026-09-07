@@ -81,6 +81,7 @@ func NewGame(seed int64, tuning Tuning) *Game {
 	// Place relic on final floor down stairs
 	final := g.Levels[tuning.Floors-1]
 	g.Relic = final.StairsDown
+	final.Set(g.Relic, TileRelic)
 	g.Party = GenerateParty(rng, 1)
 	ApplyRaceBuffs(g.Party)
 	lootPartyForVerdant = g.Party
@@ -1976,10 +1977,11 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		}
 	}
 	// Check relic on final floor — claim but do not end run; escape to surface for bonus.
-	if g.Floor == g.Tuning.Floors-1 && next == g.Relic {
+	if g.Floor == g.Tuning.Floors-1 && next == g.Relic && !g.RelicCollected {
 		g.RelicCollected = true
 		g.Won = false
-		g.Logf("You claim the relic — escape to surface for bonus!")
+		g.CurLevel().Set(g.Relic, TileFloor)
+		g.Logf("You got the relic. Return to the surface.")
 		// Reset transition tracking so old floors feel new again.
 		g.VisitedFloors = make(map[int]bool)
 		g.TransitionFiredForLevel = make(map[int]bool)

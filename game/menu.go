@@ -378,6 +378,7 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 	}
 	final := g.Levels[tuning.Floors-1]
 	g.Relic = final.StairsDown
+	final.Set(g.Relic, TileRelic)
 	g.Party = GeneratePartyWithClasses(rng, classes, 1)
 	start := g.Levels[0].StairsUp
 	g.Party.Pos = start
@@ -419,6 +420,7 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 	}
 	final := g.Levels[tuning.Floors-1]
 	g.Relic = final.StairsDown
+	final.Set(g.Relic, TileRelic)
 	g.Party = GeneratePartyWithClassesAndRaces(rng, classes, races, 1)
 	start := g.Levels[0].StairsUp
 	g.Party.Pos = start
@@ -790,6 +792,80 @@ func buffSummary(b Buff) string {
 	return strings.Join(parts, ", ")
 }
 
+// RacePickState picks one race for a roster slot. Single Enter confirms.
+type RacePickState struct {
+	Races  []Race
+	Slot   int
+	Drafts int
+	Cursor int
+}
+
+// NewRacePickState loads races for the given 0-based slot.
+func NewRacePickState(slot, drafts int) *RacePickState {
+	races := LoadRaces()
+	if len(races) == 0 {
+		races = fallbackRaces()
+	}
+	return &RacePickState{Races: races, Slot: slot, Drafts: drafts}
+}
+
+// Move steps the cursor with wraparound.
+func (s *RacePickState) Move(dir int) {
+	if s == nil || len(s.Races) == 0 {
+		return
+	}
+	s.Cursor = (s.Cursor + dir + len(s.Races)) % len(s.Races)
+}
+
+// Choice returns the cursor race id, or "" when empty.
+func (s *RacePickState) Choice() string {
+	if s == nil || len(s.Races) == 0 {
+		return ""
+	}
+	if s.Cursor < 0 || s.Cursor >= len(s.Races) {
+		return ""
+	}
+	return s.Races[s.Cursor].ID
+}
+
+// RenderRacePick draws one race slot of the pipeline.
+func RenderRacePick(tuning Tuning, s *RacePickState) Frame {
+	slot, drafts := 1, 0
+	if s != nil {
+		slot, drafts = s.Slot+1, s.Drafts
+	}
+	w, h, cells := renderCreationChrome(tuning, "CHOOSE RACE", fmt.Sprintf("Pilgrim %d (roster %d/3)", slot, drafts))
+	if s != nil {
+		for i, r := range s.Races {
+			y := 5 + i*2
+			if y+1 >= h-1 {
+				break
+			}
+			prefix := "  "
+			fg := "gray-1"
+			if i == s.Cursor {
+				prefix = "> "
+				fg = "gold-bright"
+			}
+			line := fmt.Sprintf("%s%s", prefix, r.Name)
+			if bs := buffSummary(r.CharBuff); bs != "" {
+				line += fmt.Sprintf(" [%s]", bs)
+			}
+			if len(line) > w-2 {
+				line = line[:w-5] + "..."
+			}
+			drawString(cells, 2, y, line, fg)
+			desc := r.Desc
+			if len(desc) > w-6 {
+				desc = desc[:w-9] + "..."
+			}
+			drawString(cells, 4, y+1, desc, "gray-2")
+		}
+	}
+	panel, panelFG, status, hints := creationPanel("Race", "Up/Down: move  Enter: pick  Esc: back", tuning)
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+
 func RenderRaceSelect(tuning Tuning, rs *RaceSelectState) Frame {
 	w, h := tuning.Map.Width, tuning.Map.Height
 	cells := make([][]Cell, h)
@@ -912,7 +988,7 @@ func drawString(cells [][]Cell, x, y int, s string, fg string) {
 }
 
 // ---------------------------------------------------------------------------
-// Guided creation (Option A): Seed -> per slot Class -> Race -> Name -> Review.
+// Guided creation (Option A): Seed -> per slot Race -> Class -> Name -> Review.
 // ---------------------------------------------------------------------------
 
 // DraftMember is one roster draft: class and race chosen, name raw.

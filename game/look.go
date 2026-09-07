@@ -53,8 +53,8 @@ func Examine(g *Game, p Pos) string {
 		}
 	}
 	// Check relic on final floor.
-	if g.Floor == len(g.Levels)-1 && p == g.Relic {
-		return "Relic — the pilgrim's goal."
+	if g.Floor == len(g.Levels)-1 && p == g.Relic && !g.RelicCollected {
+		return "Relic (*) — the pilgrims' goal. Step onto it to claim it."
 	}
 
 	// Feature at tile (shrine/fountain/etc).

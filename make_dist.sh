@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # make_dist.sh — one-click itch.io release.
 # Builds windows.zip (exe + data + launcher), linux.zip (binary + data +
-# launcher), and web.zip (itch HTML5 upload) into dist/.
+# launcher), and web.zip (itch HTML5 upload, brotli + uncompressed wasm)
+# into dist/.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -15,7 +16,7 @@ make bin
 
 echo "Building web (make web)..."
 make web
-for f in web/index.html web/tokens.css web/wasm_exec.js web/main.wasm.br; do
+for f in web/index.html web/tokens.css web/wasm_exec.js web/main.wasm.br web/main.wasm; do
   [ -f "$f" ] || { echo "missing build artifact: $f" >&2; exit 1; }
 done
 
@@ -27,7 +28,7 @@ cp bin/pilgrims-temple run.sh "$DIST/stage/linux/"
 chmod +x "$DIST/stage/linux/run.sh"
 cp -r game/data "$DIST/stage/windows/data"
 cp -r game/data "$DIST/stage/linux/data"
-cp web/index.html web/tokens.css web/wasm_exec.js web/main.wasm.br "$DIST/stage/web/"
+cp web/index.html web/tokens.css web/wasm_exec.js web/main.wasm.br web/main.wasm "$DIST/stage/web/"
 
 python3 - "$DIST" <<'EOF'
 import sys, zipfile
@@ -37,7 +38,7 @@ stage = dist / "stage"
 plans = {
     "windows.zip": ["pilgrims-temple.exe", "run.bat", "data"],
     "linux.zip": ["pilgrims-temple", "run.sh", "data"],
-    "web.zip": ["index.html", "tokens.css", "wasm_exec.js", "main.wasm.br"],
+    "web.zip": ["index.html", "tokens.css", "wasm_exec.js", "main.wasm.br", "main.wasm"],
 }
 roots = {"windows.zip": "windows", "linux.zip": "linux", "web.zip": "web"}
 for archive, names in plans.items():

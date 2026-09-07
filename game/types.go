@@ -67,11 +67,12 @@ const (
 	TileStairsDown
 	TileStairsUp
 	TileDoor
+	TileRelic
 )
 
 func (t Tile) Walkable() bool {
 	switch t {
-	case TileFloor, TileStairsDown, TileStairsUp:
+	case TileFloor, TileStairsDown, TileStairsUp, TileRelic:
 		return true
 	case TileDoor:
 		// Door walkability is level-state dependent (open vs closed).
@@ -94,6 +95,8 @@ func (t Tile) Glyph() rune {
 		return '<'
 	case TileDoor:
 		return '+'
+	case TileRelic:
+		return '*'
 	default:
 		return ' '
 	}

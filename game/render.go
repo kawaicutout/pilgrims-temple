@@ -142,6 +142,8 @@ func (g *Game) Render() Frame {
 						fg = FloorColorForLevel(lvl)
 					case TileStairsDown, TileStairsUp:
 						fg = "gold"
+					case TileRelic:
+						fg = "gold-bright"
 					default:
 						fg = "fg"
 					}
@@ -437,6 +439,10 @@ func (g *Game) Render() Frame {
 	}
 	potionLines := buildInvLines("Potions:", potionCounts, "potion")
 	scrollLines := buildInvLines("Scrolls:", scrollCounts, "scroll")
+	if g.RelicCollected {
+		panel = append(panel, "Relic: return to surface")
+		panelFG = append(panelFG, "gold-bright")
+	}
 	panel = append(panel, potionLines...)
 	panel = append(panel, scrollLines...)
 	panelFG = append(panelFG, "gray-1", "gray-1", "gray-1", "gray-1", "gray-1", "gray-1")

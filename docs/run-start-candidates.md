@@ -3,8 +3,9 @@
 Goal: start a run with a seed entry plus 1–3 player-built characters. Each
 character: class, race, name (blank = random). The player can start with one,
 two, or three characters, or discard drafted characters. Decided: Option A
-(guided pipeline), implemented in `game/menu.go` creation states plus both
-frontends; seed blank means random, duplicate classes allowed.
+(guided pipeline: seed, then per pilgrim race, class, and name),
+implemented in `game/menu.go` creation states plus both frontends; seed
+blank means random, duplicate classes allowed.
 
 ## Current flow (facts)
 
@@ -30,8 +31,9 @@ frontends; seed blank means random, duplicate classes allowed.
 
 ## Candidate A — Guided pipeline (recommended)
 
-Seed → per slot: Class → Race → Name → Review list → Start. Esc steps back
+Seed → per slot: Race → Class → Name → Review list → Start. Esc steps back
 one screen. A `Discard` option on the review screen drops the current draft.
+One Enter confirms each pick (no separate confirm step).
 
 - Pros: reuses the existing list-menu pattern three times plus one text
   entry; smallest new render code; matches the current state-machine style,
@@ -87,44 +89,44 @@ Enter seed (blank for random)
 Enter: continue  Esc: back
 ```
 
-Class screen, slot 2 of up to 3:
+Race screen, slot 2 of up to 3 (one Enter picks and continues):
 
 ```
-CHOOSE PILGRIM 2 (1-3, Enter: done)
+CHOOSE RACE
 
-> Fighter      sturdy front line
-  Rogue        locks and loot
-  Cleric       healing over time
-  Druid        food economy
+Pilgrim 2 (roster 1/3)
 
-Roster: Mara the Fighter
-Enter: pick  Del: drop last  Esc: back
-```
-
-Race, then name, then review:
-
-```
-CHOOSE RACE — Rogue
-
-> Human     +1 HP per level
-  Elf       far sight
+> Human     [+1 HP]
+  Elf       [far sight]
   ...
 
-RACE FOR ROGUE: Elf_
+Roster: Mara the Human Fighter
+Enter: pick  Esc: back
+```
 
-NAME FOR ELF ROGUE (blank = random)
+Class, then name, then review:
+
+```
+CHOOSE PILGRIM
+
+Pilgrim 2 (roster 1/3)
+
+> Fighter — Shining Armor
+  Rogue — Nimble Fingers
+  ...
+
+NAME Elf Fighter (blank = random)
 
 > Kessa_
 
 REVIEW ROSTER
 
-> Mara — Fighter (Human)
-  Kessa — Rogue (Elf)
+> Mara — Human Fighter
+  Kessa — Elf Rogue
   [ Add pilgrim ]   (2/3)
   [ Begin descent ]
-  [ Discard last ]
 
-Enter: choose  Esc: back
+Enter: choose (Enter on a pilgrim discards them)  Esc: back
 ```
 
 ### B — Roster table

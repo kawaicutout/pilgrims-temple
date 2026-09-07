@@ -662,7 +662,7 @@ func AssertLevelHasExit(lvl *Level) bool {
 			// No stairs down required on relic floor; stairs up alone is enough.
 			return true
 		}
-		if lvl.At(lvl.StairsDown) != TileStairsDown {
+		if at := lvl.At(lvl.StairsDown); at != TileStairsDown && at != TileRelic {
 			return false
 		}
 		if !lvl.Walkable(lvl.StairsDown) {
@@ -741,7 +741,7 @@ func ensureStairsTiles(lvl *Level, rng *rand.Rand) {
 		}
 	} else {
 		if lvl.InBounds(lvl.StairsDown) {
-			if lvl.At(lvl.StairsDown) != TileStairsDown || !lvl.Walkable(lvl.StairsDown) {
+			if at := lvl.At(lvl.StairsDown); !lvl.Walkable(lvl.StairsDown) || (at != TileStairsDown && at != TileRelic) {
 				needsDown = true
 			}
 			for _, f := range lvl.Features {
@@ -762,7 +762,7 @@ func ensureStairsTiles(lvl *Level, rng *rand.Rand) {
 		if lvl.InBounds(lvl.StairsUp) {
 			lvl.Tiles[lvl.StairsUp.Y][lvl.StairsUp.X] = TileStairsUp
 		}
-		if lvl.InBounds(lvl.StairsDown) {
+		if lvl.InBounds(lvl.StairsDown) && !(isFinal && lvl.At(lvl.StairsDown) == TileRelic) {
 			lvl.Tiles[lvl.StairsDown.Y][lvl.StairsDown.X] = TileStairsDown
 		}
 		return

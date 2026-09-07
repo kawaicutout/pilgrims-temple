@@ -258,7 +258,8 @@ func main() {
 	useMemberSelected := 0
 	seedState := &game.SeedEntryState{}
 	var classPick *game.ClassPickState
-	var creationRace *game.RaceSelectState
+	var racePick *game.RacePickState
+	slotRace := ""
 	slotClass := ""
 	var nameEntry *game.NameEntryState
 	drafts := []game.DraftMember{}
@@ -346,8 +347,8 @@ func main() {
 					drawFrame(game.RenderClassPick(tuning, classPick))
 				}
 			case stateCreationRace:
-				if creationRace != nil {
-					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+				if racePick != nil {
+					drawFrame(game.RenderRacePick(tuning, racePick))
 				}
 			case stateCreationName:
 				if nameEntry != nil {
@@ -556,13 +557,13 @@ func main() {
 				}
 				switch k {
 				case game.KeyEnter:
-					var err error
-					classPick, err = game.NewClassPickState(len(drafts), len(drafts))
-					if err != nil || classPick == nil {
-						classPick = &game.ClassPickState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}, Slot: len(drafts), Drafts: len(drafts)}
+					racePick = game.NewRacePickState(len(drafts), len(drafts))
+					if racePick == nil {
+						drawFrame(game.RenderSeedEntry(tuning, seedState))
+						break
 					}
-					state = stateCreationClass
-					drawFrame(game.RenderClassPick(tuning, classPick))
+					state = stateCreationRace
+					drawFrame(game.RenderRacePick(tuning, racePick))
 				case game.KeyQuit:
 					state = stateMenu
 					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
@@ -588,55 +589,51 @@ func main() {
 						drawFrame(game.RenderClassPick(tuning, classPick))
 						break
 					}
-					var err error
-					creationRace, err = game.NewRaceSelect([]string{slotClass})
-					if err != nil || creationRace == nil {
-						drawFrame(game.RenderClassPick(tuning, classPick))
-						break
-					}
-					state = stateCreationRace
-					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+					nameEntry = &game.NameEntryState{Class: slotClass, Race: slotRace}
+					state = stateCreationName
+					drawFrame(game.RenderNameEntry(tuning, slotClass, slotRace, ""))
 				case game.KeyQuit:
-					state = stateSeed
-					drawFrame(game.RenderSeedEntry(tuning, seedState))
+					state = stateCreationRace
+					if racePick != nil {
+						drawFrame(game.RenderRacePick(tuning, racePick))
+					} else {
+						drawFrame(game.RenderSeedEntry(tuning, seedState))
+					}
 				default:
 					drawFrame(game.RenderClassPick(tuning, classPick))
 				}
 			case stateCreationRace:
-				if creationRace == nil {
-					state = stateCreationClass
-					if classPick != nil {
-						drawFrame(game.RenderClassPick(tuning, classPick))
-					} else {
-						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
-					}
+				if racePick == nil {
+					state = stateSeed
+					drawFrame(game.RenderSeedEntry(tuning, seedState))
 					break
 				}
 				switch k {
 				case game.KeyUp:
-					creationRace.Move(-1)
-					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+					racePick.Move(-1)
+					drawFrame(game.RenderRacePick(tuning, racePick))
 				case game.KeyDown:
-					creationRace.Move(1)
-					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+					racePick.Move(1)
+					drawFrame(game.RenderRacePick(tuning, racePick))
 				case game.KeyEnter:
-					if len(creationRace.Picks) > 0 {
-						nameEntry = &game.NameEntryState{Class: slotClass, Race: creationRace.Picks[0]}
-						state = stateCreationName
-						drawFrame(game.RenderNameEntry(tuning, slotClass, creationRace.Picks[0], ""))
-					} else {
-						creationRace.Select()
-						drawFrame(game.RenderRaceSelect(tuning, creationRace))
+					slotRace = racePick.Choice()
+					if slotRace == "" {
+						drawFrame(game.RenderRacePick(tuning, racePick))
+						break
 					}
+					var err error
+					classPick, err = game.NewClassPickState(len(drafts), len(drafts))
+					if err != nil || classPick == nil {
+						drawFrame(game.RenderRacePick(tuning, racePick))
+						break
+					}
+					state = stateCreationClass
+					drawFrame(game.RenderClassPick(tuning, classPick))
 				case game.KeyQuit:
-					if creationRace.Back() {
-						state = stateCreationClass
-						drawFrame(game.RenderClassPick(tuning, classPick))
-					} else {
-						drawFrame(game.RenderRaceSelect(tuning, creationRace))
-					}
+					state = stateSeed
+					drawFrame(game.RenderSeedEntry(tuning, seedState))
 				default:
-					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+					drawFrame(game.RenderRacePick(tuning, racePick))
 				}
 			case stateCreationName:
 				if nameEntry == nil {
@@ -710,17 +707,16 @@ func main() {
 						if reviewCursor < 0 {
 							reviewCursor = 0
 						}
-						state = stateSeed
-						drawFrame(game.RenderSeedEntry(tuning, seedState))
+						state = stateReview
+						drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
 					case "add":
-						var err error
-						classPick, err = game.NewClassPickState(len(drafts), len(drafts))
-						if err != nil || classPick == nil {
+						racePick = game.NewRacePickState(len(drafts), len(drafts))
+						if racePick == nil {
 							drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
 							break
 						}
-						state = stateCreationClass
-						drawFrame(game.RenderClassPick(tuning, classPick))
+						state = stateCreationRace
+						drawFrame(game.RenderRacePick(tuning, racePick))
 					case "begin":
 						classes := make([]string, len(drafts))
 						races := make([]string, len(drafts))

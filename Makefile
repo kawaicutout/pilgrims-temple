@@ -57,9 +57,9 @@ $(WASM_BR): $(WASM)
 # Both variants in one go (user requested: produce both web and web-brotli)
 web: wasm wasm-br
 
-# itch.io upload: zip of web/ with brotli wasm only (DESIGN 13.3)
+# itch.io upload: zip of web/ with brotli wasm + uncompressed fallback (DESIGN 13.3)
 zip: wasm-br
-	cd web && zip -r ../pilgrims-temple-web.zip index.html tokens.css wasm_exec.js main.wasm.br
+	cd web && zip -r ../pilgrims-temple-web.zip index.html tokens.css wasm_exec.js main.wasm.br main.wasm
 	@ls -lh pilgrims-temple-web.zip
 
 # Deploy web to GitHub Pages (legacy gh-pages branch, no Actions needed)

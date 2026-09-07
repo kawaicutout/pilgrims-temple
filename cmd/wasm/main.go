@@ -269,7 +269,8 @@ const (
 	throwSelected := 0
 	seedState := &game.SeedEntryState{}
 	var classPick *game.ClassPickState
-	var creationRace *game.RaceSelectState
+	var racePick *game.RacePickState
+	slotRace := ""
 	slotClass := ""
 	var nameEntry *game.NameEntryState
 	drafts := []game.DraftMember{}
@@ -323,10 +324,10 @@ const (
 		renderLogHints(frame)
 	}
 	renderCreationRace := func() {
-		if creationRace == nil {
+		if racePick == nil {
 			return
 		}
-		frame := game.RenderRaceSelect(tuning, creationRace)
+		frame := game.RenderRacePick(tuning, racePick)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -693,13 +694,13 @@ const (
 			}
 			switch k {
 			case game.KeyEnter:
-				var err error
-				classPick, err = game.NewClassPickState(len(drafts), len(drafts))
-				if err != nil || classPick == nil {
-					classPick = &game.ClassPickState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}, Slot: len(drafts), Drafts: len(drafts)}
+				racePick = game.NewRacePickState(len(drafts), len(drafts))
+				if racePick == nil {
+					renderSeed()
+					break
 				}
-				state = stateCreationClass
-				renderClassPick()
+				state = stateCreationRace
+				renderCreationRace()
 			case game.KeyQuit:
 				state = stateMenu
 				renderMenu()
@@ -725,49 +726,45 @@ const (
 					renderClassPick()
 					break
 				}
-				var err error
-				creationRace, err = game.NewRaceSelect([]string{slotClass})
-				if err != nil || creationRace == nil {
-					renderClassPick()
-					break
-				}
+				nameEntry = &game.NameEntryState{Class: slotClass, Race: slotRace}
+				state = stateCreationName
+				renderNameEntry()
+			case game.KeyQuit:
 				state = stateCreationRace
 				renderCreationRace()
-			case game.KeyQuit:
-				state = stateSeed
-				renderSeed()
 			default:
 				renderClassPick()
 			}
 		case stateCreationRace:
-			if creationRace == nil {
-				state = stateCreationClass
-				renderClassPick()
+			if racePick == nil {
+				state = stateSeed
+				renderSeed()
 				break
 			}
 			switch k {
 			case game.KeyUp:
-				creationRace.Move(-1)
+				racePick.Move(-1)
 				renderCreationRace()
 			case game.KeyDown:
-				creationRace.Move(1)
+				racePick.Move(1)
 				renderCreationRace()
 			case game.KeyEnter:
-				if len(creationRace.Picks) > 0 {
-					nameEntry = &game.NameEntryState{Class: slotClass, Race: creationRace.Picks[0]}
-					state = stateCreationName
-					renderNameEntry()
-				} else {
-					creationRace.Select()
+				slotRace = racePick.Choice()
+				if slotRace == "" {
 					renderCreationRace()
+					break
 				}
+				var err error
+				classPick, err = game.NewClassPickState(len(drafts), len(drafts))
+				if err != nil || classPick == nil {
+					renderCreationRace()
+					break
+				}
+				state = stateCreationClass
+				renderClassPick()
 			case game.KeyQuit:
-				if creationRace.Back() {
-					state = stateCreationClass
-					renderClassPick()
-				} else {
-					renderCreationRace()
-				}
+				state = stateSeed
+				renderSeed()
 			default:
 				renderCreationRace()
 			}
@@ -840,14 +837,13 @@ const (
 					}
 					renderReview()
 				case "add":
-					var err error
-					classPick, err = game.NewClassPickState(len(drafts), len(drafts))
-					if err != nil || classPick == nil {
+					racePick = game.NewRacePickState(len(drafts), len(drafts))
+					if racePick == nil {
 						renderReview()
 						break
 					}
-					state = stateCreationClass
-					renderClassPick()
+					state = stateCreationRace
+					renderCreationRace()
 				case "begin":
 					classes := make([]string, len(drafts))
 					races := make([]string, len(drafts))

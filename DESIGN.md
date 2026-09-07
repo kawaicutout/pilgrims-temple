@@ -84,7 +84,7 @@ The party moves as one unit. Any member can be the mover: movement is a party ac
 
 ### 4.2 Membership
 
-- The run starts with 1–3 members built in creation (seed, then per pilgrim class, race, and name with blank random; `NewGameFull`). Recruits during the run still cap the party at 4.
+- The run starts with 1–3 members built in creation (seed, then per pilgrim race, class, and name with blank random; `NewGameFull`). Recruits during the run still cap the party at 4.
 - Recruitment features in the dungeon add members up to the cap of 4. The specific features (prisons, captive adventurers) are jam content.
 - Shrines are chance-placed level features: each floor has a random chance of spawning one, so a run may see none at all. A shrine has four menu options via `ExecuteShrineChoice` — recruit a new member, restore a dead member, grant a free level-up (XP unchanged), or leave intact. Shrines are free (2026-09-07 decision): `game/data/shrines.json` lists the uses with no cost fields, and the recruit/resurrect/level-up paths deduct nothing. Restoration returns the member as they were — class, attributes, talents, affixes, and applied upgrades — with attributes re-scaled to the party level and the level-up awards missed while dead not granted (Section 5.3).
 - Recruits are generated at the current party level using the standard generation rules (Section 5.2), so a found member is useful immediately.
@@ -214,7 +214,7 @@ Gold is the run's currency. It appears wherever loot appears: slain enemies roll
 ## 8. Run Structure
 
 - The run descends through a fixed number of floors (default 8, `game/data/tuning.json:3` `floors:8`).
-- The final floor holds the relic; stepping onto `TileRelic` sets `RelicCollected` (`game/game.go:1884`) and wins the run (`Won`; `Over` set — re-entry repopulates old floors). Ascent to floor 0 via `StairsUp` after relic grants `Escaped` and the escape bonus (`tuning.json:36` `escapeBonus:500`; `game/score.go:138` `escaped:=Escaped` wired per RM3a [currently `g.Won`, will be `Escaped` after RM3a]).
+- The final floor has no stairs down: generation places `TileRelic` (`*`) where they would be. Stepping onto it claims the relic (`RelicCollected`): no inventory slot is used, the side panel shows `Relic: return to surface`, and the log says `You got the relic. Return to the surface.` The run is won by climbing back to floor 0 `StairsUp` with the relic, which sets `Escaped` plus the escape bonus (`tuning.json:36` `escapeBonus:500`).
 - Death of all members ends the run. The death screen shows the seed and the score.
 - A run can be suspended and resumed: save lib `game/save*.go` (`game/save.go:14` `SaveSlot`, `game/save_desktop.go:86` `HasSave`, `game/save_js.go:86` `HasSave`) — **wired per RM3 (Wave 2)**. One slot; the game saves on exit and the save is consumed on load (`game/save_desktop.go:33` `LoadFromFile` deletes file), so a finished run cannot be reloaded (no save-scumming). Saving and score records are not meta-progression: a save suspends one run, and scores are records; neither affects the next run's gameplay (Section 2).
 - Hit points regenerate slowly per member, once per world turn (Section 6.1). The rest command accelerates regeneration at the risk of encounters (Section 11.3). Rest is slower than combat and its healing does not improve with party level, so its value fades as the run deepens (Section 3.5).
@@ -386,15 +386,16 @@ The pre-jam prototype rendered a room and moved an `@` in both frontends from on
   styled background before drawing (Section 10.4), including fog-of-war
   cells; no screen falls back to the host default.
 - **Web export and compression.** The itch.io upload is a zip of the `web/`
-  directory: `index.html`, `tokens.css`, `wasm_exec.js`, and `main.wasm.br`.
-  The zip ships the brotli-compressed wasm only — compress with
-  `brotli -q 11` after `-ldflags="-s -w"` and `wasm-opt -O3` (if binaryen is
-  available). The loader fetches `main.wasm.br` and decompresses in
-  JavaScript (`DecompressionStream("br")`) before compiling, because the host
-  serves files without a `Content-Encoding: br` header; compile from bytes
+  directory: `index.html`, `tokens.css`, `wasm_exec.js`, `main.wasm.br`, and
+  `main.wasm` as an uncompressed fallback. Compress with `brotli -q 11`
+  after `-ldflags="-s -w"` and `wasm-opt -O3` (if binaryen is available).
+  The loader fetches `main.wasm.br` and decompresses in JavaScript
+  (`DecompressionStream("br")`) before compiling, because the host serves
+  files without a `Content-Encoding: br` header; compile from bytes
   (`WebAssembly.instantiate`) rather than `instantiateStreaming` so a wrong
   MIME type cannot break the load. `DecompressionStream` needs a modern
-  browser (Chrome 80+, Firefox 113+, Safari 16.4+).
+  browser (Chrome 80+, Firefox 113+, Safari 16.4+); older browsers fall back
+  to `main.wasm` automatically.
 - **Terminal size derivation.** The minimum window size stays derived from the
   live UI data — the committed layout is roughly 110×34, larger than a
   standard terminal (Section 10.2) — so panel and log growth cannot drift

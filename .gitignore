@@ -23,3 +23,6 @@ Thumbs.db
 vendor/
 # local review docs (never commit or push; see localdoc/README.md)
 /localdoc/
+
+# Pages workflow needs workflow-scope auth; add back with git add -f
+.github/workflows/pages.yml

@@ -12,7 +12,7 @@ type WizardState struct {
 	Selected int `json:"selected"`
 }
 
-// WizardOptions is the hard-coded fallback list (8 entries, no wizard.json override exists; fallback hard-coded).
+// WizardOptions is the hard-coded list (8 entries).
 var WizardOptions = []WizardOption{
 	{ID: "instant_level", Name: "Instant Level", Desc: "Gain one level immediately"},
 	{ID: "spawn_loot", Name: "Spawn Random Loot", Desc: "Spawn randomized treasure nearby"},

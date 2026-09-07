@@ -84,9 +84,9 @@ The party moves as one unit. Any member can be the mover: movement is a party ac
 
 ### 4.2 Membership
 
-- The run starts with 2 members.
+- The run starts with 1–3 members built in creation (seed, then per pilgrim class, race, and name with blank random; `NewGameFull`). Recruits during the run still cap the party at 4.
 - Recruitment features in the dungeon add members up to the cap of 4. The specific features (prisons, captive adventurers) are jam content.
-- Shrines are chance-placed level features: each floor has a random chance of spawning one, so a run may see none at all. A shrine has four menu options via `game/game.go:986` `ExecuteShrineChoice` — recruit a new member, restore a dead member, grant a free level-up (XP unchanged), or leave intact. Shrines are data-driven per-shrine costs (`game/data/shrines.json:3-4` `recruit 0/0`, `resurrect 75/50`; `game/features.go:446` `ShrineUse` `GoldCost`/`FoodCost`) — **currently tuned free for balance (2026-09-02 decision)**. `game/data/shrines.json` retains 75/50 as balance reference but deduction is deferred; the recruit/resurrect/level-up paths are free (see `game/game.go:1338` “Recruit free — costs data-driven but tuned 0”). Restoration returns the member as they were — class, attributes, talents, affixes, and applied upgrades — with attributes re-scaled to the party level and the level-up awards missed while dead not granted (Section 5.3). The resource decision is specced for future tuning.
+- Shrines are chance-placed level features: each floor has a random chance of spawning one, so a run may see none at all. A shrine has four menu options via `ExecuteShrineChoice` — recruit a new member, restore a dead member, grant a free level-up (XP unchanged), or leave intact. Shrines are free (2026-09-07 decision): `game/data/shrines.json` lists the uses with no cost fields, and the recruit/resurrect/level-up paths deduct nothing. Restoration returns the member as they were — class, attributes, talents, affixes, and applied upgrades — with attributes re-scaled to the party level and the level-up awards missed while dead not granted (Section 5.3).
 - Recruits are generated at the current party level using the standard generation rules (Section 5.2), so a found member is useful immediately.
 - Members cannot be dismissed.
 - Party size trades power against food (Section 3.5). A fourth member adds attributes and passives but accelerates the food clock; a smaller party runs leaner. This tradeoff is deliberate and makes a careful solo run possible.
@@ -209,7 +209,7 @@ The food clock is the run's time limit; a larger party is stronger per turn but 
 
 ### 7.5 Gold and merchants
 
-Gold is the run's currency. It appears wherever loot appears: defeated enemy parties drop it, and random dungeon finds (like consumables, sometimes placed by level generation) have a chance to include it. Gold has one use — merchants, scarce level features that turn gold into items (consumables, rations, and the permanent upgrades of Section 7.3). Wares and prices are jam content; that gold comes from loot and converts into items is the design commitment.
+Gold is the run's currency. It appears wherever loot appears: slain enemies roll drops (usually gold or food, rarely a potion or scroll on their tile; `rollKillDrop`), and random dungeon finds (like consumables, sometimes placed by level generation) have a chance to include it. Gold has one use — merchants, scarce level features that turn gold into items (consumables, rations, and the permanent upgrades of Section 7.3). Wares and prices are jam content; that gold comes from loot and converts into items is the design commitment.
 
 ## 8. Run Structure
 
@@ -301,13 +301,13 @@ Key map principles:
 | `z` / `Z` | Rest: 10-turn batch, 15 HP, ends early on hostile/hunger (`game/input.go:316-317` `z/Z→KeyRest`; `game/render.go:962` `z / Z - rest`) |
 | `q`/`w`/`e`/`r` (`Q`/`W`/`E`/`R` also) | Select member 1–4 (free; `game/input.go:324-331` `q/Q→Select1` etc.; `R` is **select 4**, not Rest) |
 | `g` / `G` | Contextual: pickup (`game/loot.go:61` `TryPickup` at `g.Party.Pos`) or on-feature — fountain/merchant/forge/shrine + close door (`game/input.go:198-216` `KeyPickup` tries door→fountain→merchant→forge→shrine→pickup; `game/render.go:963` `g - contextual use`) |
-| `u` / `U` | Use item: opens inventory selector over held potions/scrolls (no auto-consume; `game/input.go:220-230` `KeyUse` opens menu via `InventoryUseEntries`) |
-| `t` / `T` | Throw potion (menu + cursor; `game/input.go:232-245` `KeyThrow`) |
+| `u` / `U` | Use item: opens inventory selector over held potions/scrolls (no auto-consume; `game/input.go:220-230` `KeyUse` opens menu via `InventoryUseEntries`). Potions drink to one chosen member; enchant picks a member and greater_healing picks a member or the party (`TryUseAppearanceOnMember`); other scrolls keep tile targeting |
+| `t` / `T` | Throw potion (menu + cursor; `game/input.go:232-245` `KeyThrow`). Thrown damage resolves as a single-target attack favoring the active enemy unit (`pickEnemyTarget`) |
 | `v` / `V` | Examine / look mode (`game/input.go:189` `KeyLook`) |
 | `>` / `<` | Descend / ascend stairs (`game/input.go:318-321` `>→StairsDown` `<→StairsUp`; ascent from floor 0 blocked per `game/game.go:1943`) |
 | `?` | Help overlay (`game/render.go:956-969`) |
 | `Esc` | Quit to menu (`game/input.go:288,340` `Escape→KeyQuit`) |
-| `]` / `}` / `BracketRight` | Wizard menu (8 entries, no `wizard.json` override; `game/wizard.go:15-16`) |
+| `]` / `}` / `BracketRight` | Wizard menu (8 entries; `game/wizard.go:15`) |
 
 The use command is a single selector over the held potions and scrolls; examine lives at `v`.
 
@@ -374,8 +374,8 @@ Each run starts from a shown seed. The death and victory screens display the see
 - `game` package: pure Go core, no I/O, deterministic given a seed.
 - Terminal frontend: `tcell` TUI, compiled to a single static binary per platform (Linux, macOS, Windows).
 - Web frontend: the same core compiled to WASM with `syscall/js`, rendered into an HTML shell; deployed as an itch.io HTML5 upload.
-- Web builds bake the same data files into the WASM at compile time (`go:embed`). Players can also upload a data zip to replace the data in-browser; a reset button restores the embedded defaults. Uploaded data persists in browser storage until reset. Both builds consume identical data; only the loading path differs. — **Implemented per RM10 (Wave 6)** (anticipatory true after Wave 6: `archive/zip` inside WASM + `localStorage` + reset; see scope §14).
-- A simple data editor is a stretch goal: a small UI that edits the data files so content can be tuned without touching code; web builds then rebuild with the edited data embedded. — **Implemented per RM10 (Wave 6)** (same zip/upload infra; editor UI if any is follow-up).
+- Web builds bake the same data files into the WASM at compile time (`go:embed`). Players can also upload a data zip to replace the data in-browser; a reset button restores the embedded defaults. Uploaded data persists in browser storage until reset. Both builds consume identical data; only the loading path differs (`archive/zip` inside WASM + `localStorage` + reset in `cmd/wasm/main.go`, overlay in `game/data.go`).
+- A simple data editor is a stretch goal: a small UI that edits the data files so content can be tuned without touching code; the web shell exposes a minimal JSON editor over the same overlay. Full editor UI remains follow-up.
 ### 13.2 Milestone 0 — prototype gate (passed pre-jam)
 
 The pre-jam prototype rendered a room and moved an `@` in both frontends from one core, validating the Go-to-WASM layering and the dual distribution path. It contained no game systems and has been cleared; the implementation notes it produced are in Section 13.3.
@@ -432,7 +432,7 @@ Cut lines (original order, now **re-dated 2026-09-02** — most **delivered**):
 - Floor count (8) — **delivered** (`tuning.json:3` `floors:8`).
 - Level features (merchants, fountains, resurrection shrines) — **delivered** (`game/features.go:13-14`; `game/data/features.json` `fountains 0.2` `shrines 0.25` `merchants 0.15`; shrine 4-option menu `game/game.go:960`).
 - `perBiomeVariants` — **implemented per RM8a** (`game/data/features.json:9-14` `crypt {vaultRate 0.15 forgeRate 0.08}` `ossuary {vaultRate 0.1 denRate 0.15}` `fungal {pitfallRate 0.12 denRate 0.14}` etc.; wired via `game/features.go:219` `PerBiomeVariants`).
-- Game data editor + web data upload — **implemented per RM10 (Wave 6)** (anticipatory true after Wave 6: `archive/zip` parsing inside WASM + `localStorage` persistence + reset; see §13.1/13.3).
+- Game data editor + web data upload — **delivered** (`archive/zip` parsing inside WASM + `localStorage` persistence + reset in `cmd/wasm/main.go`; overlay in `game/data.go`; minimal JSON editor in the web shell).
 
 ## 15. Open Questions
 

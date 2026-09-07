@@ -160,3 +160,62 @@ func (g *Game) BuyWare(m *Merchant, wareID string) error {
 	// Ware delivery is caller-handled (give item/ration/upgrade).
 	return nil
 }
+
+// rollKillDrop rolls loot for one slain enemy: gold (45%) and food (30%)
+// arrive instantly; potions (6%) and scrolls (6%) drop on the slain party's
+// tile for pickup. Otherwise nothing.
+func (g *Game) rollKillDrop(ep *EnemyParty) {
+	if g == nil || g.RNG == nil {
+		return
+	}
+	r := g.RNG.Float64()
+	switch {
+	case r < 0.45:
+		amt := 3 + g.RNG.IntN(6) + g.Floor
+		g.AddGold(amt)
+		g.Logf("Looted %d gold.", amt)
+	case r < 0.75:
+		amt := 8 + g.RNG.IntN(8)
+		g.AddFood(amt)
+		g.Logf("Looted %d food.", amt)
+	case r < 0.81:
+		g.dropKillItem(ep, "potion")
+	case r < 0.87:
+		g.dropKillItem(ep, "scroll")
+	}
+}
+
+// dropKillItem places a random potion/scroll of the given kind on the slain
+// party's tile. Falls back to nothing when the tile is unavailable.
+func (g *Game) dropKillItem(ep *EnemyParty, kind string) {
+	lvl := g.CurLevel()
+	if ep == nil || lvl == nil {
+		return
+	}
+	var t struct {
+		ID  string
+		App string
+	}
+	if kind == "potion" {
+		_, types := loadPotionData()
+		if len(types) == 0 {
+			return
+		}
+		pick := types[g.RNG.IntN(len(types))]
+		t.ID = pick.ID
+		t.App = AppearanceForType(pick.ID)
+	} else {
+		_, types := loadScrollData()
+		if len(types) == 0 {
+			return
+		}
+		pick := types[g.RNG.IntN(len(types))]
+		t.ID = pick.ID
+		t.App = AppearanceForType(pick.ID)
+	}
+	if t.App == "" {
+		t.App = t.ID
+	}
+	lvl.Items = append(lvl.Items, GroundItem{Kind: kind, ID: t.ID, Name: t.App + " " + kind, Amount: 1, Pos: ep.Pos})
+	g.Logf("The slain foe dropped a %s %s!", t.App, kind)
+}

@@ -1,5 +1,5 @@
 {
-  "notes": "Pilgrim's Temple — potion appearance pool. Run-random: appearances are shuffled onto potion types at generation (DESIGN 7.2/11.1). Appearance is \"{Adjective} {Color}\" combinatorial from adjective and color pools (12×12=144). 8 appearances, 8 types, bijection per run via shuffle. Effect holds authoritative numerics; JSON stores visible turns — code applies turns+1 to account for TickStatuses decrement on creation turn. See consumables.go.",
+  "notes": "Pilgrim's Temple — potion appearance pool. Run-random: appearances are shuffled onto potion types at generation (DESIGN 7.2/11.1). Appearance is \"{Adjective} {Color}\" combinatorial from adjective and color pools (12×12=144). 9 appearances, 9 types, bijection per run via shuffle. Effect holds authoritative numerics; JSON stores visible turns — code applies turns+1 to account for TickStatuses decrement on creation turn. See consumables.go.",
   "appearances": [
     "Mottled Jade",
     "Vivid Yellow",
@@ -8,7 +8,8 @@
     "Deep Amber",
     "Murky Brown",
     "Bright Red",
-    "Dark Blue"
+    "Dark Blue",
+    "Faint Green"
   ],
   "types": [
     { "id": "healing", "name": "Healing", "desc": "Restores 12 HP to one member", "effect": { "kind": "heal", "amount": 12 } },
@@ -18,6 +19,7 @@
     { "id": "fire_resist", "name": "Fire Resistance", "desc": "+30% fire resist for 60 turns", "effect": { "kind": "status", "status": "fire_resist", "duration": 60, "resistPct": 30 } },
     { "id": "paralysis", "name": "Paralysis", "desc": "Paralyzes for 3 turns (negative)", "effect": { "kind": "status", "status": "paralysis", "duration": 3 } },
     { "id": "levitation", "name": "Levitation", "desc": "Float over traps for 25 turns", "effect": { "kind": "status", "status": "levitation", "duration": 25 } },
-    { "id": "enlightenment", "name": "Enlightenment", "desc": "Reveals map for 15 turns", "effect": { "kind": "status", "status": "enlightenment", "duration": 15 } }
+    { "id": "enlightenment", "name": "Enlightenment", "desc": "Reveals map for 15 turns", "effect": { "kind": "status", "status": "enlightenment", "duration": 15 } },
+    { "id": "regeneration", "name": "Regeneration", "desc": "Regenerates 1 HP every 2 turns for 20 turns", "effect": { "kind": "status", "status": "regenerate", "duration": 20 } }
   ]
 }

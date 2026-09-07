@@ -105,7 +105,7 @@ func fallbackRaces() []Race {
 		{ID: "dwarf", Name: "Dwarf", Desc: "+4 HP, +1 DEF, +2 dmg below 50% HP, tremorsense 4 +1 per extra Dwarf", CharBuff: Buff{HP: 4, DEF: 1}, PartyBuff: Buff{}, SynergyBuff: SynergyBuff{Desc: "Tremorsense 4 +1 per extra Dwarf", Threshold: 1}},
 		{ID: "halfling", Name: "Halfling", Desc: "+1 HP, 5% avoid damage/negative, 10% extra item on pickup", CharBuff: Buff{HP: 1}, PartyBuff: Buff{}, SynergyBuff: SynergyBuff{Desc: "5% avoid, 10% extra loot", Threshold: 1}},
 		{ID: "gnome", Name: "Gnome", Desc: "+2 MDEF, 10% instant identify first of kind, 5% per Gnome to not consume scroll", CharBuff: Buff{MDEF: 2}, PartyBuff: Buff{}, SynergyBuff: SynergyBuff{Desc: "5% per Gnome scroll save", Threshold: 1}},
-		{ID: "half_orc", Name: "Half-orc", Desc: "+2 ATK, no ATK reductions, +1 ATK per other Half-orc", CharBuff: Buff{ATK: 2}, PartyBuff: Buff{}, SynergyBuff: SynergyBuff{Desc: "+1 ATK per other Half-orc", Threshold: 2}},
+		{ID: "half_orc", Name: "Half-orc", Desc: "+2 ATK, +1 ATK per other Half-orc", CharBuff: Buff{ATK: 2}, PartyBuff: Buff{}, SynergyBuff: SynergyBuff{Desc: "+1 ATK per other Half-orc", Threshold: 2}},
 		{ID: "troll", Name: "Troll", Desc: "+4 HP +2 ATK, Regen every 3 ticks, double food cost, counts twice when >50% health", CharBuff: Buff{HP: 4, ATK: 2}, PartyBuff: Buff{}, SynergyBuff: SynergyBuff{Desc: "Regen 3 ticks, double food", Threshold: 1}},
 	}
 }
@@ -513,33 +513,6 @@ func HalfOrcATKBonus(p *Party, m *Member) int {
 		return c - 1
 	}
 	return 0
-}
-
-// IsHalfOrcImmuneToATKReduction reports true if member is half-orc and should ignore ATK reductions.
-func IsHalfOrcImmuneToATKReduction(m *Member) bool {
-	if m == nil {
-		return false
-	}
-	return normalizeRaceID(m.Race) == "half_orc"
-}
-
-// TryReduceATK attempts to reduce member ATK by delta (positive = reduction). Returns true if applied, false if immune.
-func TryReduceATK(m *Member, delta int) bool {
-	if m == nil || delta <= 0 {
-		return false
-	}
-	if IsHalfOrcImmuneToATKReduction(m) {
-		return false
-	}
-	m.ATK[0] -= delta
-	m.ATK[1] -= delta
-	if m.ATK[0] < 0 {
-		m.ATK[0] = 0
-	}
-	if m.ATK[1] < 0 {
-		m.ATK[1] = 0
-	}
-	return true
 }
 
 // Troll helpers

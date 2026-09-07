@@ -1,0 +1,55 @@
+name: Deploy web to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+
+      - name: Install brotli + wasm-opt
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y brotli binaryen
+          brotli --version
+          wasm-opt --version
+
+      - name: Build web (WASM + brotli)
+        run: make web
+
+      - name: Verify web artifact
+        run: ls -lh web/ && test -f web/index.html && test -f web/main.wasm && test -f web/main.wasm.br
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

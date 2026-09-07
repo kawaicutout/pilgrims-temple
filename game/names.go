@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // fallback data — used if JSON load fails; kept for robustness.
@@ -195,4 +196,22 @@ func GenerateName(rng *rand.Rand, used map[string]bool) string {
 		}
 	}
 	return conlangName(rng)
+}
+
+// CleanName trims a player-entered name to at most 12 runes of letters,
+// digits, spaces, apostrophes, and hyphens. Returns "" when nothing remains,
+// meaning "pick a random name".
+func CleanName(s string) string {
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		if n >= 12 {
+			break
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == ' ' || r == '\'' || r == '-' {
+			b.WriteRune(r)
+			n++
+		}
+	}
+	return strings.TrimSpace(b.String())
 }

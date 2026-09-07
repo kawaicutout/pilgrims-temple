@@ -199,7 +199,7 @@ func resistsForTalent(talent string) float64 {
 // Single apply hubs — collapse 3× duplicate switches.
 // ---------------------------------------------------------------------------
 
-func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyParty) {
+func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyParty, member *Member) {
 	eff := potionEffect(typeID)
 	// Defaults when JSON missing (robust fallback)
 	if eff.Kind == "" {
@@ -209,7 +209,7 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 			eff = ConsumableEffect{Kind: "heal", Amount: 12}
 		case "poison":
 			eff = ConsumableEffect{Kind: "damage", Amount: 6}
-		case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment":
+		case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment", "regeneration":
 			eff = ConsumableEffect{Kind: "status", Status: typeID, Duration: 40}
 			switch typeID {
 			case "strength":
@@ -226,6 +226,9 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				eff.Duration = 25
 			case "enlightenment":
 				eff.Duration = 15
+			case "regeneration":
+				eff.Duration = 20
+				eff.Status = "regenerate"
 			}
 		}
 	}
@@ -238,20 +241,32 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 		}
 		amt += lootHealBonus(g.Party)
 		if isSelf {
-			healed := 0
-			for _, m := range g.Party.Members {
-				if m.IsAlive() && m.HP < m.MaxHP {
-					m.HP += amt
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
+			if member != nil {
+				if member.IsAlive() && member.HP < member.MaxHP {
+					member.HP += amt
+					if member.HP > member.MaxHP {
+						member.HP = member.MaxHP
 					}
-					healed++
+					g.Logf("Healing potion restores %d HP to %s.", amt, member.Name)
+				} else {
+					g.Logf("Healing potion: %s is already at full health.", member.Name)
 				}
-			}
-			if healed > 0 {
-				g.Logf("Healing potion restores %d HP to %d members.", amt, healed)
 			} else {
-				g.Logf("Healing potion: already at full health.")
+				healed := 0
+				for _, m := range g.Party.Members {
+					if m.IsAlive() && m.HP < m.MaxHP {
+						m.HP += amt
+						if m.HP > m.MaxHP {
+							m.HP = m.MaxHP
+						}
+						healed++
+					}
+				}
+				if healed > 0 {
+					g.Logf("Healing potion restores %d HP to %d members.", amt, healed)
+				} else {
+					g.Logf("Healing potion: already at full health.")
+				}
 			}
 		} else if targetEnemy != nil {
 			healed := 0
@@ -282,6 +297,21 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				g.Logf("Thick skin shrugs off poison!")
 			} else if hasCounterspellNegate(g.Party, g.RNG) {
 				g.Logf("Counterspell negates poison!")
+			} else if member != nil {
+				member.HP -= amt
+				if member.HP <= 0 {
+					member.HP = 0
+					member.Alive = false
+				}
+				g.Logf("Poison potion deals %d damage to %s!", amt, member.Name)
+				if g.Party.LivingCount() == 0 {
+					g.Over = true
+					if g.Cause == "" {
+						g.Cause = "Poison"
+					}
+					g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+					g.RecordScore()
+				}
 			} else {
 				_, dmg := g.Party.ApplyDamage(g.RNG, amt)
 				g.Logf("Poison potion deals %d damage!", dmg)
@@ -295,26 +325,28 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				}
 			}
 		} else if targetEnemy != nil {
-			dmgTotal := 0
-			for _, m := range targetEnemy.Members {
-				if m.IsAlive() {
-					m.HP -= amt
-					dmgTotal += amt
-					if m.HP <= 0 {
-						m.HP = 0
-						m.Alive = false
-					}
+			// Thrown as an attack: single target, favoring the active enemy unit.
+			idx := pickEnemyTarget(g.RNG, targetEnemy)
+			if idx < 0 {
+				g.Logf("Poison potion splashes harmlessly.")
+			} else {
+				m := targetEnemy.Members[idx]
+				m.HP -= amt
+				if m.HP <= 0 {
+					m.HP = 0
+					m.Alive = false
 				}
-			}
-			g.Logf("Poison potion deals %d damage to %s!", dmgTotal, targetEnemy.DisplayName())
-			if !targetEnemy.IsAlive() {
-				g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
-				g.AddKill()
+				g.Logf("Poison potion deals %d damage to %s!", amt, m.Name)
+				if !targetEnemy.IsAlive() {
+					g.Logf("%s collapses from poison!", targetEnemy.DisplayName())
+					g.AddKill()
+					g.rollKillDrop(targetEnemy)
+				}
 			}
 		} else {
 			g.Logf("Poison potion shatters on ground.")
 		}
-	case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment":
+	case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment", "regeneration":
 		statusID := eff.Status
 		if statusID == "" {
 			statusID = typeID
@@ -338,6 +370,8 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 					durVisible = 25
 				case "enlightenment":
 					durVisible = 15
+				case "regeneration":
+					durVisible = 20
 				}
 			}
 		}
@@ -415,6 +449,12 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				g.Logf("Enlightenment potion splashes on %s.", targetEnemy.DisplayName())
 				// apply status already done above; enemy case does not reveal map
 			}
+		case "regeneration":
+			if isSelf {
+				g.Logf("Regeneration potion: you regenerate for %d turns.", durVisible)
+			} else {
+				g.Logf("Regeneration potion splashes on %s.", targetEnemy.DisplayName())
+			}
 		}
 	default:
 		// generic fallback from desc
@@ -437,7 +477,7 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 	}
 }
 
-func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyParty, target Pos) {
+func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 	eff := scrollEffect(typeID)
 	// defaults when missing
 	if eff.Kind == "" {
@@ -563,6 +603,7 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 					if !e.IsAlive() {
 						g.Logf("Fireball slays %s!", e.DisplayName())
 						g.AddKill()
+						g.rollKillDrop(e)
 					} else {
 						g.Logf("Fireball hits %s for %d fire damage.", e.DisplayName(), dmg)
 					}
@@ -580,6 +621,19 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 		}
 	case "enchant":
 		if isSelf || targetEnemy == nil {
+			if member != nil && member.IsAlive() {
+				affix := GetRandomAffix(g.RNG)
+				if affix != "" {
+					member.Affixes = append(member.Affixes, affix)
+					ApplyAffixMod(member, affix)
+					g.Logf("Enchant scroll: %s gains %s.", member.Name, affix)
+				} else {
+					member.ATK[0]++
+					member.ATK[1]++
+					g.Logf("Enchant scroll: %s grows stronger (ATK %d-%d).", member.Name, member.ATK[0], member.ATK[1])
+				}
+				break
+			}
 			members := g.Party.LivingMembers()
 			if len(members) > 0 {
 				m := members[g.RNG.IntN(len(members))]
@@ -677,11 +731,18 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 			cleanse = []string{"curse", "hex"}
 		}
 		if isSelf || targetEnemy == nil {
-			for _, m := range g.Party.Members {
-				if m.IsAlive() {
-					m.HP += healAmt
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
+			if member != nil && member.IsAlive() {
+				member.HP += healAmt
+				if member.HP > member.MaxHP {
+					member.HP = member.MaxHP
+				}
+			} else {
+				for _, m := range g.Party.Members {
+					if m.IsAlive() {
+						m.HP += healAmt
+						if m.HP > m.MaxHP {
+							m.HP = m.MaxHP
+						}
 					}
 				}
 			}
@@ -693,7 +754,11 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 					g.Party.RemoveStatus(sid)
 				}
 			}
-			g.Logf("Greater healing scroll restores %d HP to all members.", healAmt)
+			if member != nil && member.IsAlive() {
+				g.Logf("Greater healing scroll restores %d HP to %s.", healAmt, member.Name)
+			} else {
+				g.Logf("Greater healing scroll restores %d HP to all members.", healAmt)
+			}
 		} else {
 			for _, m := range targetEnemy.Members {
 				if m.IsAlive() {

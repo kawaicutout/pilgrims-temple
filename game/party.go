@@ -307,10 +307,6 @@ func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitI
 	if p.LivingCount() == 1 && target != nil && target.HasAffix("of_wrath") {
 		raw += 2
 	}
-	// Half-orc ATK reduction immunity placeholder (dormant until ATK-reduction status exists)
-	if target != nil && IsHalfOrcImmuneToATKReduction(target) {
-		_ = target
-	}
 	def := target.DEF
 	if isMagic {
 		def = target.MDEF

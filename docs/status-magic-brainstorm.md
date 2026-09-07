@@ -22,7 +22,7 @@ Notes: `effect` is a placeholder string. Combat rolls the chance and logs `"{att
 
 ### 1.2 Potion types (`game/data/potions.json`) — **> Status 2026-09-01 snapshot — superseded. Potions/scrolls/statuses now wired per `game/status.go` / `game/loot.go:359` (`TryUseAppearance`) / `game/game.go:2214` (DoT tick). History retained below.**
 
-The data file defines 8 types. Appearances are 8 color names (Mottled Jade, Vivid Yellow, Smoky Grey, Pale Violet, Deep Amber, Murky Brown, Bright Red, Dark Blue) shuffled onto types per run.
+The data file defines 9 types. Appearances are 9 color names (Mottled Jade, Vivid Yellow, Smoky Grey, Pale Violet, Deep Amber, Murky Brown, Bright Red, Dark Blue, Faint Green) shuffled onto types per run.
 
 | id | name | desc |
 |---|---|---|
@@ -34,6 +34,7 @@ The data file defines 8 types. Appearances are 8 color names (Mottled Jade, Vivi
 | paralysis | Paralysis | Paralyzes for 3 turns (negative) |
 | levitation | Levitation | Float over traps for 25 turns |
 | enlightenment | Enlightenment | Reveals map for 15 turns |
+| regeneration | Regeneration | Regenerates 1 HP every 2 turns for 20 turns |
 
 Current code (2026-09-01 snapshot, now superseded): healing restores 12 HP to each living member; poison applies 6 damage via `ApplyDamage`; other potions log a message only (no mechanical status yet). **Now wired per `game/status.go` + `game/loot.go:359` + `game/game.go:2214`.**
 
@@ -68,10 +69,10 @@ Classes (`game/data/classes.json`) define Buff A (passive from start), Buff B an
 
 Affixes (`game/data/affixes.json`): 7 prefixes (Veteran +2 attack, Hardy +3 max HP, Keen +1 damage, Stout +1 defense, Nimble +5% dodge, Bright +1 light radius, Burdened +3 carry) and 7 suffixes (of Wrath +2 damage when sole survivor, of Warding 5% to negate magic, of the Hollow +5 HP -1 light, of Thorns return 1 damage on hit, of Plenty -0.25 food tick, of Mending +1 HP per rest batch, of the Martyr blocked damage spills as 1 thorns).
 
-### 1.5 Fountains, shrines, forges, and other level features — **> Status 2026-09-01 snapshot — superseded. Fountains/shrines/forges/statuses now wired per `game/status.go` / `game/loot.go:359` / `game/game.go:2214` + shrine data-driven costs per `game/data/shrines.json`. History retained below.**
+### 1.5 Fountains, shrines, forges, and other level features — **> Status 2026-09-01 snapshot — superseded. Fountains/shrines/forges/statuses now wired per `game/status.go` / `game/loot.go:359` / `game/game.go:2214` + free shrines per `game/data/shrines.json` (2026-09-07). History retained below.**
 
 - Fountains (`game/data/fountains.json`, rate 0.2): Healing Waters (+10 HP), Tainted Waters (-5 HP), Blessed Spring (+5 HP + bless), Cursed Pool (-2 HP + curse).
-- Shrines (`game/data/shrines.json`, rate 0.25): Recruitment (recruit a new member), Resurrection (75 gold, 50 food).
+- Shrines (`game/data/shrines.json`, rate 0.25): Recruitment (recruit a new member), Resurrection (free).
 - Forges (`game/data/features.json`, rate 0.1, costType gold, goldCost 25, foodCost 50): upgrade path (data placeholder).
 - Vaults (rate 0.12, locked true, treasureMin 25 treasureMax 80, trappedChance 0.2).
 - Dens (rate 0.12, monsterMin 3 monsterMax 5).
@@ -117,7 +118,7 @@ Other common candidates: haste/slow already imply food-clock interaction; fear a
 
 The proposals below are ordered by payoff and implementation cost. The milestone will work through them in order and will stop when scope is complete.
 
-1. Implement missing potion and scroll mechanics as timed statuses. Add a small status counter map on `Party` and `EnemyParty` (duration in turns). Wire strength, invisibility, fire_resist, paralysis, levitation, and enlightenment to that map. This gives the existing 8+8 types mechanical effect.
+1. Implement missing potion and scroll mechanics as timed statuses. Add a small status counter map on `Party` and `EnemyParty` (duration in turns). Wire strength, invisibility, fire_resist, paralysis, levitation, enlightenment, and regeneration to that map. This gives the existing 9+8 types mechanical effect.
 
 2. Promote enemy placeholder effects to real statuses. Map hex to -1 defense for 10 turns, rend to bleed 2 per turn for 6 turns, entangle to root for 4 turns, spore to poison 1 per turn for 8 turns with regen interaction, regenerate to existing `regen` flag. Add `Iron Will` and `Ward` checks at application time.
 

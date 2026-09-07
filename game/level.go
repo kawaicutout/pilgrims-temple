@@ -267,26 +267,41 @@ func (e *EnemyParty) MemberColor(idx int) string {
 func (e *EnemyParty) Glyph() rune {
 	for _, m := range e.Members {
 		if m.IsAlive() {
-			switch m.Class {
-			case "goblin":
-				return 'g'
-			case "orc":
-				return 'o'
-			case "kobold":
-				return 'k'
-			case "rat":
-				return 'r'
-			case "troll":
-				return 'T'
-			default:
-				if len(m.Name) > 0 {
-					return rune(m.Name[0])
-				}
-				return 'e'
+			if g := glyphForEnemyClass(m.Class); g != 0 {
+				return g
 			}
+			if len(m.Name) > 0 {
+				return rune(m.Name[0])
+			}
+			return 'e'
 		}
 	}
 	return 'e'
+}
+
+// glyphForEnemyClass resolves an enemy glyph from enemies.json data,
+// keeping the original five as fallback when data is absent.
+func glyphForEnemyClass(class string) rune {
+	for _, e := range loadEnemies() {
+		if e.ID == class && e.Glyph != "" {
+			for _, r := range e.Glyph {
+				return r
+			}
+		}
+	}
+	switch class {
+	case "goblin":
+		return 'g'
+	case "orc":
+		return 'o'
+	case "kobold":
+		return 'k'
+	case "rat":
+		return 'r'
+	case "troll":
+		return 'T'
+	}
+	return 0
 }
 
 func (e *EnemyParty) DisplayName() string {
@@ -380,6 +395,9 @@ type enemyEntry struct {
 	XP           int     `json:"xp"`
 	TalentChance float64 `json:"talentChance"`
 	AffixChance  float64 `json:"affixChance"`
+	Weak         bool    `json:"weak,omitempty"`
+	Special      bool    `json:"special,omitempty"`
+	Weight       int     `json:"weight,omitempty"`
 }
 
 type enemiesFile struct {
@@ -430,11 +448,11 @@ func pickEnemyForFloor(rng *rand.Rand, floor int) enemyEntry {
 	entries := loadEnemies()
 	var pool []enemyEntry
 	for _, e := range entries {
-		if e.ID == "troll" && floor < 3 {
+		if e.Special {
+			// Special biome enemies spawn only via biome tables, not the generic pool.
 			continue
 		}
-		if e.ID == "vine_horror" || e.ID == "spore_mother" {
-			// Special biome enemies only via biome special spawn, not generic pool
+		if e.ID == "troll" && floor < 3 {
 			continue
 		}
 		pool = append(pool, e)
@@ -442,13 +460,35 @@ func pickEnemyForFloor(rng *rand.Rand, floor int) enemyEntry {
 	if len(pool) == 0 {
 		pool = entries
 	}
-	return pool[rng.IntN(len(pool))]
+	// Weighted pick with a slight bias toward weaker types (difficulty relief):
+	// weak 3 tickets, normal 2, explicit Weight overrides (troll 1).
+	total := 0
+	weights := make([]int, len(pool))
+	for i, e := range pool {
+		w := e.Weight
+		if w <= 0 {
+			w = 2
+			if e.Weak {
+				w = 3
+			}
+		}
+		weights[i] = w
+		total += w
+	}
+	r := rng.IntN(total)
+	for i, w := range weights {
+		r -= w
+		if r < 0 {
+			return pool[i]
+		}
+	}
+	return pool[len(pool)-1]
 }
 
 // Generate fills a level with rooms+corridors and stairs. Deterministic from rng.
 // Delegates to biome-aware generation (rooms vs cavern) and ensures palette/litter/features.
 func (l *Level) Generate(rng *rand.Rand, floor int) {
-	biome := GetBiomeForFloor(floor)
+	biome := GetBiomeForFloor(floor, rng)
 	l.GenerateWithBiome(rng, floor, biome)
 }
 

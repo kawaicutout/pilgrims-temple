@@ -83,16 +83,16 @@ func potionAppearancePool() []string {
 // fallback is stable across calls; InitIdentification reshuffles per-run.
 func generatedPotionAppearances() []string {
 	pool := potionAppearancePool()
-	// Deterministic sample: shuffle with fixed seed then take first 8.
+	// Deterministic sample: shuffle with fixed seed then take first 9.
 	rng := rand.New(rand.NewPCG(1, 0x9e3779b97f4a7c15))
 	shuffleStrings(rng, pool)
-	out := make([]string, 8)
-	copy(out, pool[:8])
+	out := make([]string, 9)
+	copy(out, pool[:9])
 	return out
 }
 
 // fallback appearances — used if JSON load fails; kept for robustness.
-// Must match the 8-entry pool described in DESIGN 7.2 and the
+// Must match the 9-entry pool described in DESIGN 7.2 and the
 // "{Adjective} {Color}" pattern above. Generated style.
 var fallbackPotionAppearances = []string{
 	"Mottled Jade",
@@ -103,6 +103,7 @@ var fallbackPotionAppearances = []string{
 	"Murky Brown",
 	"Bright Red",
 	"Dark Blue",
+	"Faint Green",
 }
 
 var fallbackScrollAppearances = []string{
@@ -125,6 +126,7 @@ var fallbackPotionTypes = []itemType{
 	{ID: "paralysis", Name: "Paralysis", Desc: "Paralyzes for 3 turns (negative)", Effect: ConsumableEffect{Kind: "status", Status: "paralysis", Duration: 3}},
 	{ID: "levitation", Name: "Levitation", Desc: "Float over traps for 25 turns", Effect: ConsumableEffect{Kind: "status", Status: "levitation", Duration: 25}},
 	{ID: "enlightenment", Name: "Enlightenment", Desc: "Reveals map for 15 turns", Effect: ConsumableEffect{Kind: "status", Status: "enlightenment", Duration: 15}},
+	{ID: "regeneration", Name: "Regeneration", Desc: "Regenerates 1 HP every 2 turns for 20 turns", Effect: ConsumableEffect{Kind: "status", Status: "regenerate", Duration: 20}},
 }
 
 var fallbackScrollTypes = []itemType{
@@ -154,7 +156,7 @@ func loadPotionData() (appearances []string, types []itemType) {
 		pf.Types = append([]itemType(nil), fallbackPotionTypes...)
 	}
 	// pf.Appearances is the JSON pool (fallback) when present; the per-run
-	// 8-way bijection is built by InitIdentification shuffling onto types.
+	// N-way bijection is built by InitIdentification shuffling onto types.
 	return pf.Appearances, pf.Types
 }
 

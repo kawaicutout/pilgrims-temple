@@ -1,12 +1,12 @@
 {
-  "notes": "Pilgrim's Temple \u2014 biomes. 5 biomes with eligible ranges, desaturated palettes, litter categories (shared rubble + uniques like vines/mushroom caps), generationMethod rooms vs cavern (cellular automata), special enemies per biome, and slate-blue ambience lines every 30-60 turns.",
+  "notes": "Pilgrim's Temple — biomes. 14 biomes picked per floor from the levelBiomes table in world.json (run-seeded, so runs differ), desaturated palettes, litter categories (shared rubble + uniques like vines/mushroom caps), generationMethod rooms vs cavern (cellular automata), special enemies per biome, and slate-blue ambience lines every 30-60 turns. eligibleLevelRange is advisory fallback only.",
   "biomes": [
     {
       "id": "crypt",
       "name": "Crypt",
       "eligibleLevelRange": [
         1,
-        3
+        2
       ],
       "colorPalette": {
         "primary": "#6a7a7a",
@@ -34,7 +34,7 @@
       },
       "generationMethod": "rooms",
       "specialEnemies": [
-        "rat",
+        "wight",
         "kobold"
       ],
       "ambience": [
@@ -53,7 +53,7 @@
       "name": "Ossuary",
       "eligibleLevelRange": [
         2,
-        4
+        3
       ],
       "colorPalette": {
         "primary": "#7a5a3a",
@@ -81,7 +81,7 @@
       },
       "generationMethod": "rooms",
       "specialEnemies": [
-        "kobold",
+        "charnel",
         "orc"
       ],
       "ambience": [
@@ -100,7 +100,7 @@
       "name": "Fungal Grove",
       "eligibleLevelRange": [
         3,
-        5
+        4
       ],
       "colorPalette": {
         "primary": "#4a6a4a",
@@ -129,7 +129,7 @@
       "generationMethod": "cavern",
       "specialEnemies": [
         "spore_mother",
-        "rat"
+        "beetle"
       ],
       "ambience": [
         "Spores drift like pale snow through fungal gloom.",
@@ -147,7 +147,7 @@
       "name": "Jungle Overgrowth",
       "eligibleLevelRange": [
         4,
-        6
+        5
       ],
       "colorPalette": {
         "primary": "#3d5a3a",
@@ -176,7 +176,7 @@
       "generationMethod": "cavern",
       "specialEnemies": [
         "vine_horror",
-        "kobold"
+        "mite"
       ],
       "ambience": [
         "Vines tighten overhead with a soft creak.",
@@ -222,8 +222,8 @@
       },
       "generationMethod": "cavern",
       "specialEnemies": [
-        "troll",
-        "orc"
+        "ember",
+        "troll"
       ],
       "ambience": [
         "Ash drifts on heat that has no source.",
@@ -234,6 +234,168 @@
         "Cracked tiles tick as they cool in the dark.",
         "A faint, acrid haze stings the eyes.",
         "Distant stone sighs as heat shifts through old flues."
+      ]
+    },
+    {
+      "id": "gatehouse",
+      "name": "Gatehouse",
+      "eligibleLevelRange": [1, 2],
+      "colorPalette": {"primary": "#6a6a7a", "secondary": "#5a5a6a", "accent": "#8a8a9a"},
+      "color": "#6a6a7a",
+      "tint": "#6a6a7a",
+      "litter": {"destructible": ["barrel", "crate", "urn"], "passable": ["rubble", "dust", "puddle"], "impassable": ["column", "rubble_wall", "altar"]},
+      "generationMethod": "rooms",
+      "specialEnemies": ["warden", "goblin"],
+      "ambience": [
+        "Chains clink somewhere above the gate arch.",
+        "Booted feet once marched these flagstones daily.",
+        "A rusted portcullis hangs crooked in its slot.",
+        "Watch-bells hang silent, tongueless with age.",
+        "Cold air funnels through the murder holes."
+      ]
+    },
+    {
+      "id": "cells",
+      "name": "Cells",
+      "eligibleLevelRange": [1, 3],
+      "color": "#5a5a62",
+      "colorPalette": {"primary": "#5a5a62", "secondary": "#4a4a52", "accent": "#7a7a82"},
+      "tint": "#5a5a62",
+      "litter": {"destructible": ["barrel", "crate", "bone_pile"], "passable": ["dust", "rubble", "puddle"], "impassable": ["column", "rubble_wall", "pit"]},
+      "generationMethod": "rooms",
+      "specialEnemies": ["jailer", "rat"],
+      "ambience": [
+        "Empty manacles chime softly in the dark.",
+        "Straw pallets molder in the corners.",
+        "Scratch marks count days on the cell doors.",
+        "A draft moans through the barred slots.",
+        "Someone long gone still paces here, or seems to."
+      ]
+    },
+    {
+      "id": "warren",
+      "name": "Warren",
+      "eligibleLevelRange": [2, 2],
+      "colorPalette": {"primary": "#6a5a4a", "secondary": "#54463c", "accent": "#8a7a6a"},
+      "color": "#6a5a4a",
+      "tint": "#6a5a4a",
+      "litter": {"destructible": ["crate", "barrel", "bone_pile"], "passable": ["dust", "rubble", "moss"], "impassable": ["rubble_wall", "pit", "column"]},
+      "generationMethod": "cavern",
+      "specialEnemies": ["beetle", "rat"],
+      "ambience": [
+        "Burrow mouths pock the soft walls.",
+        "Something gnaws steadily, out of sight.",
+        "The tunnels branch wrong, like a maze half-dug.",
+        "Loose earth sifts from the low ceiling.",
+        "Small eyes blink and vanish down side holes."
+      ]
+    },
+    {
+      "id": "sunken",
+      "name": "Sunken Chapel",
+      "eligibleLevelRange": [3, 3],
+      "colorPalette": {"primary": "#4a6a72", "secondary": "#3a555c", "accent": "#6a8a92"},
+      "color": "#4a6a72",
+      "tint": "#4a6a72",
+      "litter": {"destructible": ["barrel", "crate", "urn"], "passable": ["puddle", "slime", "moss"], "impassable": ["column", "pit", "altar"]},
+      "generationMethod": "rooms",
+      "specialEnemies": ["drowned", "slime"],
+      "ambience": [
+        "Black water laps at the sunken flagstones.",
+        "Drowned candles float, still somehow lit.",
+        "Your steps echo back a half-beat late.",
+        "Algae slicks the lower steps.",
+        "Bells toll dully from below the waterline."
+      ]
+    },
+    {
+      "id": "archive",
+      "name": "Archive",
+      "eligibleLevelRange": [4, 6],
+      "colorPalette": {"primary": "#7a6a4a", "secondary": "#62563e", "accent": "#9a8a6a"},
+      "color": "#7a6a4a",
+      "tint": "#7a6a4a",
+      "litter": {"destructible": ["crate", "barrel", "urn"], "passable": ["dust", "rubble", "puddle"], "impassable": ["column", "sarcophagus", "rubble_wall"]},
+      "generationMethod": "rooms",
+      "specialEnemies": ["cultist", "mite"],
+      "ambience": [
+        "Scroll dust hangs thick as curtain gauze.",
+        "Shelf rows lean like tired mourners.",
+        "A page turns somewhere, with no hand to turn it.",
+        "Ink and mildew sweeten the stale air.",
+        "Whispers file themselves between the stacks."
+      ]
+    },
+    {
+      "id": "sanctum",
+      "name": "Sanctum",
+      "eligibleLevelRange": [5, 5],
+      "colorPalette": {"primary": "#8a7a5a", "secondary": "#6e6248", "accent": "#aa9a72"},
+      "color": "#8a7a5a",
+      "tint": "#8a7a5a",
+      "litter": {"destructible": ["urn", "barrel", "crate"], "passable": ["dust", "rubble", "puddle"], "impassable": ["altar", "column", "sarcophagus"]},
+      "generationMethod": "rooms",
+      "specialEnemies": ["penitent", "cultist"],
+      "ambience": [
+        "Candle rows burn for no congregation.",
+        "Kneel-worn stone dips before the altar.",
+        "A choir hums one note, then stops.",
+        "Incense smoke spells slow letters upward.",
+        "The hush here feels listened-to."
+      ]
+    },
+    {
+      "id": "infernal",
+      "name": "Infernal Chapel",
+      "eligibleLevelRange": [6, 8],
+      "colorPalette": {"primary": "#7a3a2a", "secondary": "#5e2e22", "accent": "#9a5a42"},
+      "color": "#7a3a2a",
+      "tint": "#7a3a2a",
+      "litter": {"destructible": ["ash_barrel", "crate", "cinder_block"], "passable": ["ash", "rubble", "puddle"], "impassable": ["cinder_column", "lava_pit", "rubble_wall"]},
+      "generationMethod": "cavern",
+      "specialEnemies": ["hulk", "imp"],
+      "ambience": [
+        "Brimstone sweat beads on the black stone.",
+        "Chains hang in lengths, swaying without wind.",
+        "A deep furnace breath warms the floor grates.",
+        "Scorch marks climb the walls like ivy.",
+        "Far below, something vast turns over."
+      ]
+    },
+    {
+      "id": "throne",
+      "name": "Throne Room",
+      "eligibleLevelRange": [7, 8],
+      "colorPalette": {"primary": "#7a6a3a", "secondary": "#62562e", "accent": "#9a8a52"},
+      "color": "#7a6a3a",
+      "tint": "#7a6a3a",
+      "litter": {"destructible": ["urn", "crate", "barrel"], "passable": ["dust", "rubble", "moss"], "impassable": ["column", "altar", "sarcophagus"]},
+      "generationMethod": "rooms",
+      "specialEnemies": ["wraith", "husk"],
+      "ambience": [
+        "A throne of fused bone overlooks the hall.",
+        "Moth-eaten banners remember old victories.",
+        "The carpet path is worn by centuries of knees.",
+        "A crown of black glass sits empty, waiting.",
+        "Courtier ghosts hold their last positions."
+      ]
+    },
+    {
+      "id": "abyss",
+      "name": "Abyssal Rift",
+      "eligibleLevelRange": [8, 8],
+      "colorPalette": {"primary": "#3a3a52", "secondary": "#2e2e42", "accent": "#565670"},
+      "color": "#3a3a52",
+      "tint": "#3a3a52",
+      "litter": {"destructible": ["bone_pile", "crate", "ash_barrel"], "passable": ["ash", "dust", "rubble"], "impassable": ["pit", "rubble_wall", "bone_column"]},
+      "generationMethod": "cavern",
+      "specialEnemies": ["gloom", "bat"],
+      "ambience": [
+        "The dark below has a texture, like oil.",
+        "Your light bends inward at the rift edge.",
+        "Echoes return saying things you did not say.",
+        "Cold rises in slow, deliberate waves.",
+        "Stars of pale fungus mark the far wall."
       ]
     }
   ]

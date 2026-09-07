@@ -88,6 +88,7 @@ type WorldConfig struct {
 	EnemyScaling            EnemyScaling         `json:"enemyScaling"`
 	ItemWeighting           map[string][]float64 `json:"itemWeighting"`
 	ItemWeights             map[string][]float64 `json:"itemWeights"`
+	LevelBiomes             [][]string           `json:"levelBiomes"`
 }
 
 // RecruitmentChance returns recruitment chance for a floor (0.3 default).
@@ -117,6 +118,21 @@ func (w WorldConfig) LoneChance(floor int) float64 {
 		floor = len(arr) - 1
 	}
 	return arr[floor]
+}
+
+// BiomeOptions returns the candidate biome ids for a floor from the
+// levelBiomes table (clamped). Empty when the table is absent.
+func (w WorldConfig) BiomeOptions(floor int) []string {
+	if len(w.LevelBiomes) == 0 {
+		return nil
+	}
+	if floor < 0 {
+		floor = 0
+	}
+	if floor >= len(w.LevelBiomes) {
+		floor = len(w.LevelBiomes) - 1
+	}
+	return w.LevelBiomes[floor]
 }
 
 // ItemWeight returns per-depth item weight (1.0 if missing).

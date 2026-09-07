@@ -206,7 +206,7 @@ func (g *Game) TryThrowAppearance(appearance string, target Pos) bool {
 		g.Logf("Threw %s at (%d,%d).", it.Name, target.X, target.Y)
 	}
 	// Cursor throw — reuse consumable hub (enemy-targeted).
-	g.applyPotionEffect(trueType, false, targetEnemy)
+	g.applyPotionEffect(trueType, false, targetEnemy, nil)
 	g.EndPlayerTurn("")
 	return true
 }
@@ -1411,49 +1411,18 @@ func (g *Game) handleShrine(f *Feature) {
 		}
 	}
 	canRecruit := len(g.Party.Members) < 4
-	// Load costs (first shrine use defines cost; fallback 75 gold/50 food)
-	costGold, costFood := 75, 50
-	if uses := GetShrineUses(); len(uses) > 0 {
-		for _, u := range uses {
-			if u.ID == "resurrect" {
-				if u.GoldCost > 0 {
-					costGold = u.GoldCost
-				}
-				if u.FoodCost > 0 {
-					costFood = u.FoodCost
-				}
-				break
-			}
-		}
-	}
+	// Shrines are free (2026-09-07 decision): no cost data.
 	if hasDead {
-		// Try to pay gold first, else food, else fail.
-		if g.Gold >= costGold {
-			g.Gold -= costGold
-			m := g.Party.Members[deadIdx]
-			m.Alive = true
-			m.HP = m.MaxHP
-			g.Party.EnsureSelection()
-			g.Logf("Shrine resurrects %s for %d gold! (+)", m.Name, costGold)
-			g.removeFeatureAt(f.Pos, FeatureShrine)
-			return
-		}
-		if g.Food >= costFood {
-			g.Food -= costFood
-			g.FoodFloat -= float64(costFood)
-			m := g.Party.Members[deadIdx]
-			m.Alive = true
-			m.HP = m.MaxHP
-			g.Party.EnsureSelection()
-			g.Logf("Shrine resurrects %s for %d food! (+)", m.Name, costFood)
-			g.removeFeatureAt(f.Pos, FeatureShrine)
-			return
-		}
-		g.Logf("Shrine resurrection needs %d gold or %d food (you have %d gold, %d food).", costGold, costFood, g.Gold, g.Food)
+		m := g.Party.Members[deadIdx]
+		m.Alive = true
+		m.HP = m.MaxHP
+		g.Party.EnsureSelection()
+		g.Logf("Shrine resurrects %s for free! (+)", m.Name)
+		g.removeFeatureAt(f.Pos, FeatureShrine)
 		return
 	}
 	if canRecruit {
-		// Recruit free — costs data-driven but tuned 0 (2026-09-02 balance)
+		// Recruit free (2026-09-07 decision): shrines have no costs.
 		classes, err := LoadClasses()
 		pick := "fighter"
 		if err == nil && len(classes) > 0 && g.RNG != nil {
@@ -1871,10 +1840,12 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			if !e.IsAlive() {
 				g.Logf("%s hits %s for %d -- party slain!", attacker, e.DisplayName(), dmg)
 				g.AddKill()
+				g.rollKillDrop(e)
 				g.GainXP(20 + g.Floor*10)
 			} else if killed {
 				g.Logf("%s hits %s for %d -- slain!", attacker, memberName, dmg)
 				g.AddKill()
+				g.rollKillDrop(e)
 				g.GainXP(10 + g.Floor*5)
 			} else {
 				g.Logf("%s hits %s for %d.", attacker, memberName, dmg)
@@ -2217,8 +2188,8 @@ func (g *Game) EndPlayerTurn(msg string) {
 				g.Logf("Haste fades.")
 			case StatusSlow:
 				g.Logf("Slow fades.")
-			case StatusSilence:
-				g.Logf("Silence lifts.")
+			case StatusRegenerate:
+				g.Logf("Regeneration fades.")
 			case StatusStun:
 				g.Logf("Stun wears off.")
 			case StatusConfusion:
@@ -2269,6 +2240,22 @@ func (g *Game) EndPlayerTurn(msg string) {
 				}
 				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
 				g.RecordScore()
+			}
+		}
+		// Regenerate — duration data-driven via statuses.json (20t); heals 1 HP every 2 ticks.
+		if g.Party.HasStatus(StatusRegenerate) && g.Turn%2 == 0 {
+			healed := 0
+			for _, m := range g.Party.Members {
+				if m.IsAlive() && m.HP < m.MaxHP {
+					m.HP++
+					if m.HP > m.MaxHP {
+						m.HP = m.MaxHP
+					}
+					healed++
+				}
+			}
+			if healed > 0 {
+				g.Logf("Regeneration restores 1 HP to %d members.", healed)
 			}
 		}
 	}
@@ -2402,6 +2389,7 @@ func (g *Game) EnemyTurn() {
 			if !e.IsAlive() {
 				g.Logf("%s bleeds out!", e.DisplayName())
 				g.AddKill()
+				g.rollKillDrop(e)
 				continue
 			}
 		}
@@ -2422,6 +2410,7 @@ func (g *Game) EnemyTurn() {
 			if !e.IsAlive() {
 				g.Logf("%s succumbs to poison!", e.DisplayName())
 				g.AddKill()
+				g.rollKillDrop(e)
 				continue
 			}
 		}
@@ -2465,6 +2454,7 @@ func (g *Game) EnemyTurn() {
 						if !e.IsAlive() {
 							g.Logf("%s collapses from thorns!", e.DisplayName())
 							g.AddKill()
+							g.rollKillDrop(e)
 							continue
 						}
 					}

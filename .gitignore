@@ -1,7 +1,10 @@
-# binaries (root only; bin/ is intentionally tracked)
+# binaries and local run data (rebuilt by make; never commit)
 /pilgrims-temple
 /pilgrims-temple.exe
 pilgrims-temple-web.zip
+bin/
+scores.json
+dist/
 /tmp/
 *.tmp
 

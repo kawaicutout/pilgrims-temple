@@ -412,13 +412,11 @@ func GetFountainOutcomes() []FountainOutcome {
 	return out
 }
 
-// ShrineUse is one shrine function (recruit vs resurrect).
+// ShrineUse is one shrine function (recruit vs resurrect). Shrines are free.
 type ShrineUse struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	GoldCost int    `json:"goldCost"`
-	FoodCost int    `json:"foodCost"`
-	Desc     string `json:"desc,omitempty"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Desc string `json:"desc,omitempty"`
 }
 
 type shrinesFile struct {
@@ -434,16 +432,16 @@ func loadShrines() []ShrineUse {
 	b, err := dataFS.ReadFile("data/shrines.json")
 	if err != nil {
 		shrinesCache = []ShrineUse{
-			{ID: "recruit", Name: "Recruitment", GoldCost: 0, FoodCost: 0, Desc: "Recruit a new member to your party"},
-			{ID: "resurrect", Name: "Resurrection", GoldCost: 75, FoodCost: 50, Desc: "Resurrect a fallen member at a cost of gold or food"},
+			{ID: "recruit", Name: "Recruitment", Desc: "Recruit a new member to your party"},
+			{ID: "resurrect", Name: "Resurrection", Desc: "Resurrect a fallen member for free"},
 		}
 		return shrinesCache
 	}
 	var sf shrinesFile
 	if err := json.Unmarshal(b, &sf); err != nil || len(sf.Uses) == 0 {
 		shrinesCache = []ShrineUse{
-			{ID: "recruit", Name: "Recruitment", GoldCost: 0, FoodCost: 0, Desc: "Recruit a new member to your party"},
-			{ID: "resurrect", Name: "Resurrection", GoldCost: 75, FoodCost: 50, Desc: "Resurrect a fallen member at a cost of gold or food"},
+			{ID: "recruit", Name: "Recruitment", Desc: "Recruit a new member to your party"},
+			{ID: "resurrect", Name: "Resurrection", Desc: "Resurrect a fallen member for free"},
 		}
 		return shrinesCache
 	}

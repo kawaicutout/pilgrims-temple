@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 )
 
@@ -737,4 +738,306 @@ func drawString(cells [][]Cell, x, y int, s string, fg string) {
 		}
 		cells[y][x+i] = Cell{Glyph: ch, FG: fg, BG: "bg"}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Guided creation (Option A): Seed -> per slot Class -> Race -> Name -> Review.
+// ---------------------------------------------------------------------------
+
+// DraftMember is one roster draft: class and race chosen, name raw.
+// Blank name means random at start.
+type DraftMember struct {
+	Class string
+	Race  string
+	Name  string
+}
+
+// SeedEntryState holds raw seed text. Blank means random at start.
+type SeedEntryState struct {
+	Text string
+}
+
+// AppendRune adds a seed digit (or leading minus). Max 20 runes.
+func (s *SeedEntryState) AppendRune(r rune) {
+	if r < 32 || r == 127 {
+		return
+	}
+	if len([]rune(s.Text)) >= 20 {
+		return
+	}
+	if (r < '0' || r > '9') && !(r == '-' && s.Text == "") {
+		return
+	}
+	s.Text += string(r)
+}
+
+// Backspace drops the last seed rune.
+func (s *SeedEntryState) Backspace() {
+	rs := []rune(s.Text)
+	if len(rs) > 0 {
+		s.Text = string(rs[:len(rs)-1])
+	}
+}
+
+// SeedOr resolves the entry, falling back when blank or invalid.
+func (s *SeedEntryState) SeedOr(fallback int64) int64 {
+	if s == nil {
+		return fallback
+	}
+	if v, err := strconv.ParseInt(strings.TrimSpace(s.Text), 10, 64); err == nil {
+		return v
+	}
+	return fallback
+}
+
+// ClassPickState picks one class for a roster slot. Duplicates allowed.
+type ClassPickState struct {
+	Classes []ClassInfo
+	Slot    int
+	Drafts  int
+	Cursor  int
+}
+
+// NewClassPickState loads classes for the given 0-based slot.
+func NewClassPickState(slot, drafts int) (*ClassPickState, error) {
+	cls, err := LoadClasses()
+	if err != nil {
+		return nil, err
+	}
+	return &ClassPickState{Classes: cls, Slot: slot, Drafts: drafts}, nil
+}
+
+// Move steps the cursor with wraparound.
+func (s *ClassPickState) Move(dir int) {
+	if s == nil || len(s.Classes) == 0 {
+		return
+	}
+	s.Cursor = (s.Cursor + dir + len(s.Classes)) % len(s.Classes)
+}
+
+// Choice returns the cursor class id, or "" when empty.
+func (s *ClassPickState) Choice() string {
+	if s == nil || len(s.Classes) == 0 {
+		return ""
+	}
+	if s.Cursor < 0 || s.Cursor >= len(s.Classes) {
+		return ""
+	}
+	return s.Classes[s.Cursor].ID
+}
+
+// NameEntryState holds raw name text for one draft. Blank means random.
+type NameEntryState struct {
+	Class string
+	Race  string
+	Text  string
+}
+
+// AppendRune adds a name rune. Max 12 content runes.
+func (s *NameEntryState) AppendRune(r rune) {
+	if r < 32 || r == 127 {
+		return
+	}
+	if len([]rune(strings.TrimSpace(s.Text))) >= 12 && r != ' ' {
+		return
+	}
+	if isNameRune(r) {
+		s.Text += string(r)
+	}
+}
+
+// Backspace drops the last name rune.
+func (s *NameEntryState) Backspace() {
+	rs := []rune(s.Text)
+	if len(rs) > 0 {
+		s.Text = string(rs[:len(rs)-1])
+	}
+}
+
+// isNameRune reports whether r may appear in a player-entered name.
+// Mirrors the CleanName set: letters, digits, space, apostrophe, hyphen.
+func isNameRune(r rune) bool {
+	if r == ' ' || r == '\'' || r == '-' {
+		return true
+	}
+	if r >= '0' && r <= '9' {
+		return true
+	}
+	if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+		return true
+	}
+	return r > 127
+}
+
+// ReviewRow is one review-screen row: a draft or an action.
+type ReviewRow struct {
+	Label  string
+	Action string // "discard:i", "add", or "begin"
+	Index  int    // draft index for discard, else -1
+}
+
+// ReviewRows builds review rows: drafts, then Add (if fewer than 3),
+// then Begin (if at least 1 draft).
+func ReviewRows(drafts []DraftMember) []ReviewRow {
+	var rows []ReviewRow
+	for i, d := range drafts {
+		name := CleanName(d.Name)
+		if name == "" {
+			name = "(random name)"
+		}
+		raceName := d.Race
+		if r, ok := GetRace(d.Race); ok {
+			raceName = r.Name
+		}
+		rows = append(rows, ReviewRow{
+			Label:  fmt.Sprintf("%d. %s — %s %s", i+1, name, raceName, FriendlyID(d.Class)),
+			Action: "discard",
+			Index:  i,
+		})
+	}
+	if len(drafts) < 3 {
+		rows = append(rows, ReviewRow{Label: "[ Add pilgrim ]", Action: "add", Index: -1})
+	}
+	if len(drafts) > 0 {
+		rows = append(rows, ReviewRow{Label: "[ Begin descent ]", Action: "begin", Index: -1})
+	}
+	return rows
+}
+
+// NewGameFull starts a run from a finished roster: 1-3 class/race pairs with
+// raw names (blank = random, de-duplicated).
+func NewGameFull(seed int64, tuning Tuning, classes, races, names []string) *Game {
+	g := NewGameWithClassesAndRaces(seed, tuning, classes, races)
+	used := map[string]bool{}
+	for i, m := range g.Party.Members {
+		if i < len(names) {
+			if n := CleanName(names[i]); n != "" {
+				m.Name = n
+			}
+		}
+		if used[m.Name] {
+			m.Name = GenerateName(g.RNG, used)
+		}
+		used[m.Name] = true
+	}
+	return g
+}
+
+func renderCreationChrome(tuning Tuning, title, sub string) (w, h int, cells [][]Cell) {
+	w, h = tuning.Map.Width, tuning.Map.Height
+	cells = make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	drawCentered(cells, w, 2, title, "gold-bright")
+	drawCentered(cells, w, 3, sub, "gray-1")
+	return w, h, cells
+}
+
+func creationPanel(status, hints string, tuning Tuning) ([]string, []string, string, string) {
+	panel := []string{"", status, "Enter: continue", "Esc: back", "Up/Down: move"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	return panel, panelFG, status, hints
+}
+
+// RenderSeedEntry draws the seed prompt. Blank means random.
+func RenderSeedEntry(tuning Tuning, s *SeedEntryState) Frame {
+	text := ""
+	if s != nil {
+		text = s.Text
+	}
+	w, h, cells := renderCreationChrome(tuning, "NEW EXPEDITION", "Enter seed (blank for random)")
+	line := text + "_"
+	if line == "_" {
+		line = "(random)"
+	}
+	drawCentered(cells, w, 5, line, "gold")
+	panel, panelFG, status, hints := creationPanel("Seed", "Type digits  Enter: continue  Esc: menu", tuning)
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+
+// RenderClassPick draws one class slot of the pipeline.
+func RenderClassPick(tuning Tuning, s *ClassPickState) Frame {
+	slot, drafts := 1, 0
+	if s != nil {
+		slot, drafts = s.Slot+1, s.Drafts
+	}
+	w, h, cells := renderCreationChrome(tuning, "CHOOSE PILGRIM", fmt.Sprintf("Pilgrim %d (roster %d/3)", slot, drafts))
+	if s != nil {
+		for i, ci := range s.Classes {
+			y := 5 + i*2
+			if y+1 >= h-1 {
+				break
+			}
+			prefix := "  "
+			fg := "gray-1"
+			if i == s.Cursor {
+				prefix = "> "
+				fg = "gold-bright"
+			}
+			line := fmt.Sprintf("%s%s - %s", prefix, strings.Title(ci.Name), ci.BuffA.Name)
+			if len(line) > w-2 {
+				line = line[:w-5] + "..."
+			}
+			drawString(cells, 2, y, line, fg)
+			drawString(cells, 4, y+1, ci.Role, "gray-2")
+		}
+	}
+	panel, panelFG, status, hints := creationPanel("Class", "Up/Down: move  Enter: pick  Esc: back", tuning)
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+
+// RenderNameEntry draws the name prompt for one draft. Blank means random.
+func RenderNameEntry(tuning Tuning, class, race, text string) Frame {
+	raceName := race
+	if r, ok := GetRace(race); ok {
+		raceName = r.Name
+	}
+	sub := fmt.Sprintf("Name %s %s (blank = random)", raceName, FriendlyID(class))
+	w, h, cells := renderCreationChrome(tuning, "NAME PILGRIM", sub)
+	line := text + "_"
+	if text == "" {
+		line = "(random)"
+	}
+	drawCentered(cells, w, 5, line, "gold")
+	panel, panelFG, status, hints := creationPanel("Name", "Type name  Enter: keep  Esc: back", tuning)
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
+}
+
+// RenderReview draws the roster with discard and begin actions.
+func RenderReview(tuning Tuning, drafts []DraftMember, cursor int) Frame {
+	w, h, cells := renderCreationChrome(tuning, "REVIEW ROSTER", fmt.Sprintf("%d/3 pilgrims — Enter on a pilgrim discards them", len(drafts)))
+	rows := ReviewRows(drafts)
+	if cursor < 0 {
+		cursor = 0
+	}
+	if len(rows) > 0 && cursor >= len(rows) {
+		cursor = len(rows) - 1
+	}
+	for i, row := range rows {
+		y := 5 + i*2
+		if y >= h-1 {
+			break
+		}
+		prefix := "  "
+		fg := "gray-1"
+		if i == cursor {
+			prefix = "> "
+			fg = "gold-bright"
+		}
+		line := prefix + row.Label
+		if len(line) > w-2 {
+			line = line[:w-5] + "..."
+		}
+		drawCentered(cells, w, y, line, fg)
+	}
+	panel, panelFG, status, hints := creationPanel("Review", "Up/Down: move  Enter: choose  Esc: back", tuning)
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }

@@ -233,12 +233,18 @@ func main() {
 		stateWizardResurrectMember
 		stateUseInventory
 		stateUseTarget
+		stateUseMember
 		stateThrowMenu
 		stateThrowCursor
 		stateMerchant
 		stateShrine
 		stateScores
-	stateMenuHelp
+		stateMenuHelp
+		stateSeed
+		stateCreationClass
+		stateCreationRace
+		stateCreationName
+		stateReview
 	)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -249,6 +255,17 @@ func main() {
 	var wizardAddCS *game.CharSelectState
 	wizardRemoveIdx := 0
 	useSelected := 0
+	useMemberSelected := 0
+	seedState := &game.SeedEntryState{}
+	var classPick *game.ClassPickState
+	var creationRace *game.RaceSelectState
+	slotClass := ""
+	var nameEntry *game.NameEntryState
+	drafts := []game.DraftMember{}
+	reviewCursor := 0
+	useMemberAppearance := ""
+	useMemberTitle := ""
+	useMemberMode := ""
 	throwSelected := 0
 	scoresSelected := 0
 	drawFrame(game.RenderMainMenu(tuning, menu.Selected))
@@ -300,6 +317,10 @@ func main() {
 				if g != nil {
 					drawFrame(g.Render())
 				}
+			case stateUseMember:
+				if g != nil {
+					drawFrame(g.RenderUseMemberMenu(useMemberTitle, useMemberMode == "partyChoice", useMemberSelected))
+				}
 			case stateThrowMenu:
 				if g != nil {
 					drawFrame(g.RenderThrowMenu(throwSelected))
@@ -318,6 +339,22 @@ func main() {
 				}
 			case stateMenuHelp:
 				drawFrame(game.RenderHelpOverlayTuning(tuning))
+			case stateSeed:
+				drawFrame(game.RenderSeedEntry(tuning, seedState))
+			case stateCreationClass:
+				if classPick != nil {
+					drawFrame(game.RenderClassPick(tuning, classPick))
+				}
+			case stateCreationRace:
+				if creationRace != nil {
+					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+				}
+			case stateCreationName:
+				if nameEntry != nil {
+					drawFrame(game.RenderNameEntry(tuning, nameEntry.Class, nameEntry.Race, nameEntry.Text))
+				}
+			case stateReview:
+				drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
 			}
 		case *tcell.EventKey:
 			key, code := tcellKeyToRaw(e)
@@ -332,21 +369,29 @@ func main() {
 					menu.Move(1)
 					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 				case game.KeyEnter:
-					switch menu.Selected {
-					case 0: // New Game
-						var err error
-						cs, err = game.NewCharSelect()
-						if err != nil {
-							cs = &game.CharSelectState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}, Picks: []string{}}
-						}
-						state = stateCharSelect
-						drawFrame(game.RenderCharSelect(tuning, cs))
-					case 1: // Scores
+					opts := game.GetMainMenuOptions() // HasSave gated
+					if menu.Selected < 0 || menu.Selected >= len(opts) {
+						break
+					}
+					switch opts[menu.Selected] {
+					case "New Game":
+						seedState = &game.SeedEntryState{}
+						drafts = []game.DraftMember{}
+						reviewCursor = 0
+						state = stateSeed
+						drawFrame(game.RenderSeedEntry(tuning, seedState))
+					case "Scores":
 						scoresSelected = 0
 						state = stateScores
 						drawFrame(game.RenderScoresScreen(tuning, scoresSelected))
-					case 2: // Exit
+					case "Exit":
 						return
+					case "Load game":
+						if lg, err := game.Load(); err == nil && lg != nil {
+							g = lg
+							state = statePlaying
+							drawFrame(g.Render())
+						}
 					}
 				case game.KeyQuit:
 					return
@@ -494,6 +539,208 @@ func main() {
 						// fallback no-op
 					}
 				}
+			case stateSeed:
+				if e.Key() == tcell.KeyBackspace || e.Key() == tcell.KeyBackspace2 {
+					if seedState != nil {
+						seedState.Backspace()
+						drawFrame(game.RenderSeedEntry(tuning, seedState))
+					}
+					break
+				}
+				if e.Key() == tcell.KeyRune {
+					if seedState != nil {
+						seedState.AppendRune(e.Rune())
+						drawFrame(game.RenderSeedEntry(tuning, seedState))
+					}
+					break
+				}
+				switch k {
+				case game.KeyEnter:
+					var err error
+					classPick, err = game.NewClassPickState(len(drafts), len(drafts))
+					if err != nil || classPick == nil {
+						classPick = &game.ClassPickState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}, Slot: len(drafts), Drafts: len(drafts)}
+					}
+					state = stateCreationClass
+					drawFrame(game.RenderClassPick(tuning, classPick))
+				case game.KeyQuit:
+					state = stateMenu
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+				default:
+					drawFrame(game.RenderSeedEntry(tuning, seedState))
+				}
+			case stateCreationClass:
+				if classPick == nil {
+					state = stateSeed
+					drawFrame(game.RenderSeedEntry(tuning, seedState))
+					break
+				}
+				switch k {
+				case game.KeyUp:
+					classPick.Move(-1)
+					drawFrame(game.RenderClassPick(tuning, classPick))
+				case game.KeyDown:
+					classPick.Move(1)
+					drawFrame(game.RenderClassPick(tuning, classPick))
+				case game.KeyEnter:
+					slotClass = classPick.Choice()
+					if slotClass == "" {
+						drawFrame(game.RenderClassPick(tuning, classPick))
+						break
+					}
+					var err error
+					creationRace, err = game.NewRaceSelect([]string{slotClass})
+					if err != nil || creationRace == nil {
+						drawFrame(game.RenderClassPick(tuning, classPick))
+						break
+					}
+					state = stateCreationRace
+					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+				case game.KeyQuit:
+					state = stateSeed
+					drawFrame(game.RenderSeedEntry(tuning, seedState))
+				default:
+					drawFrame(game.RenderClassPick(tuning, classPick))
+				}
+			case stateCreationRace:
+				if creationRace == nil {
+					state = stateCreationClass
+					if classPick != nil {
+						drawFrame(game.RenderClassPick(tuning, classPick))
+					} else {
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					}
+					break
+				}
+				switch k {
+				case game.KeyUp:
+					creationRace.Move(-1)
+					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+				case game.KeyDown:
+					creationRace.Move(1)
+					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+				case game.KeyEnter:
+					if len(creationRace.Picks) > 0 {
+						nameEntry = &game.NameEntryState{Class: slotClass, Race: creationRace.Picks[0]}
+						state = stateCreationName
+						drawFrame(game.RenderNameEntry(tuning, slotClass, creationRace.Picks[0], ""))
+					} else {
+						creationRace.Select()
+						drawFrame(game.RenderRaceSelect(tuning, creationRace))
+					}
+				case game.KeyQuit:
+					if creationRace.Back() {
+						state = stateCreationClass
+						drawFrame(game.RenderClassPick(tuning, classPick))
+					} else {
+						drawFrame(game.RenderRaceSelect(tuning, creationRace))
+					}
+				default:
+					drawFrame(game.RenderRaceSelect(tuning, creationRace))
+				}
+			case stateCreationName:
+				if nameEntry == nil {
+					state = stateCreationClass
+					if classPick != nil {
+						drawFrame(game.RenderClassPick(tuning, classPick))
+					} else {
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					}
+					break
+				}
+				if e.Key() == tcell.KeyBackspace || e.Key() == tcell.KeyBackspace2 {
+					nameEntry.Backspace()
+					drawFrame(game.RenderNameEntry(tuning, nameEntry.Class, nameEntry.Race, nameEntry.Text))
+					break
+				}
+				if e.Key() == tcell.KeyRune {
+					nameEntry.AppendRune(e.Rune())
+					drawFrame(game.RenderNameEntry(tuning, nameEntry.Class, nameEntry.Race, nameEntry.Text))
+					break
+				}
+				switch k {
+				case game.KeyEnter:
+					drafts = append(drafts, game.DraftMember{Class: nameEntry.Class, Race: nameEntry.Race, Name: nameEntry.Text})
+					reviewCursor = 0
+					state = stateReview
+					drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
+				case game.KeyQuit:
+					state = stateCreationClass
+					if classPick != nil {
+						drawFrame(game.RenderClassPick(tuning, classPick))
+					} else {
+						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					}
+				default:
+					drawFrame(game.RenderNameEntry(tuning, nameEntry.Class, nameEntry.Race, nameEntry.Text))
+				}
+			case stateReview:
+				rows := game.ReviewRows(drafts)
+				switch k {
+				case game.KeyUp:
+					if len(rows) > 0 {
+						reviewCursor--
+						if reviewCursor < 0 {
+							reviewCursor = len(rows) - 1
+						}
+					}
+					drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
+				case game.KeyDown:
+					if len(rows) > 0 {
+						reviewCursor++
+						if reviewCursor >= len(rows) {
+							reviewCursor = 0
+						}
+					}
+					drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
+				case game.KeyEnter:
+					if len(rows) == 0 || reviewCursor < 0 || reviewCursor >= len(rows) {
+						drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
+						break
+					}
+					row := rows[reviewCursor]
+					switch row.Action {
+					case "discard":
+						if row.Index >= 0 && row.Index < len(drafts) {
+							drafts = append(drafts[:row.Index], drafts[row.Index+1:]...)
+						}
+						if reviewCursor >= len(game.ReviewRows(drafts)) {
+							reviewCursor = len(game.ReviewRows(drafts)) - 1
+						}
+						if reviewCursor < 0 {
+							reviewCursor = 0
+						}
+						state = stateSeed
+						drawFrame(game.RenderSeedEntry(tuning, seedState))
+					case "add":
+						var err error
+						classPick, err = game.NewClassPickState(len(drafts), len(drafts))
+						if err != nil || classPick == nil {
+							drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
+							break
+						}
+						state = stateCreationClass
+						drawFrame(game.RenderClassPick(tuning, classPick))
+					case "begin":
+						classes := make([]string, len(drafts))
+						races := make([]string, len(drafts))
+						names := make([]string, len(drafts))
+						for i, d := range drafts {
+							classes[i], races[i], names[i] = d.Class, d.Race, d.Name
+						}
+						seed := seedState.SeedOr(time.Now().UnixNano())
+						g = game.NewGameFull(seed, tuning, classes, races, names)
+						state = statePlaying
+						drawFrame(g.Render())
+					default:
+						drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
+					}
+				case game.KeyQuit:
+					state = stateMenu
+					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+				default:
+					drawFrame(game.RenderReview(tuning, drafts, reviewCursor))
+				}
 			case statePlaying:
 				if g == nil {
 					state = stateMenu
@@ -633,6 +880,7 @@ func main() {
 				if g.Quit {
 					// Return to menu, not a death
 					state = stateMenu
+					_ = game.Save(g)
 					g = nil
 					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 				} else if g.Over {
@@ -644,6 +892,7 @@ func main() {
 							k2 := game.NormalizeKey(key2, code2)
 							if k2 == game.KeyQuit || k2 == game.KeyEnter {
 								state = stateMenu
+								_ = game.DeleteSave()
 								g = nil
 								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 								break
@@ -688,15 +937,95 @@ func main() {
 				case game.KeyEnter:
 					if len(entries) > 0 && useSelected >= 0 && useSelected < len(entries) {
 						e := entries[useSelected]
-						g.StartUse(e.Appearance, e.Kind)
-						state = stateUseTarget
-						drawFrame(g.Render())
+						useMemberMode = game.UseTargetMode(e.Kind, e.Appearance)
+						if useMemberMode == "tile" {
+							g.StartUse(e.Appearance, e.Kind)
+							state = stateUseTarget
+							drawFrame(g.Render())
+						} else {
+							useMemberAppearance = e.Appearance
+							useMemberTitle = e.DisplayName
+							useMemberSelected = 0
+							state = stateUseMember
+							drawFrame(g.RenderUseMemberMenu(useMemberTitle, useMemberMode == "partyChoice", useMemberSelected))
+						}
 					} else {
 						state = statePlaying
 						drawFrame(g.Render())
 					}
 				default:
 					drawFrame(g.RenderUseMenu(useSelected))
+				}
+			case stateUseMember:
+				if g == nil {
+					state = statePlaying
+					drawFrame(g.Render())
+					break
+				}
+				allowParty := useMemberMode == "partyChoice"
+				_, useMemberRows := g.UseMemberOptions(allowParty)
+				switch k {
+				case game.KeyUp:
+					if len(useMemberRows) > 0 {
+						useMemberSelected--
+						if useMemberSelected < 0 {
+							useMemberSelected = len(useMemberRows) - 1
+						}
+					}
+					drawFrame(g.RenderUseMemberMenu(useMemberTitle, allowParty, useMemberSelected))
+				case game.KeyDown:
+					if len(useMemberRows) > 0 {
+						useMemberSelected++
+						if useMemberSelected >= len(useMemberRows) {
+							useMemberSelected = 0
+						}
+					}
+					drawFrame(g.RenderUseMemberMenu(useMemberTitle, allowParty, useMemberSelected))
+				case game.KeyQuit:
+					state = stateUseInventory
+					drawFrame(g.RenderUseMenu(useSelected))
+				case game.KeyEnter:
+					if len(useMemberRows) > 0 && useMemberSelected >= 0 && useMemberSelected < len(useMemberRows) {
+						g.TryUseAppearanceOnMember(useMemberAppearance, useMemberRows[useMemberSelected])
+						state = statePlaying
+						drawFrame(g.Render())
+						if g.LevelUpPending != nil {
+							drawFrame(g.RenderLevelUp())
+						}
+						if g.Quit {
+							state = stateMenu
+							_ = game.Save(g)
+							g = nil
+							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+						} else if g.Over {
+							for {
+								ev2 := s.PollEvent()
+								if ke, ok := ev2.(*tcell.EventKey); ok {
+									key2, code2 := tcellKeyToRaw(ke)
+									k2 := game.NormalizeKey(key2, code2)
+									if k2 == game.KeyQuit || k2 == game.KeyEnter {
+										state = stateMenu
+										_ = game.DeleteSave()
+										g = nil
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+										break
+									}
+								} else if _, ok := ev2.(*tcell.EventResize); ok {
+									s.Sync()
+									if g != nil {
+										drawFrame(g.Render())
+									} else {
+										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+									}
+								}
+							}
+						}
+					} else {
+						state = statePlaying
+						drawFrame(g.Render())
+					}
+				default:
+					drawFrame(g.RenderUseMemberMenu(useMemberTitle, allowParty, useMemberSelected))
 				}
 			case stateUseTarget:
 				if g == nil {
@@ -719,6 +1048,7 @@ func main() {
 					}
 					if g.Quit {
 						state = stateMenu
+						_ = game.Save(g)
 						g = nil
 						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					} else if g.Over {
@@ -729,6 +1059,7 @@ func main() {
 								k2 := game.NormalizeKey(key2, code2)
 								if k2 == game.KeyQuit || k2 == game.KeyEnter {
 									state = stateMenu
+									_ = game.DeleteSave()
 									g = nil
 									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									break
@@ -753,6 +1084,7 @@ func main() {
 						}
 						if g.Quit {
 							state = stateMenu
+							_ = game.Save(g)
 							g = nil
 							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 						} else if g.Over {
@@ -763,6 +1095,7 @@ func main() {
 									k2 := game.NormalizeKey(key2, code2)
 									if k2 == game.KeyQuit || k2 == game.KeyEnter {
 										state = stateMenu
+										_ = game.DeleteSave()
 										g = nil
 										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										break
@@ -840,6 +1173,7 @@ func main() {
 					}
 					if g.Quit {
 						state = stateMenu
+						_ = game.Save(g)
 						g = nil
 						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 					} else if g.Over {
@@ -850,6 +1184,7 @@ func main() {
 								k2 := game.NormalizeKey(key2, code2)
 								if k2 == game.KeyQuit || k2 == game.KeyEnter {
 									state = stateMenu
+									_ = game.DeleteSave()
 									g = nil
 									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									break
@@ -875,6 +1210,7 @@ func main() {
 						}
 						if g.Quit {
 							state = stateMenu
+							_ = game.Save(g)
 							g = nil
 							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 						} else if g.Over {
@@ -885,6 +1221,7 @@ func main() {
 									k2 := game.NormalizeKey(key2, code2)
 									if k2 == game.KeyQuit || k2 == game.KeyEnter {
 										state = stateMenu
+										_ = game.DeleteSave()
 										g = nil
 										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										break
@@ -942,6 +1279,7 @@ func main() {
 							}
 							if g.Quit {
 								state = stateMenu
+								_ = game.Save(g)
 								g = nil
 								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 							} else if g.Over {
@@ -952,6 +1290,7 @@ func main() {
 										k2 := game.NormalizeKey(key2, code2)
 										if k2 == game.KeyQuit || k2 == game.KeyEnter {
 											state = stateMenu
+											_ = game.DeleteSave()
 											g = nil
 											drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 											break
@@ -1021,6 +1360,7 @@ func main() {
 								}
 								if g.Quit {
 									state = stateMenu
+									_ = game.Save(g)
 									g = nil
 									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 								} else if g.Over {
@@ -1031,6 +1371,7 @@ func main() {
 											k2 := game.NormalizeKey(key2, code2)
 											if k2 == game.KeyQuit || k2 == game.KeyEnter {
 												state = stateMenu
+												_ = game.DeleteSave()
 												g = nil
 												drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 												break

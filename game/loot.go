@@ -402,13 +402,12 @@ func (g *Game) TryUseAppearance(appearance string) bool {
 	return g.TryUseAppearanceAt(appearance, g.Party.Pos)
 }
 
-// TryUseAppearanceAt consumes one item of the given appearance, identifies it, applies effect to target party and advances turn.
-// If target == Party.Pos -> apply to Party; else if enemy at target -> apply to that EnemyParty (gamble).
-// Unidentified scrolls are still usable on enemy tiles without revealing effect beforehand.
-func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
+// takeUseItem finds, validates, consumes, and identifies one item of the given
+// appearance. It logs consumption and identification. Returns item, true type, ok.
+func (g *Game) takeUseItem(appearance string) (GroundItem, string, bool) {
 	if g.Party == nil || len(g.Party.Inventory) == 0 {
 		g.Logf("No potions or scrolls to use.")
-		return false
+		return GroundItem{}, "", false
 	}
 	idx := -1
 	for i, it := range g.Party.Inventory {
@@ -419,14 +418,14 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 	}
 	if idx == -1 {
 		g.Logf("No %s to use.", appearance)
-		return false
+		return GroundItem{}, "", false
 	}
 	if g.Party.HasStatus(StatusSilence) {
 		// Silence blocks scroll and active talent use.
 		itCheck := g.Party.Inventory[idx]
 		if itCheck.Kind == "scroll" {
 			g.Logf("Silenced! Cannot use scrolls.")
-			return false
+			return GroundItem{}, "", false
 		}
 	}
 	it := g.Party.Inventory[idx]
@@ -451,6 +450,84 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 		g.Logf("Used %s.", it.Name)
 	}
 	_ = saved
+	return it, trueType, true
+}
+
+// UseTargetMode reports how an inventory entry is targeted: "member" (choose one
+// living member), "partyChoice" (one member or the whole party), or "tile"
+// (map cursor, current behavior). All potions drink to a member; enchant and
+// greater_healing scrolls pick a member; other scrolls keep tile targeting.
+// Unidentified scrolls resolve by kind only, so they keep tile targeting until
+// first use identifies them.
+func UseTargetMode(kind, appearance string) string {
+	if kind == "potion" {
+		return "member"
+	}
+	if kind == "scroll" {
+		switch TypeForAppearance(appearance) {
+		case "enchant":
+			return "member"
+		case "greater_healing":
+			return "partyChoice"
+		}
+	}
+	return "tile"
+}
+
+// TryUseAppearanceOnMember consumes one item of the given appearance and applies
+// it to a party member. memberIdx < 0 targets the whole party, valid only for
+// partyChoice entries (greater_healing). Advances the turn on success.
+func (g *Game) TryUseAppearanceOnMember(appearance string, memberIdx int) bool {
+	if g.Party == nil || len(g.Party.Members) == 0 {
+		return false
+	}
+	kind := ""
+	for _, it := range g.Party.Inventory {
+		if appearanceFromItem(it) == appearance {
+			kind = it.Kind
+			break
+		}
+	}
+	if kind == "" {
+		g.Logf("No %s to use.", appearance)
+		return false
+	}
+	mode := UseTargetMode(kind, appearance)
+	var member *Member
+	if memberIdx >= 0 {
+		if memberIdx >= len(g.Party.Members) || !g.Party.Members[memberIdx].IsAlive() {
+			g.Logf("No such member.")
+			return false
+		}
+		member = g.Party.Members[memberIdx]
+	} else if mode != "partyChoice" {
+		g.Logf("That must target one member.")
+		return false
+	}
+	it, trueType, ok := g.takeUseItem(appearance)
+	if !ok {
+		return false
+	}
+	switch it.Kind {
+	case "potion":
+		g.applyPotionEffect(trueType, true, nil, member)
+	case "scroll":
+		g.applyScrollEffect(trueType, true, nil, g.Party.Pos, member)
+	default:
+		g.Logf("Used %s.", it.Name)
+	}
+	g.EndPlayerTurn("")
+	return true
+}
+
+// TryUseAppearanceAt consumes one item of the given appearance, identifies it, applies effect to target party and advances turn.
+// If target == Party.Pos -> apply to Party; else if enemy at target -> apply to that EnemyParty (gamble).
+// Unidentified scrolls are still usable on enemy tiles without revealing effect beforehand.
+func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
+	it, trueType, ok := g.takeUseItem(appearance)
+	if !ok {
+		return false
+	}
 	// Resolve target party: self if target == Party.Pos, else enemy at target.
 	isSelf := target == g.Party.Pos
 	var targetEnemy *EnemyParty
@@ -467,11 +544,9 @@ func (g *Game) TryUseAppearanceAt(appearance string, target Pos) bool {
 	// Single apply hub — data-driven via consumables.go (potions/scrolls/statuses.json).
 	switch it.Kind {
 	case "potion":
-		g.applyPotionEffect(trueType, isSelf, targetEnemy)
+		g.applyPotionEffect(trueType, isSelf, targetEnemy, nil)
 	case "scroll":
-		g.applyScrollEffect(trueType, isSelf, targetEnemy, target)
-	default:
-		g.Logf("Used %s: %s.", it.Name, typeName)
+		g.applyScrollEffect(trueType, isSelf, targetEnemy, target, nil)
 	}
 	g.EndPlayerTurn("")
 	return true
@@ -535,9 +610,9 @@ func (g *Game) TryUseItem() bool {
 	// Legacy self-only path — reuse hub (isSelf=true, no enemy).
 	switch it.Kind {
 	case "potion":
-		g.applyPotionEffect(trueType, true, nil)
+		g.applyPotionEffect(trueType, true, nil, nil)
 	case "scroll":
-		g.applyScrollEffect(trueType, true, nil, g.Party.Pos)
+		g.applyScrollEffect(trueType, true, nil, g.Party.Pos, nil)
 	default:
 		g.Logf("Used %s: %s.", it.Name, typeName)
 	}
@@ -590,7 +665,7 @@ func (g *Game) TryThrowPotion(dir Dir) bool {
 		g.Logf("Threw %s at %s.", it.Name, dirStr)
 	}
 	// Potion throw — reuse hub (always enemy-targeted, or ground shatter).
-	g.applyPotionEffect(trueType, false, targetEnemy)
+	g.applyPotionEffect(trueType, false, targetEnemy, nil)
 	g.EndPlayerTurn("")
 	return true
 }
@@ -796,7 +871,7 @@ func (g *Game) WizardSpawnLootItems() {
 		j := g.RNG.IntN(i + 1)
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	}
-	biome := GetBiomeForFloor(g.Floor)
+	biome := GetBiomeForFloor(g.Floor, g.RNG)
 	var spawned []GroundItem
 	for i := 0; i < count; i++ {
 		it := makeRandomItem(g.RNG, g.Floor, biome)

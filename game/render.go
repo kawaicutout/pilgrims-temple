@@ -793,6 +793,76 @@ func (g *Game) RenderUseMenu(selected int) Frame {
 	hints := "Up/Down or k/j: move  Enter: use  Esc: cancel"
 	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
 }
+
+// UseMemberOptions lists member-target rows for the use picker.
+// Each row maps to a party member index, or -1 for the whole party.
+func (g *Game) UseMemberOptions(allowParty bool) (labels []string, idx []int) {
+	if allowParty {
+		labels = append(labels, "Whole party (all members)")
+		idx = append(idx, -1)
+	}
+	if g.Party != nil {
+		for i, m := range g.Party.Members {
+			if m == nil || !m.IsAlive() {
+				continue
+			}
+			labels = append(labels, fmt.Sprintf("%s — %s %d/%d", m.Name, m.Class, m.HP, m.MaxHP))
+			idx = append(idx, i)
+		}
+	}
+	return labels, idx
+}
+
+// RenderUseMemberMenu draws the drink/target picker for potions and scrolls.
+func (g *Game) RenderUseMemberMenu(itemName string, allowParty bool, selected int) Frame {
+	t := g.Tuning
+	w, h := t.Map.Width, t.Map.Height
+	cells := make([][]Cell, h)
+	for y := range h {
+		cells[y] = make([]Cell, w)
+		for x := range w {
+			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
+		}
+	}
+	labels, _ := g.UseMemberOptions(allowParty)
+	title := "CHOOSE MEMBER"
+	sub := itemName
+	drawCentered(cells, w, 2, title, "gold-bright")
+	drawCentered(cells, w, 3, sub, "gray-1")
+	if len(labels) == 0 {
+		drawCentered(cells, w, 5, "(no living members)", "gray-2")
+	} else {
+		if selected < 0 {
+			selected = 0
+		}
+		if selected >= len(labels) {
+			selected = len(labels) - 1
+		}
+		for i, line := range labels {
+			fg := "gray-1"
+			prefix := "  "
+			if i == selected {
+				prefix = "> "
+				fg = "gold-bright"
+			}
+			row := prefix + line
+			if len(row) > w-4 {
+				row = row[:w-7] + "..."
+			}
+			drawCentered(cells, w, 5+i*2, row, fg)
+		}
+	}
+	panel := []string{"", "Choose member", "Enter: choose", "Esc: back", "Up/Down: move"}
+	panelFG := []string{"gray-1", "gold-bright", "gray-1", "gray-1", "gray-1"}
+	for len(panel) < 12 {
+		panel = append(panel, "")
+		panelFG = append(panelFG, "gray-1")
+	}
+	status := "Choose member"
+	hints := "Up/Down: move  Enter: choose  Esc: back"
+	return Frame{W: w, H: h, Cells: cells, Panel: panel, PanelFG: panelFG, Status: status, Log: make([]string, t.Layout.LogLines), Hints: hints, MinCols: t.Layout.MinCols, MinRows: t.Layout.MinRows}
+}
+
 func (g *Game) RenderThrowMenu(selected int) Frame {
 	t := g.Tuning
 	w, h := t.Map.Width, t.Map.Height

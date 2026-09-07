@@ -141,39 +141,102 @@ func loadLitterData() {
 func fallbackBiomes() []Biome {
 	return []Biome{
 		{
-			ID: "crypt", Name: "Crypt", EligibleLevelRange: [2]int{1, 3},
+			ID: "crypt", Name: "Crypt", EligibleLevelRange: [2]int{1, 2},
 			ColorPalette: ColorPalette{Primary: "#6a7a7a", Secondary: "#5a6a6a", Accent: "#8a7a7a"}, Color: "#6a7a7a", Tint: "#6a7a7a",
 			Litter:           LitterDef{Destructible: []string{"barrel", "crate", "urn"}, Passable: []string{"rubble", "dust", "puddle"}, Impassable: []string{"column", "altar", "sarcophagus"}},
-			GenerationMethod: "rooms", SpecialEnemies: []string{"rat", "kobold"},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"wight", "kobold"},
 			Ambience: []string{"Cold drafts curl through the crypt aisles.", "Distant stone lids grind against their sarcophagi.", "A faint incense of old myrrh hangs in the air.", "Footsteps echo too long in the vaulted dark.", "Candle smoke ghosts along the low arches.", "Water drips somewhere beyond the pillars, patient and cold.", "An unlit censer sways faintly, though no hand touched it.", "Mortar dust sifts from the vault above, catching dim light."},
 		},
 		{
-			ID: "ossuary", Name: "Ossuary", EligibleLevelRange: [2]int{2, 4},
+			ID: "ossuary", Name: "Ossuary", EligibleLevelRange: [2]int{2, 3},
 			ColorPalette: ColorPalette{Primary: "#7a5a3a", Secondary: "#6a4a32", Accent: "#9a7a5a"}, Color: "#7a5a3a", Tint: "#7a5a3a",
 			Litter:           LitterDef{Destructible: []string{"bone_pile", "crate", "barrel"}, Passable: []string{"rubble", "bone_dust", "puddle"}, Impassable: []string{"bone_column", "pit", "rubble_wall"}},
-			GenerationMethod: "rooms", SpecialEnemies: []string{"kobold", "orc"},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"charnel", "orc"},
 			Ambience: []string{"Bones whisper as dust shifts across the ossuary.", "A hollow clatter rolls from stacked skulls.", "Chalky air catches in your throat.", "Shadows pool between leaning bone-columns.", "Something small scuttles among the remains.", "A femur settles with a soft, tired crack.", "Dry air tastes of chalk and old marrow.", "Pale skulls watch with empty, patient sockets."},
 		},
 		{
-			ID: "fungal", Name: "Fungal Grove", EligibleLevelRange: [2]int{3, 5},
+			ID: "fungal", Name: "Fungal Grove", EligibleLevelRange: [2]int{3, 4},
 			ColorPalette: ColorPalette{Primary: "#4a6a4a", Secondary: "#2e4a35", Accent: "#5a8a5a"}, Color: "#4a6a4a", Tint: "#4a6a4a",
 			Litter:           LitterDef{Destructible: []string{"mushroom_cap", "spore_pod", "crate"}, Passable: []string{"moss", "slime", "rubble"}, Impassable: []string{"fungal_column", "pit", "thicket"}},
-			GenerationMethod: "cavern", SpecialEnemies: []string{"spore_mother", "rat"},
+			GenerationMethod: "cavern", SpecialEnemies: []string{"spore_mother", "beetle"},
 			Ambience: []string{"Spores drift like pale snow through fungal gloom.", "Mushroom caps pulse with faint light.", "The air is thick, sweet, and slightly sour.", "Soft caps sigh as you brush past.", "Mycelial threads hum beneath the floor.", "A damp, earthy perfume clings to every breath.", "Distant caps release a soft puff of glowing dust.", "The floor gives slightly, spongy with hidden growth."},
 		},
 		{
-			ID: "jungle", Name: "Jungle Overgrowth", EligibleLevelRange: [2]int{4, 6},
+			ID: "jungle", Name: "Jungle Overgrowth", EligibleLevelRange: [2]int{4, 5},
 			ColorPalette: ColorPalette{Primary: "#3d5a3a", Secondary: "#2a3d2f", Accent: "#4a7a4a"}, Color: "#3d5a3a", Tint: "#3d5a3a",
 			Litter:           LitterDef{Destructible: []string{"vine_cluster", "crate", "barrel"}, Passable: []string{"moss", "rubble", "puddle"}, Impassable: []string{"vine_wall", "pit", "column"}},
-			GenerationMethod: "cavern", SpecialEnemies: []string{"vine_horror", "kobold"},
+			GenerationMethod: "cavern", SpecialEnemies: []string{"vine_horror", "mite"},
 			Ambience: []string{"Vines tighten overhead with a soft creak.", "Humid air beads on cold stone.", "Leaves rustle where no wind should reach.", "A distant vine snaps taut, then stills.", "Roots have cracked the temple walls below.", "Warm rot and green perfume hang heavy in the air.", "Something unseen pushes through tangled fronds.", "Moss muffles your steps like a living carpet."},
 		},
 		{
 			ID: "cinder", Name: "Cinder Chapel", EligibleLevelRange: [2]int{5, 8},
 			ColorPalette: ColorPalette{Primary: "#6a3d2f", Secondary: "#4a2e2a", Accent: "#8a5a45"}, Color: "#6a3d2f", Tint: "#6a3d2f",
 			Litter:           LitterDef{Destructible: []string{"ash_barrel", "crate", "cinder_block"}, Passable: []string{"ash", "rubble", "puddle"}, Impassable: []string{"cinder_column", "lava_pit", "rubble_wall"}},
-			GenerationMethod: "cavern", SpecialEnemies: []string{"troll", "orc"},
+			GenerationMethod: "cavern", SpecialEnemies: []string{"ember", "troll"},
 			Ambience: []string{"Ash drifts on heat that has no source.", "Cinder clicks underfoot, cooling and cracking.", "A low draft carries the tang of soot.", "Embers blink in the dark like tired eyes.", "Stone sweats with old, trapped heat.", "Cracked tiles tick as they cool in the dark.", "A faint, acrid haze stings the eyes.", "Distant stone sighs as heat shifts through old flues."},
+		},
+		{
+			ID: "gatehouse", Name: "Gatehouse", EligibleLevelRange: [2]int{1, 2},
+			ColorPalette: ColorPalette{Primary: "#6a6a7a", Secondary: "#5a5a6a", Accent: "#8a8a9a"}, Color: "#6a6a7a", Tint: "#6a6a7a",
+			Litter:           LitterDef{Destructible: []string{"barrel", "crate", "urn"}, Passable: []string{"rubble", "dust", "puddle"}, Impassable: []string{"column", "rubble_wall", "altar"}},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"warden", "goblin"},
+			Ambience: []string{"Chains clink somewhere above the gate arch.", "A rusted portcullis hangs crooked in its slot.", "Cold air funnels through the murder holes."},
+		},
+		{
+			ID: "cells", Name: "Cells", EligibleLevelRange: [2]int{1, 3},
+			ColorPalette: ColorPalette{Primary: "#5a5a62", Secondary: "#4a4a52", Accent: "#7a7a82"}, Color: "#5a5a62", Tint: "#5a5a62",
+			Litter:           LitterDef{Destructible: []string{"barrel", "crate", "bone_pile"}, Passable: []string{"dust", "rubble", "puddle"}, Impassable: []string{"column", "rubble_wall", "pit"}},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"jailer", "rat"},
+			Ambience: []string{"Empty manacles chime softly in the dark.", "Scratch marks count days on the cell doors.", "A draft moans through the barred slots."},
+		},
+		{
+			ID: "warren", Name: "Warren", EligibleLevelRange: [2]int{2, 2},
+			ColorPalette: ColorPalette{Primary: "#6a5a4a", Secondary: "#54463c", Accent: "#8a7a6a"}, Color: "#6a5a4a", Tint: "#6a5a4a",
+			Litter:           LitterDef{Destructible: []string{"crate", "barrel", "bone_pile"}, Passable: []string{"dust", "rubble", "moss"}, Impassable: []string{"rubble_wall", "pit", "column"}},
+			GenerationMethod: "cavern", SpecialEnemies: []string{"beetle", "rat"},
+			Ambience: []string{"Burrow mouths pock the soft walls.", "Something gnaws steadily, out of sight.", "Loose earth sifts from the low ceiling."},
+		},
+		{
+			ID: "sunken", Name: "Sunken Chapel", EligibleLevelRange: [2]int{3, 3},
+			ColorPalette: ColorPalette{Primary: "#4a6a72", Secondary: "#3a555c", Accent: "#6a8a92"}, Color: "#4a6a72", Tint: "#4a6a72",
+			Litter:           LitterDef{Destructible: []string{"barrel", "crate", "urn"}, Passable: []string{"puddle", "slime", "moss"}, Impassable: []string{"column", "pit", "altar"}},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"drowned", "slime"},
+			Ambience: []string{"Black water laps at the sunken flagstones.", "Algae slicks the lower steps.", "Bells toll dully from below the waterline."},
+		},
+		{
+			ID: "archive", Name: "Archive", EligibleLevelRange: [2]int{4, 6},
+			ColorPalette: ColorPalette{Primary: "#7a6a4a", Secondary: "#62563e", Accent: "#9a8a6a"}, Color: "#7a6a4a", Tint: "#7a6a4a",
+			Litter:           LitterDef{Destructible: []string{"crate", "barrel", "urn"}, Passable: []string{"dust", "rubble", "puddle"}, Impassable: []string{"column", "sarcophagus", "rubble_wall"}},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"cultist", "mite"},
+			Ambience: []string{"Scroll dust hangs thick as curtain gauze.", "A page turns somewhere, with no hand to turn it.", "Whispers file themselves between the stacks."},
+		},
+		{
+			ID: "sanctum", Name: "Sanctum", EligibleLevelRange: [2]int{5, 5},
+			ColorPalette: ColorPalette{Primary: "#8a7a5a", Secondary: "#6e6248", Accent: "#aa9a72"}, Color: "#8a7a5a", Tint: "#8a7a5a",
+			Litter:           LitterDef{Destructible: []string{"urn", "barrel", "crate"}, Passable: []string{"dust", "rubble", "puddle"}, Impassable: []string{"altar", "column", "sarcophagus"}},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"penitent", "cultist"},
+			Ambience: []string{"Candle rows burn for no congregation.", "A choir hums one note, then stops.", "The hush here feels listened-to."},
+		},
+		{
+			ID: "infernal", Name: "Infernal Chapel", EligibleLevelRange: [2]int{6, 8},
+			ColorPalette: ColorPalette{Primary: "#7a3a2a", Secondary: "#5e2e22", Accent: "#9a5a42"}, Color: "#7a3a2a", Tint: "#7a3a2a",
+			Litter:           LitterDef{Destructible: []string{"ash_barrel", "crate", "cinder_block"}, Passable: []string{"ash", "rubble", "puddle"}, Impassable: []string{"cinder_column", "lava_pit", "rubble_wall"}},
+			GenerationMethod: "cavern", SpecialEnemies: []string{"hulk", "imp"},
+			Ambience: []string{"Brimstone sweat beads on the black stone.", "Scorch marks climb the walls like ivy.", "Far below, something vast turns over."},
+		},
+		{
+			ID: "throne", Name: "Throne Room", EligibleLevelRange: [2]int{7, 8},
+			ColorPalette: ColorPalette{Primary: "#7a6a3a", Secondary: "#62562e", Accent: "#9a8a52"}, Color: "#7a6a3a", Tint: "#7a6a3a",
+			Litter:           LitterDef{Destructible: []string{"urn", "crate", "barrel"}, Passable: []string{"dust", "rubble", "moss"}, Impassable: []string{"column", "altar", "sarcophagus"}},
+			GenerationMethod: "rooms", SpecialEnemies: []string{"wraith", "husk"},
+			Ambience: []string{"A throne of fused bone overlooks the hall.", "A crown of black glass sits empty, waiting.", "Courtier ghosts hold their last positions."},
+		},
+		{
+			ID: "abyss", Name: "Abyssal Rift", EligibleLevelRange: [2]int{8, 8},
+			ColorPalette: ColorPalette{Primary: "#3a3a52", Secondary: "#2e2e42", Accent: "#565670"}, Color: "#3a3a52", Tint: "#3a3a52",
+			Litter:           LitterDef{Destructible: []string{"bone_pile", "crate", "ash_barrel"}, Passable: []string{"ash", "dust", "rubble"}, Impassable: []string{"pit", "rubble_wall", "bone_column"}},
+			GenerationMethod: "cavern", SpecialEnemies: []string{"gloom", "bat"},
+			Ambience: []string{"The dark below has a texture, like oil.", "Echoes return saying things you did not say.", "Cold rises in slow, deliberate waves."},
 		},
 	}
 }
@@ -221,13 +284,38 @@ func isEligible(levelNum int, br [2]int) bool {
 	return levelNum >= mn && levelNum <= mx
 }
 
-// GetBiomeForFloor returns an eligible biome for floor (0-indexed). Uses floor-based
-// deterministic selection among eligible to satisfy acceptance.
-func GetBiomeForFloor(floor int) *Biome {
+// GetBiomeForFloor returns a biome for floor (0-indexed) from the per-level
+// world.json table, drawn with the caller's rng so runs differ. Unknown table
+// ids are skipped; an empty table or no match falls back to eligible ranges.
+func GetBiomeForFloor(floor int, rng *rand.Rand) *Biome {
 	biomes := LoadBiomes()
 	if len(biomes) == 0 {
 		fb := fallbackBiomes()
 		biomes = fb
+	}
+	byID := make(map[string]Biome, len(biomes))
+	for _, b := range biomes {
+		byID[b.ID] = b
+	}
+	if ids := LoadWorldConfig().BiomeOptions(floor); len(ids) > 0 {
+		var options []Biome
+		for _, id := range ids {
+			if b, ok := byID[id]; ok {
+				options = append(options, b)
+			}
+		}
+		if len(options) == 1 {
+			b := options[0]
+			return &b
+		}
+		if len(options) > 1 {
+			if rng == nil {
+				b := options[0]
+				return &b
+			}
+			b := options[rng.IntN(len(options))]
+			return &b
+		}
 	}
 	levelNum := floor + 1 // biomes.json uses 1-indexed ranges per spec
 	var eligible []Biome
@@ -245,10 +333,11 @@ func GetBiomeForFloor(floor int) *Biome {
 		b := eligible[0]
 		return &b
 	}
-	// Deterministic pick among eligible: seeded by floor.
-	r := rand.New(rand.NewPCG(uint64(floor+1)*0x9e3779b97f4a7c15, 0x6a09e667f3bcc908))
-	idx := r.IntN(len(eligible))
-	b := eligible[idx]
+	if rng == nil {
+		b := eligible[0]
+		return &b
+	}
+	b := eligible[rng.IntN(len(eligible))]
 	return &b
 }
 
@@ -1008,7 +1097,7 @@ func (l *Level) GenerateWithBiome(rng *rand.Rand, floor int, biome *Biome) {
 		rng = rand.New(rand.NewPCG(0, 0))
 	}
 	if biome == nil {
-		biome = GetBiomeForFloor(floor)
+		biome = GetBiomeForFloor(floor, rng)
 	}
 	l.BiomeID = biome.ID
 	l.Floor = floor
@@ -3252,6 +3341,22 @@ func buildMemberFromEntry(entry enemyEntry, rng *rand.Rand, floor int) *Member {
 		def = floor / 3
 		mdef = floor / 4
 	}
+	if entry.Weak {
+		// Trash mobs scale with depth like everything else but stay weaker
+		// than normal enemies on their floor.
+		hp -= 2
+		if hp < 2 {
+			hp = 2
+		}
+		atkMin--
+		atkMax--
+		if atkMin < 1 {
+			atkMin = 1
+		}
+		if atkMax < 1 {
+			atkMax = 1
+		}
+	}
 	if entry.ID == "orc" {
 		def++
 	}
@@ -3330,7 +3435,7 @@ func (g *Game) MaybeTickAmbience() {
 		}
 	}
 	if biome == nil {
-		biome = GetBiomeForFloor(g.Floor)
+		biome = GetBiomeForFloor(g.Floor, g.RNG)
 	}
 	if biome == nil || len(biome.Ambience) == 0 {
 		g.NextAmbienceTurn = g.Turn + 30 + g.RNG.IntN(31)
@@ -3464,7 +3569,7 @@ func (g *Game) biomeForCurrentFloor() *Biome {
 			}
 		}
 	}
-	return GetBiomeForFloor(g.Floor)
+	return GetBiomeForFloor(g.Floor, g.RNG)
 }
 
 // logBiomeEntry logs an entry feel for the current floor's biome.

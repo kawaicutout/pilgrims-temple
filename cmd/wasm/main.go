@@ -240,12 +240,18 @@ const (
 	stateWizardResurrectMember
 	stateUseInventory
 	stateUseTarget
+	stateUseMember
 	stateThrowMenu
 	stateThrowCursor
 	stateMerchant
 	stateShrine
 	stateScores
 	stateMenuHelp
+	stateSeed
+	stateCreationClass
+	stateCreationRace
+	stateCreationName
+	stateReview
 )
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
@@ -256,7 +262,18 @@ const (
 	var wizardAddCS *game.CharSelectState
 	wizardRemoveIdx := 0
 	useSelected := 0
+	useMemberSelected := 0
+	useMemberAppearance := ""
+	useMemberTitle := ""
+	useMemberMode := ""
 	throwSelected := 0
+	seedState := &game.SeedEntryState{}
+	var classPick *game.ClassPickState
+	var creationRace *game.RaceSelectState
+	slotClass := ""
+	var nameEntry *game.NameEntryState
+	drafts := []game.DraftMember{}
+	reviewCursor := 0
 	scoresSelected := 0
 	renderMenu := func() {
 		frame := game.RenderMainMenu(tuning, menu.Selected)
@@ -286,6 +303,45 @@ const (
 			return
 		}
 		frame := game.RenderRaceSelect(tuning, rs)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderSeed := func() {
+		frame := game.RenderSeedEntry(tuning, seedState)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderClassPick := func() {
+		if classPick == nil {
+			return
+		}
+		frame := game.RenderClassPick(tuning, classPick)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderCreationRace := func() {
+		if creationRace == nil {
+			return
+		}
+		frame := game.RenderRaceSelect(tuning, creationRace)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderNameEntry := func() {
+		if nameEntry == nil {
+			return
+		}
+		frame := game.RenderNameEntry(tuning, nameEntry.Class, nameEntry.Race, nameEntry.Text)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderReview := func() {
+		frame := game.RenderReview(tuning, drafts, reviewCursor)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -348,6 +404,15 @@ const (
 			return
 		}
 		frame := g.RenderUseMenu(useSelected)
+		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
+		statusDiv.Set("textContent", frame.Status)
+		renderLogHints(frame)
+	}
+	renderUseMember := func() {
+		if g == nil {
+			return
+		}
+		frame := g.RenderUseMemberMenu(useMemberTitle, useMemberMode == "partyChoice", useMemberSelected)
 		gameDiv.Set("innerHTML", buildHTML(frame, tuning))
 		statusDiv.Set("textContent", frame.Status)
 		renderLogHints(frame)
@@ -458,13 +523,11 @@ const (
 				opt := opts[menu.Selected]
 				switch opt {
 				case "New Game":
-					var err error
-					cs, err = game.NewCharSelect()
-					if err != nil {
-						cs = &game.CharSelectState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}}
-					}
-					state = stateCharSelect
-					renderCharSelect()
+					seedState = &game.SeedEntryState{}
+					drafts = []game.DraftMember{}
+					reviewCursor = 0
+					state = stateSeed
+					renderSeed()
 				case "Scores":
 					scoresSelected = 0
 					state = stateScores
@@ -609,6 +672,201 @@ const (
 						renderRaceSelect()
 					}
 				}
+			}
+		case stateSeed:
+			if key == "Backspace" {
+				e.Call("preventDefault")
+				if seedState != nil {
+					seedState.Backspace()
+					renderSeed()
+				}
+				break
+			}
+			if len([]rune(key)) == 1 {
+				if seedState != nil {
+					for _, r := range key {
+						seedState.AppendRune(r)
+					}
+					renderSeed()
+				}
+				break
+			}
+			switch k {
+			case game.KeyEnter:
+				var err error
+				classPick, err = game.NewClassPickState(len(drafts), len(drafts))
+				if err != nil || classPick == nil {
+					classPick = &game.ClassPickState{Classes: []game.ClassInfo{{ID: "fighter", Name: "Fighter"}, {ID: "cleric", Name: "Cleric"}}, Slot: len(drafts), Drafts: len(drafts)}
+				}
+				state = stateCreationClass
+				renderClassPick()
+			case game.KeyQuit:
+				state = stateMenu
+				renderMenu()
+			default:
+				renderSeed()
+			}
+		case stateCreationClass:
+			if classPick == nil {
+				state = stateSeed
+				renderSeed()
+				break
+			}
+			switch k {
+			case game.KeyUp:
+				classPick.Move(-1)
+				renderClassPick()
+			case game.KeyDown:
+				classPick.Move(1)
+				renderClassPick()
+			case game.KeyEnter:
+				slotClass = classPick.Choice()
+				if slotClass == "" {
+					renderClassPick()
+					break
+				}
+				var err error
+				creationRace, err = game.NewRaceSelect([]string{slotClass})
+				if err != nil || creationRace == nil {
+					renderClassPick()
+					break
+				}
+				state = stateCreationRace
+				renderCreationRace()
+			case game.KeyQuit:
+				state = stateSeed
+				renderSeed()
+			default:
+				renderClassPick()
+			}
+		case stateCreationRace:
+			if creationRace == nil {
+				state = stateCreationClass
+				renderClassPick()
+				break
+			}
+			switch k {
+			case game.KeyUp:
+				creationRace.Move(-1)
+				renderCreationRace()
+			case game.KeyDown:
+				creationRace.Move(1)
+				renderCreationRace()
+			case game.KeyEnter:
+				if len(creationRace.Picks) > 0 {
+					nameEntry = &game.NameEntryState{Class: slotClass, Race: creationRace.Picks[0]}
+					state = stateCreationName
+					renderNameEntry()
+				} else {
+					creationRace.Select()
+					renderCreationRace()
+				}
+			case game.KeyQuit:
+				if creationRace.Back() {
+					state = stateCreationClass
+					renderClassPick()
+				} else {
+					renderCreationRace()
+				}
+			default:
+				renderCreationRace()
+			}
+		case stateCreationName:
+			if nameEntry == nil {
+				state = stateCreationClass
+				renderClassPick()
+				break
+			}
+			if key == "Backspace" {
+				e.Call("preventDefault")
+				nameEntry.Backspace()
+				renderNameEntry()
+				break
+			}
+			if len([]rune(key)) == 1 {
+				for _, r := range key {
+					nameEntry.AppendRune(r)
+				}
+				renderNameEntry()
+				break
+			}
+			switch k {
+			case game.KeyEnter:
+				drafts = append(drafts, game.DraftMember{Class: nameEntry.Class, Race: nameEntry.Race, Name: nameEntry.Text})
+				reviewCursor = 0
+				state = stateReview
+				renderReview()
+			case game.KeyQuit:
+				state = stateCreationClass
+				renderClassPick()
+			default:
+				renderNameEntry()
+			}
+		case stateReview:
+			rows := game.ReviewRows(drafts)
+			switch k {
+			case game.KeyUp:
+				if len(rows) > 0 {
+					reviewCursor--
+					if reviewCursor < 0 {
+						reviewCursor = len(rows) - 1
+					}
+				}
+				renderReview()
+			case game.KeyDown:
+				if len(rows) > 0 {
+					reviewCursor++
+					if reviewCursor >= len(rows) {
+						reviewCursor = 0
+					}
+				}
+				renderReview()
+			case game.KeyEnter:
+				if len(rows) == 0 || reviewCursor < 0 || reviewCursor >= len(rows) {
+					renderReview()
+					break
+				}
+				row := rows[reviewCursor]
+				switch row.Action {
+				case "discard":
+					if row.Index >= 0 && row.Index < len(drafts) {
+						drafts = append(drafts[:row.Index], drafts[row.Index+1:]...)
+					}
+					if reviewCursor >= len(game.ReviewRows(drafts)) {
+						reviewCursor = len(game.ReviewRows(drafts)) - 1
+					}
+					if reviewCursor < 0 {
+						reviewCursor = 0
+					}
+					renderReview()
+				case "add":
+					var err error
+					classPick, err = game.NewClassPickState(len(drafts), len(drafts))
+					if err != nil || classPick == nil {
+						renderReview()
+						break
+					}
+					state = stateCreationClass
+					renderClassPick()
+				case "begin":
+					classes := make([]string, len(drafts))
+					races := make([]string, len(drafts))
+					names := make([]string, len(drafts))
+					for i, d := range drafts {
+						classes[i], races[i], names[i] = d.Class, d.Race, d.Name
+					}
+					seed := seedState.SeedOr(time.Now().UnixNano())
+					g = game.NewGameFull(seed, tuning, classes, races, names)
+					state = statePlaying
+					renderGame()
+				default:
+					renderReview()
+				}
+			case game.KeyQuit:
+				state = stateMenu
+				renderMenu()
+			default:
+				renderReview()
 			}
 		case statePlaying:
 			if g == nil {
@@ -782,15 +1040,80 @@ const (
 			case game.KeyEnter:
 				if len(entries) > 0 && useSelected >= 0 && useSelected < len(entries) {
 					e := entries[useSelected]
-					g.StartUse(e.Appearance, e.Kind)
-					state = stateUseTarget
-					renderGame()
+					useMemberMode = game.UseTargetMode(e.Kind, e.Appearance)
+					if useMemberMode == "tile" {
+						g.StartUse(e.Appearance, e.Kind)
+						state = stateUseTarget
+						renderGame()
+					} else {
+						useMemberAppearance = e.Appearance
+						useMemberTitle = e.DisplayName
+						useMemberSelected = 0
+						state = stateUseMember
+						renderUseMember()
+					}
 				} else {
 					state = statePlaying
 					renderGame()
 				}
 			default:
 				renderUseMenu()
+			}
+		case stateUseMember:
+			if g == nil {
+				state = statePlaying
+				renderGame()
+				break
+			}
+			allowParty := useMemberMode == "partyChoice"
+			_, useMemberRows := g.UseMemberOptions(allowParty)
+			switch k {
+			case game.KeyUp:
+				if len(useMemberRows) > 0 {
+					useMemberSelected--
+					if useMemberSelected < 0 {
+						useMemberSelected = len(useMemberRows) - 1
+					}
+				}
+				renderUseMember()
+			case game.KeyDown:
+				if len(useMemberRows) > 0 {
+					useMemberSelected++
+					if useMemberSelected >= len(useMemberRows) {
+						useMemberSelected = 0
+					}
+				}
+				renderUseMember()
+			case game.KeyQuit:
+				state = stateUseInventory
+				renderUseMenu()
+			case game.KeyEnter:
+				if len(useMemberRows) > 0 && useMemberSelected >= 0 && useMemberSelected < len(useMemberRows) {
+					g.TryUseAppearanceOnMember(useMemberAppearance, useMemberRows[useMemberSelected])
+					state = statePlaying
+					renderGame()
+					if g.LevelUpPending != nil {
+						renderLevelUp()
+					}
+					if g.Quit {
+						if !g.Over {
+							_ = game.Save(g)
+						}
+						state = stateMenu
+						g = nil
+						renderMenu()
+					} else if g.Over {
+						_ = game.DeleteSave()
+						state = stateMenu
+						g = nil
+						renderMenu()
+					}
+				} else {
+					state = statePlaying
+					renderGame()
+				}
+			default:
+				renderUseMember()
 			}
 		case stateUseTarget:
 			if g == nil {

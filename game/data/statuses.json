@@ -23,7 +23,7 @@
     { "id": "slow", "name": "Slow", "desc": "Slowed", "duration": 30 },
     { "id": "silence", "name": "Silence", "desc": "Cannot use scrolls", "duration": 5 },
     { "id": "stun", "name": "Stun", "desc": "Stunned", "duration": 1 },
-    { "id": "regenerate", "name": "Regenerate", "desc": "Regen 1/2t (troll)", "duration": 0, "dot": -1 },
+    { "id": "regenerate", "name": "Regenerate", "desc": "Heal 1 HP every 2 turns", "duration": 20, "dot": -1 },
     { "id": "ward", "name": "Ward", "desc": "Magic resist helper", "duration": 0 },
     { "id": "iron_will", "name": "Iron Will", "desc": "Status resist helper", "duration": 0 }
   ],

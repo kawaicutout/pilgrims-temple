@@ -44,9 +44,9 @@ type statusFile struct {
 }
 
 var (
-	statusDefs  map[string]StatusDef
+	statusDefs    map[string]StatusDef
 	statusResists map[string]float64
-	statusDots  map[string]int
+	statusDots    map[string]int
 )
 
 func loadStatusData() {
@@ -609,15 +609,6 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 					}
 				}
 			}
-		}
-		// original code also reveals map after fireball (data bug preserved but now explicit)
-		if lvl := g.CurLevel(); lvl != nil {
-			for y := range lvl.H {
-				for x := range lvl.W {
-					lvl.Seen[y][x] = true
-				}
-			}
-			g.Logf("Mapping scroll reveals the floor.")
 		}
 	case "enchant":
 		if isSelf || targetEnemy == nil {

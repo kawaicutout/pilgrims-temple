@@ -68,7 +68,7 @@ func (g *Game) MarshalJSON() ([]byte, error) {
 		Escaped:                 g.Escaped,
 		Over:                    g.Over,
 		Won:                     g.Won,
-		Quit:                    g.Quit,
+		Quit:                    false, // session intent, never persisted
 		Cause:                   g.Cause,
 		Relic:                   g.Relic,
 		Wizard:                  g.Wizard,
@@ -107,7 +107,7 @@ func (g *Game) UnmarshalJSON(data []byte) error {
 	g.Escaped = aux.Escaped
 	g.Over = aux.Over
 	g.Won = aux.Won
-	g.Quit = aux.Quit
+	g.Quit = false // session intent, never restored (a stale true bricks Load game into a menu bounce)
 	g.Cause = aux.Cause
 	g.Relic = aux.Relic
 	g.Wizard = aux.Wizard

@@ -2,13 +2,13 @@ GO      ?= go
 BIN      = pilgrims-temple
 BIN_LINUX   = bin/pilgrims-temple
 BIN_WINDOWS = bin/pilgrims-temple.exe
-WASM     = web/main.wasm
-WASM_BR  = web/main.wasm.br
-WASM_EXEC_JS = web/wasm_exec.js
+BIN_LINUX_R   = bin/pilgrims-temple-renderer
+BIN_WINDOWS_R = bin/pilgrims-temple-renderer.exe
+WASM_R_DIR = web-renderer
 
 LDFLAGS  = -s -w
 
-.PHONY: all run terminal wasm wasm-br web zip bin clean vet test
+.PHONY: all run terminal wasm wasm-br web zip bin clean vet test bin-linux-renderer bin-windows-renderer webrenderer
 all: terminal wasm
 
 run: terminal
@@ -30,6 +30,41 @@ $(BIN_WINDOWS): cmd/terminal/*.go game/*.go game/data/*.json
 	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_WINDOWS) ./cmd/terminal
 	@ls -lh $(BIN_WINDOWS)
 
+
+# ---- renderer (Ebiten graphics frontend; terminal stays default) ----
+bin-linux-renderer: $(BIN_LINUX_R)
+bin-windows-renderer: $(BIN_WINDOWS_R)
+
+$(BIN_LINUX_R): cmd/renderer/*.go cmd/renderer/fonts/*.ttf game/*.go game/data/*.json
+	mkdir -p bin
+	GOOS=linux GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_LINUX_R) ./cmd/renderer
+	@ls -lh $(BIN_LINUX_R)
+
+$(BIN_WINDOWS_R): cmd/renderer/*.go cmd/renderer/fonts/*.ttf game/*.go game/data/*.json
+	mkdir -p bin
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BIN_WINDOWS_R) ./cmd/renderer
+	@ls -lh $(BIN_WINDOWS_R)
+
+# Renderer web build into web-renderer/ (becomes `web` after visual sign-off)
+webrenderer: $(WASM_R_DIR)/main.wasm $(WASM_R_DIR)/main.wasm.br $(WASM_R_DIR)/wasm_exec.js
+
+$(WASM_R_DIR)/main.wasm: cmd/renderer/*.go cmd/renderer/fonts/*.ttf game/*.go game/data/*.json
+	GOOS=js GOARCH=wasm $(GO) build -ldflags="$(LDFLAGS)" -o $(WASM_R_DIR)/main.wasm ./cmd/renderer
+	@if command -v wasm-opt >/dev/null 2>&1; then \
+		echo "wasm-opt -O3 $(WASM_R_DIR)/main.wasm"; \
+		wasm-opt --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -O3 $(WASM_R_DIR)/main.wasm -o $(WASM_R_DIR)/main.wasm || echo "wasm-opt failed — keeping unoptimized"; \
+	fi
+	@ls -lh $(WASM_R_DIR)/main.wasm
+
+$(WASM_R_DIR)/main.wasm.br: $(WASM_R_DIR)/main.wasm
+	@if command -v brotli >/dev/null 2>&1; then \
+		brotli -q 11 -f $(WASM_R_DIR)/main.wasm -o $(WASM_R_DIR)/main.wasm.br && ls -lh $(WASM_R_DIR)/main.wasm $(WASM_R_DIR)/main.wasm.br; \
+	else \
+		echo "brotli not found — skipping"; \
+	fi
+
+$(WASM_R_DIR)/wasm_exec.js:
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" $(WASM_R_DIR)/wasm_exec.js
 
 # ---- wasm ----
 wasm: $(WASM) $(WASM_EXEC_JS)
@@ -59,7 +94,7 @@ web: wasm wasm-br
 
 # itch.io upload: zip of web/ with brotli wasm + uncompressed fallback (DESIGN 13.3)
 zip: wasm-br
-	cd web && zip -r ../pilgrims-temple-web.zip index.html tokens.css wasm_exec.js main.wasm.br main.wasm
+	cd web && zip -r ../pilgrims-temple-web.zip index.html tokens.css wasm_exec.js main.wasm.br main.wasm fonts
 	@ls -lh pilgrims-temple-web.zip
 
 # Deploy web to GitHub Pages (legacy gh-pages branch, no Actions needed)
@@ -70,7 +105,8 @@ deploy-pages: web
 	git worktree add --detach "$$worktree" gh-pages 2>/dev/null || git worktree add "$$worktree" gh-pages; \
 	rm -rf "$$worktree"/*; \
 	cp web/index.html web/tokens.css web/wasm_exec.js web/main.wasm web/main.wasm.br "$$worktree"/; \
-	cd "$$worktree" && git add index.html tokens.css wasm_exec.js main.wasm main.wasm.br && git commit -m "Deploy web $$(date -u +%Y-%m-%dT%H:%M:%SZ)" && git push origin HEAD:gh-pages --force; \
+	cp -r web/fonts "$$worktree"/fonts; \
+	cd "$$worktree" && git add index.html tokens.css wasm_exec.js main.wasm main.wasm.br fonts && git commit -m "Deploy web $$(date -u +%Y-%m-%dT%H:%M:%SZ)" && git push origin HEAD:gh-pages --force; \
 	git worktree remove --force "$$worktree"; \
 	rmdir "$$worktree" 2>/dev/null || true
 	@echo "Deployed to https://kawaicutout.github.io/pilgrims-temple/"

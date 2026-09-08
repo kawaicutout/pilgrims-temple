@@ -3,28 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <title>Pilgrims' Temple</title>
 <link rel="stylesheet" href="tokens.css">
 <style>
-  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-monospace); min-height: 100vh; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-monospace); height: 100%; overflow: hidden; }
   body { display: block; }
-  .page { width: 110ch; max-width: 100vw; margin: 0 auto; }
-  #game { white-space: pre; line-height: var(--map-line-height); padding: 16px 16px 0 16px; width: 110ch; max-width: 100vw; box-sizing: border-box; overflow: hidden; }
-  .status { color: var(--gold); font-size: 14px; padding: 8px 16px; font-family: var(--font-monospace); white-space: pre; width: 110ch; max-width: 100vw; box-sizing: border-box; min-height: 1.2em; }
-  #log { color: var(--gray-1); font-family: var(--font-monospace); white-space: pre; padding: 4px 16px 0 16px; line-height: 1.15; width: 110ch; max-width: 100vw; box-sizing: border-box; min-height: 8em; }
-  #hints { color: var(--gray-2); font-family: var(--font-monospace); padding: 8px 16px 16px 16px; white-space: pre-wrap; width: 110ch; max-width: 100vw; box-sizing: border-box; min-height: 1.2em; overflow-wrap: break-word; }
-  .shell-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 16px; border-top:1px solid var(--gray-3); border-bottom:1px solid var(--gray-3); background: var(--bg); font-size:12px; width: 110ch; max-width: 100vw; box-sizing: border-box; }
-  .shell-controls input[type=file] { color: var(--fg); font-family: var(--font-monospace); font-size:12px; }
-  #editor { width: 110ch; max-width: 100vw; box-sizing: border-box; }
-  .shell-controls button { font-family: var(--font-monospace); font-size:12px; background: var(--gray-3); color: var(--fg); border:1px solid var(--gray-2); padding:4px 8px; cursor:pointer; }
+  /* Whole terminal fits min(80vw, 80vh): 110 cols ≈ 66em wide, ~41
+     lines tall (24 map + status + log + hints + controls + chrome). */
+  .page { width: min(110ch, 80vw); max-width: 80vw; max-height: 100vh; margin: 0 auto; font-size: min(1.2vw, 1.9vh); overflow: hidden; }
+  #game { white-space: pre; line-height: var(--map-line-height); padding: 4px 16px 0 16px; width: 110ch; max-width: 80vw; box-sizing: border-box; overflow: hidden; --map-cell: 1em; }
+  .status { color: var(--gold); font-size: 1em; padding: 4px 16px; font-family: var(--font-monospace); white-space: pre; width: 110ch; max-width: 80vw; box-sizing: border-box; min-height: 1.2em; }
+  #log { color: var(--gray-1); font-family: var(--font-monospace); white-space: pre; padding: 2px 16px 0 16px; line-height: 1.15; width: 110ch; max-width: 80vw; box-sizing: border-box; min-height: 8em; }
+  #hints { color: var(--gray-2); font-family: var(--font-monospace); padding: 4px 16px 8px 16px; white-space: pre-wrap; width: 110ch; max-width: 80vw; box-sizing: border-box; min-height: 1.2em; overflow-wrap: break-word; }
+  .shell-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:6px 16px; border-top:1px solid var(--gray-3); border-bottom:1px solid var(--gray-3); background: var(--bg); font-size:0.8em; width: 110ch; max-width: 80vw; box-sizing: border-box; }
+  .shell-controls input[type=file] { color: var(--fg); font-family: var(--font-monospace); font-size:1em; }
+  #editor { width: 110ch; max-width: 80vw; box-sizing: border-box; }
+  .shell-controls button { font-family: var(--font-monospace); font-size:1em; background: var(--gray-3); color: var(--fg); border:1px solid var(--gray-2); padding:4px 8px; cursor:pointer; }
   .shell-controls button:hover { background: var(--gray-2); color: var(--bg); }
-  #editor { display:none; padding:12px 16px; border-bottom:1px solid var(--gray-3); background: var(--bg); }
+  #editor { display:none; padding:12px 16px; border-bottom:1px solid var(--gray-3); background: var(--bg); max-height:32vh; overflow:auto; }
   #editor.open { display:block; }
-  #editor textarea { width:100%; max-width:640px; min-height:160px; background:#1a1816; color:var(--fg); border:1px solid var(--gray-3); font-family: var(--font-monospace); font-size:12px; padding:8px; }
-  #editor select, #editor button { font-family: var(--font-monospace); font-size:12px; }
-  #editStatus { color: var(--gold); font-size:12px; margin-left:8px; }
+  #editor textarea { width:100%; max-width:640px; min-height:10em; background:#1a1816; color:var(--fg); border:1px solid var(--gray-3); font-family: var(--font-monospace); font-size:1em; padding:8px; }
+  #editor select, #editor button { font-family: var(--font-monospace); font-size:1em; }
+  #editStatus { color: var(--gold); font-size:1em; margin-left:8px; }
 </style>
 </head>
 <body>
@@ -70,6 +70,7 @@
   }
   async function instantiateWasm(bytes, go) {
     const result = await WebAssembly.instantiate(bytes, go.importObject);
+    status.textContent = ''; // loader done; first frame overwrites
     go.run(result.instance);
   }
   async function loadWasm() {

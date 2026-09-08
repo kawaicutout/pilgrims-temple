@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# serve.sh — build latest web build and serve locally on a free port
+# serve.sh — build latest renderer web build and serve locally on a free port
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "Building web (make web)..."
-if ! make web; then
-  echo "make web failed" >&2
+echo "Building web renderer (make webrenderer)..."
+if ! make webrenderer; then
+  echo "make webrenderer failed" >&2
   exit 1
 fi
 
@@ -40,8 +40,8 @@ if [ -z "$PORT" ] || [ "$PORT" = "0" ]; then
 fi
 
 echo ""
-echo "Serving web/ at http://127.0.0.1:${PORT}/  (also http://localhost:${PORT}/)"
-echo "Document root: $SCRIPT_DIR/web"
+echo "Serving web-renderer/ at http://127.0.0.1:${PORT}/  (also http://localhost:${PORT}/)"
+echo "Document root: $SCRIPT_DIR/web-renderer"
 echo "Press Ctrl+C to stop."
 echo ""
 
@@ -52,10 +52,10 @@ elif command -v open >/dev/null 2>&1; then
   (open "http://127.0.0.1:${PORT}/" >/dev/null 2>&1 & disown) || true
 fi
 
-# Serve — prefer python3 --directory (3.7+), fallback to cd web
+# Serve — prefer python3 --directory (3.7+), fallback to cd web-renderer
 if python3 -m http.server --help 2>&1 | grep -q -- "--directory"; then
-  exec python3 -m http.server "$PORT" --directory web --bind 127.0.0.1
+  exec python3 -m http.server "$PORT" --directory web-renderer --bind 127.0.0.1
 else
-  cd web
+  cd web-renderer
   exec python3 -m http.server "$PORT" --bind 127.0.0.1
 fi

@@ -242,25 +242,6 @@ func IdentifyOnUse(appearance string) bool {
 	return true
 }
 
-// ShouldAutoID reports whether the wizard passive should auto-identify
-// one held appearance on this turn. Per DESIGN 5.5 and tuning: every 50 turns.
-// The caller checks party has a living wizard and picks which held appearance to reveal.
-func ShouldAutoID(turn int) bool {
-	return turn > 0 && turn%50 == 0
-}
-
-// WizardAutoID is an alias for ShouldAutoID for callers that prefer the
-// wizard-specific name. Every 50 turns (turn > 0) returns true.
-func WizardAutoID(turn int) bool {
-	return ShouldAutoID(turn)
-}
-
-// WizardShouldAutoID is a second alias covering the alternative naming
-// some callers may expect.
-func WizardShouldAutoID(turn int) bool {
-	return ShouldAutoID(turn)
-}
-
 // ResetIdentification clears per-run knowledge without rebuilding the
 // appearance shuffle. Useful for tests.
 func ResetIdentification() {

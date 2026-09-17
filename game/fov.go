@@ -1,6 +1,8 @@
 package game
 
-// ComputeFOV fills lvl.Visible from origin with radius via shadowcast (octants).
+// ComputeFOV fills lvl.Visible from origin with radius: one line-of-sight
+// ray per cell in radius (Bresenham). Single pass; repeated scans would
+// only repaint the same cells.
 func ComputeFOV(lvl *Level, origin Pos, radius int) {
 	// Clear visible
 	for y := range lvl.H {
@@ -13,18 +15,6 @@ func ComputeFOV(lvl *Level, origin Pos, radius int) {
 	}
 	lvl.Visible[origin.Y][origin.X] = true
 	lvl.Seen[origin.Y][origin.X] = true
-	for oct := range 8 {
-		castOctant(lvl, origin, radius, oct)
-	}
-}
-
-func castOctant(lvl *Level, origin Pos, radius, oct int) {
-	// Recursive shadowcast using integer slopes.
-	var cast func(row, start, end int)
-	cast = func(row, startSlopeNum, startSlopeDen int) {}
-	// Iterative slope-scan implementation (simpler, no recursion depth)
-	_ = cast
-	// For M1, we use a simpler perm-sight: ray to every cell within radius, bresenham LOS.
 	for dy := -radius; dy <= radius; dy++ {
 		for dx := -radius; dx <= radius; dx++ {
 			if dx*dx+dy*dy > radius*radius+radius {
@@ -40,8 +30,6 @@ func castOctant(lvl *Level, origin Pos, radius, oct int) {
 			}
 		}
 	}
-	// Ensure parameter used
-	_ = oct
 }
 
 func hasLOS(lvl *Level, from, to Pos) bool {

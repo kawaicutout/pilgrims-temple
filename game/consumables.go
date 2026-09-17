@@ -199,42 +199,8 @@ func resistsForTalent(talent string) float64 {
 // Single apply hubs — collapse 3× duplicate switches.
 // ---------------------------------------------------------------------------
 
-func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyParty, member *Member) {
-	eff := potionEffect(typeID)
-	// Defaults when JSON missing (robust fallback)
-	if eff.Kind == "" {
-		// infer from id for old data
-		switch typeID {
-		case "healing":
-			eff = ConsumableEffect{Kind: "heal", Amount: 12}
-		case "poison":
-			eff = ConsumableEffect{Kind: "damage", Amount: 6}
-		case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment", "regeneration":
-			eff = ConsumableEffect{Kind: "status", Status: typeID, Duration: 40}
-			switch typeID {
-			case "strength":
-				eff.Duration = 40
-				eff.Atk = 2
-			case "invisibility":
-				eff.Duration = 20
-			case "fire_resist":
-				eff.Duration = 60
-				eff.ResistPct = 30
-			case "paralysis":
-				eff.Duration = 3
-			case "levitation":
-				eff.Duration = 25
-			case "enlightenment":
-				eff.Duration = 15
-			case "regeneration":
-				eff.Duration = 20
-				eff.Status = "regenerate"
-			}
-		}
-	}
-
-	switch typeID {
-	case "healing":
+// potionHealing applies a healing potion to a member, the party, enemies, or ground.
+func (g *Game) potionHealing(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, member *Member) {
 		amt := eff.Amount
 		if amt == 0 {
 			amt = 12
@@ -287,7 +253,47 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 		} else {
 			g.Logf("Healing potion shatters on ground.")
 		}
-	case "poison":
+}
+
+// potionEffectDefaults returns the effective potion effect for a type, applying robust fallbacks when JSON data is missing.
+func potionEffectDefaults(typeID string) ConsumableEffect {
+	eff := potionEffect(typeID)
+	// Defaults when JSON missing (robust fallback)
+	if eff.Kind == "" {
+		// infer from id for old data
+		switch typeID {
+		case "healing":
+			eff = ConsumableEffect{Kind: "heal", Amount: 12}
+		case "poison":
+			eff = ConsumableEffect{Kind: "damage", Amount: 6}
+		case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment", "regeneration":
+			eff = ConsumableEffect{Kind: "status", Status: typeID, Duration: 40}
+			switch typeID {
+			case "strength":
+				eff.Duration = 40
+				eff.Atk = 2
+			case "invisibility":
+				eff.Duration = 20
+			case "fire_resist":
+				eff.Duration = 60
+				eff.ResistPct = 30
+			case "paralysis":
+				eff.Duration = 3
+			case "levitation":
+				eff.Duration = 25
+			case "enlightenment":
+				eff.Duration = 15
+			case "regeneration":
+				eff.Duration = 20
+				eff.Status = "regenerate"
+			}
+		}
+	}
+	return eff
+}
+
+// potionPoison applies a poison potion to a member, the party, enemies, or ground.
+func (g *Game) potionPoison(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, member *Member) {
 		amt := eff.Amount
 		if amt == 0 {
 			amt = 6
@@ -346,7 +352,10 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 		} else {
 			g.Logf("Poison potion shatters on ground.")
 		}
-	case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment", "regeneration":
+}
+
+// potionStatus applies a status potion to a member, enemies, or ground.
+func (g *Game) potionStatus(typeID string, eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, member *Member) {
 		statusID := eff.Status
 		if statusID == "" {
 			statusID = typeID
@@ -388,9 +397,17 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 			}
 		}
 		if isSelf {
-			g.Party.ApplyStatus(statusID, applied)
+			m := member
+			if m == nil || !m.IsAlive() {
+				m = g.Party.observer()
+			}
+			if m != nil {
+				m.ApplyStatus(statusID, applied)
+			}
 		} else if targetEnemy != nil {
-			targetEnemy.ApplyStatus(statusID, applied)
+			if m := enemyActor(targetEnemy); m != nil {
+				m.ApplyStatus(statusID, applied)
+			}
 		} else {
 			g.Logf("%s potion shatters on ground.", strings.Title(strings.ReplaceAll(statusID, "_", " ")))
 			return
@@ -456,6 +473,18 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				g.Logf("Regeneration potion splashes on %s.", targetEnemy.DisplayName())
 			}
 		}
+}
+
+func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyParty, member *Member) {
+	eff := potionEffectDefaults(typeID)
+
+	switch typeID {
+	case "healing":
+		g.potionHealing(eff, isSelf, targetEnemy, member)
+	case "poison":
+		g.potionPoison(eff, isSelf, targetEnemy, member)
+	case "strength", "invisibility", "fire_resist", "paralysis", "levitation", "enlightenment", "regeneration":
+		g.potionStatus(typeID, eff, isSelf, targetEnemy, member)
 	default:
 		// generic fallback from desc
 		_, types := loadPotionData()
@@ -473,11 +502,11 @@ func (g *Game) applyPotionEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 		} else {
 			g.Logf("Potion shatters on ground.")
 		}
-		_ = eff
 	}
 }
 
-func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
+// scrollEffectDefaults returns the effective scroll effect for a type, applying robust fallbacks when JSON data is missing.
+func scrollEffectDefaults(typeID string) ConsumableEffect {
 	eff := scrollEffect(typeID)
 	// defaults when missing
 	if eff.Kind == "" {
@@ -516,9 +545,11 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 			}
 		}
 	}
+	return eff
+}
 
-	switch typeID {
-	case "identify":
+// scrollIdentify reveals unidentified inventory appearances.
+func (g *Game) scrollIdentify(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		var revealed []string
 		for _, inv := range g.Party.Inventory {
 			app := appearanceFromItem(inv)
@@ -534,7 +565,10 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 		} else {
 			g.Logf("Identify reveals: nothing left to identify.")
 		}
-	case "teleport":
+}
+
+// scrollTeleport teleports the party or a targeted enemy to a new location.
+func (g *Game) scrollTeleport(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		// candidate helper deduplicates self vs enemy target
 		if isSelf || targetEnemy == nil {
 			if lvl := g.CurLevel(); lvl != nil && g.RNG != nil {
@@ -556,7 +590,10 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				}
 			}
 		}
-	case "fireball":
+}
+
+// scrollFireball bursts flames around the party, a targeted enemy, or a ground target.
+func (g *Game) scrollFireball(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		g.Logf("Fireball scroll: flames burst!")
 		if lvl := g.CurLevel(); lvl != nil {
 			center := g.Party.Pos
@@ -579,25 +616,26 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 					continue
 				}
 				if max(abs(e.Pos.X-center.X), abs(e.Pos.Y-center.Y)) <= radius {
-					dmg := dmgBase
-					if e.HasStatus(StatusFireResist) {
-						// data-driven resistPct (30 default)
-						pct := eff.ResistPct
-						if pct == 0 {
-							pct = 30
-						}
-						dmg = (dmg * (100 - pct)) / 100
-						if dmg < 1 {
-							dmg = 1
-						}
-					}
 					for _, m := range e.Members {
-						if m.IsAlive() {
-							m.HP -= dmg
-							if m.HP <= 0 {
-								m.HP = 0
-								m.Alive = false
+						if !m.IsAlive() {
+							continue
+						}
+						dmg := dmgBase
+						if m.HasStatus(StatusFireResist) {
+							// data-driven resistPct (30 default)
+							pct := eff.ResistPct
+							if pct == 0 {
+								pct = 30
 							}
+							dmg = (dmg * (100 - pct)) / 100
+							if dmg < 1 {
+								dmg = 1
+							}
+						}
+						m.HP -= dmg
+						if m.HP <= 0 {
+							m.HP = 0
+							m.Alive = false
 						}
 					}
 					if !e.IsAlive() {
@@ -605,12 +643,15 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 						g.AddKill()
 						g.rollKillDrop(e)
 					} else {
-						g.Logf("Fireball hits %s for %d fire damage.", e.DisplayName(), dmg)
+						g.Logf("Fireball hits %s for %d fire damage.", e.DisplayName(), dmgBase)
 					}
 				}
 			}
 		}
-	case "enchant":
+}
+
+// scrollEnchant enchants a member or a targeted enemy.
+func (g *Game) scrollEnchant(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		if isSelf || targetEnemy == nil {
 			if member != nil && member.IsAlive() {
 				affix := GetRandomAffix(g.RNG)
@@ -623,7 +664,7 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 					member.ATK[1]++
 					g.Logf("Enchant scroll: %s grows stronger (ATK %d-%d).", member.Name, member.ATK[0], member.ATK[1])
 				}
-				break
+				return
 			}
 			members := g.Party.LivingMembers()
 			if len(members) > 0 {
@@ -664,7 +705,10 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				g.Logf("Enchant scroll fizzles on %s.", targetEnemy.DisplayName())
 			}
 		}
-	case "confusion":
+}
+
+// scrollConfusion confuses enemies around the party, a ground target, or a targeted enemy.
+func (g *Game) scrollConfusion(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		durVisible := eff.Duration
 		if durVisible == 0 {
 			durVisible = 8
@@ -681,7 +725,9 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				if lvl := g.CurLevel(); lvl != nil {
 					for _, e := range lvl.Enemies {
 						if e.IsAlive() && max(abs(e.Pos.X-target.X), abs(e.Pos.Y-target.Y)) <= radius {
-							e.ApplyStatus(StatusConfusion, applied)
+							if m := enemyActor(e); m != nil {
+								m.ApplyStatus(StatusConfusion, applied)
+							}
 							affected++
 						}
 					}
@@ -696,7 +742,9 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				if lvl := g.CurLevel(); lvl != nil {
 					for _, e := range lvl.Enemies {
 						if e.IsAlive() && max(abs(e.Pos.X-g.Party.Pos.X), abs(e.Pos.Y-g.Party.Pos.Y)) <= radius {
-							e.ApplyStatus(StatusConfusion, applied)
+							if m := enemyActor(e); m != nil {
+								m.ApplyStatus(StatusConfusion, applied)
+							}
 							affected++
 						}
 					}
@@ -708,10 +756,15 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				}
 			}
 		} else {
-			targetEnemy.ApplyStatus(StatusConfusion, applied)
+			if m := enemyActor(targetEnemy); m != nil {
+				m.ApplyStatus(StatusConfusion, applied)
+			}
 			g.Logf("Confusion scroll: %s is confused for %d turns!", targetEnemy.DisplayName(), durVisible)
 		}
-	case "greater_healing":
+}
+
+// scrollGreaterHealing restores HP and cleanses the party or a targeted enemy.
+func (g *Game) scrollGreaterHealing(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		healAmt := eff.Heal
 		if healAmt == 0 {
 			healAmt = 20
@@ -738,11 +791,15 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				}
 			}
 			for _, sid := range cleanse {
-				if g.Party.HasStatus(sid) {
-					if sid == "curse" {
-						g.Logf("Greater healing removes curse.")
+				removed := false
+				for _, m := range g.Party.Members {
+					if m.IsAlive() && m.HasStatus(sid) {
+						m.RemoveStatus(sid)
+						removed = true
 					}
-					g.Party.RemoveStatus(sid)
+				}
+				if removed && sid == "curse" {
+					g.Logf("Greater healing removes curse.")
 				}
 			}
 			if member != nil && member.IsAlive() {
@@ -760,11 +817,18 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				}
 			}
 			for _, sid := range cleanse {
-				targetEnemy.RemoveStatus(sid)
+				for _, m := range targetEnemy.Members {
+					if m.IsAlive() {
+						m.RemoveStatus(sid)
+					}
+				}
 			}
 			g.Logf("Greater healing scroll restores %d HP to %s!", healAmt, targetEnemy.DisplayName())
 		}
-	case "summon", "summon_aid", "summon aid":
+}
+
+// scrollSummon summons an ally for the party or for a targeted enemy.
+func (g *Game) scrollSummon(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		durVisible := eff.Duration
 		if durVisible == 0 {
 			durVisible = 15
@@ -805,7 +869,10 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 				}
 			}
 		}
-	case "mapping":
+}
+
+// scrollMapping reveals the current floor.
+func (g *Game) scrollMapping(eff ConsumableEffect, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
 		if lvl := g.CurLevel(); lvl != nil {
 			for y := range lvl.H {
 				for x := range lvl.W {
@@ -814,6 +881,28 @@ func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyP
 			}
 			g.Logf("Mapping scroll reveals the floor.")
 		}
+}
+
+func (g *Game) applyScrollEffect(typeID string, isSelf bool, targetEnemy *EnemyParty, target Pos, member *Member) {
+	eff := scrollEffectDefaults(typeID)
+
+	switch typeID {
+	case "identify":
+		g.scrollIdentify(eff, isSelf, targetEnemy, target, member)
+	case "teleport":
+		g.scrollTeleport(eff, isSelf, targetEnemy, target, member)
+	case "fireball":
+		g.scrollFireball(eff, isSelf, targetEnemy, target, member)
+	case "enchant":
+		g.scrollEnchant(eff, isSelf, targetEnemy, target, member)
+	case "confusion":
+		g.scrollConfusion(eff, isSelf, targetEnemy, target, member)
+	case "greater_healing":
+		g.scrollGreaterHealing(eff, isSelf, targetEnemy, target, member)
+	case "summon", "summon_aid", "summon aid":
+		g.scrollSummon(eff, isSelf, targetEnemy, target, member)
+	case "mapping":
+		g.scrollMapping(eff, isSelf, targetEnemy, target, member)
 	default:
 		_, types := loadScrollData()
 		name := typeID

@@ -5,8 +5,6 @@ import (
 	"math/rand/v2"
 )
 
-const saveFileName = "save.json"
-const storageKey = "pilgrims_save"
 const saveVersion = 1
 
 // SaveSlot is the persisted one-slot save. It wraps the full Game snapshot
@@ -81,6 +79,7 @@ func (g *Game) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON reconstructs RNG from Seed.
+
 func (g *Game) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return nil
@@ -118,5 +117,40 @@ func (g *Game) UnmarshalJSON(data []byte) error {
 	// Recreate RNG deterministically from seed (same PCG as NewGame).
 	g.RNG = rand.New(rand.NewPCG(uint64(g.Seed), 0x9e3779b97f4a7c15))
 	SetGlobalTuning(g.Tuning)
+	// Pre-migration saves may carry member conditions in Party.Statuses;
+	// only summon is still read from there. Anything else is ignored.
 	return nil
+}
+
+// PostOutcome is what the run needs after an action resolved.
+type PostOutcome int
+
+const (
+	PostOngoing PostOutcome = iota
+	PostMenu              // quit: run saved, go to menu
+	PostDeath             // over: save deleted, go to death modal
+)
+
+// PostAction applies the quit/death save policy: quit saves the run
+// (unless over), death deletes the save. It reports the outcome for
+// navigation plus any error; frontends log the error and proceed.
+func (g *Game) PostAction() (PostOutcome, error) {
+	if g == nil {
+		return PostOngoing, nil
+	}
+	if g.Quit {
+		if !g.Over {
+			if err := Save(g); err != nil {
+				return PostMenu, err
+			}
+		}
+		return PostMenu, nil
+	}
+	if g.Over {
+		if err := DeleteSave(); err != nil {
+			return PostDeath, err
+		}
+		return PostDeath, nil
+	}
+	return PostOngoing, nil
 }

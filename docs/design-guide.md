@@ -12,13 +12,12 @@ and contrast rules and may use the full palette.
 ## 1. Identity statement
 
 A muted, desaturated take on the classic ASCII roguelike, set in a dark
-underground temple. Full-color game space, but every color is deliberately
-drained of saturation so the game reads as one step past standard
-full-brightness roguelikes. Text stays near-white on the near-black surface; the
-gold and red accents appear only where the game needs to say something
-(hits, warnings, party stats), and slate blue marks the world's ambience.
+underground temple. Full-color game space, but every color has low
+saturation, lower than standard roguelikes. Text stays near-white on the
+near-black surface. Gold and red mark hits, warnings, and party stats only,
+and slate blue marks the world's ambience.
 
-> One line: **A desaturated temple lit by torch-gold, where the numbers are the color.**
+> One line: **A desaturated temple. Gold lights it. Numbers carry color.**
 
 ## 2. Pillars applied
 
@@ -31,9 +30,8 @@ state, not atmosphere; slate blue is the one deliberate atmosphere channel,
 scoped to sensory and ambience entries that still carry their meaning in text
 first (Section 3). If an interface color does not carry information (gold
 for a hit, red for damage, accents for party stats), it does not appear. The desaturation is the single deliberate
-departure from the field's bright conventions, and it is a functional one: it
-keeps the map readable as a field of glyphs rather than a wall of color.
-
+departure from bright conventions.
+It keeps the map readable as glyphs, not color.
 ### Intelligibility
 
 The interface stays legible first:
@@ -56,8 +54,7 @@ The interface palette is a core-plus-accents system:
 - Slate blue: desaturated. Atmosphere and sensory entries — currently
   confined to atmospheric log lines and scene ambience (Section 3).
 
-Gold and red are tinted off the same warm, low-saturation family so they relate
-to each other and to the temple setting; slate blue is the cool counterpart,
+Gold and red come from one warm, low-saturation family. Slate blue is the cool counterpart,
 which marks the world's ambience rather than mechanical state.
 
 ### Identity
@@ -101,8 +98,7 @@ sensory presentation is textual — log entries, glyphs, and ambience colors. It
 never carries mechanical numbers or state, which keep to gold, red, and the
 gray ramp. Scene content is exempt:
 enemy and item glyphs, terrain, and effects are game content whose colors are
-decided in the jam window. Staying inside the desaturated families there is a
-recommendation for identity continuity, not a rule.
+decided in the jam window. Desaturated scene colors are recommended, not required.
 
 Rendering: in the terminal build, tcell maps the tokens to truecolor where the
 terminal supports it and to the nearest ANSI color otherwise; no separate color
@@ -165,7 +161,7 @@ show the same layout.
 
 ## 6. Accessibility
 
-The desaturation is a contrast budget, not a removal. The floors below bind
+The desaturation limits contrast. It removes no information. The floors below bind
 interface text and informational glyphs — panel numbers, log lines, the `@`,
 warnings. Scene glyphs (enemies, items, terrain) are content and exempt;
 staying above the floor is a readability recommendation for them, not a rule.
@@ -203,12 +199,11 @@ Rules that follow from the table:
     only reinforces size, so neither signal depends on color alone.
   - Atmospheric entries are distinguished by their message text; slate only
     carries ambience, never a needed state.
-- Avoid pure black `#000000` and pure white `#ffffff`. Both are off relative
-  to the warm tint so adjacent colors do not fight.
+- Avoid pure black `#000000` and pure white `#ffffff`. Both differ from the warm tint so adjacent colors stay distinct.
 
 ## 7. Type
 
-Both builds use a monospace face with a serif texture at the terminal scale.
+Both builds use a monospace face at terminal scale.
 
 | Build | Typeface | Fallback |
 |---|---|---|
@@ -223,12 +218,10 @@ Rules:
   possible or needed there.
 - Letter spacing stays at the face default; the terminal grid is
   character-per-cell.
-
 ## 8. Web build chrome
 
 The web build renders the same content as the terminal build. The only addition
-is a page chrome that leaves the grid untouched:
-
+is page chrome around the grid:
 - The map and panel sit on the shared near-black background, and the
   background covers the entire surface, not just drawn cells. On the web the
   `body` element carries `--bg` for the whole viewport. A styled cell only
@@ -252,9 +245,8 @@ is a page chrome that leaves the grid untouched:
   place by carrying information — the one atmosphere channel is slate blue,
   scoped to sensory and ambience entries (Section 3) that always carry their
   meaning in text first.
-- Do not brighten the interface beyond the token palette. Full-brightness
-  interface colors are the explicit non-goal; the scene is free, and
-  desaturation remains the identity by convention.
+- Do not brighten the interface beyond the token palette. The interface never uses full-brightness colors.
+The scene is free, and desaturation remains the identity by convention.
 - When a jam system needs an interface color (a damage type in the log, a
   warning, an affix marker in the panel), pick from the gold or red family at
   a matching saturation, or fall to the gray ramp. The scene element it

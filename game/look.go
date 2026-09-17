@@ -132,40 +132,50 @@ func describeParty(p *Party, label string) string {
 	}
 	var parts []string
 	for i, m := range p.Members {
-		status := ""
-		if !m.IsAlive() {
-			status = " (dead)"
-		}
-		parts = append(parts, fmt.Sprintf("%s HP %d/%d ATK %d-%d DEF %d MDEF %d%s", memberLabel(m, i), m.HP, m.MaxHP, m.ATK[0], m.ATK[1], m.DEF, m.MDEF, status))
+		parts = append(parts, formatMemberRow(memberLabel(m, i), m))
 	}
 	count := len(p.Members)
 	header := fmt.Sprintf("%s x%d", label, count)
 	if count == 1 {
 		header = label
 	}
-	base := header + ": " + strings.Join(parts, "; ")
-	// Annotate with Statuses map: show compact [hex 5] durations Duration-1
-	if p.Statuses != nil && len(p.Statuses) > 0 {
-		keys := make([]string, 0, len(p.Statuses))
-		for k, v := range p.Statuses {
-			if v > 0 {
-				keys = append(keys, k)
-			}
-		}
-		if len(keys) > 0 {
-			sort.Strings(keys)
-			sParts := make([]string, 0, len(keys))
-			for _, k := range keys {
-				dur := p.Statuses[k] - 1
-				if dur < 0 {
-					dur = 0
-				}
-				sParts = append(sParts, fmt.Sprintf("%s %d", k, dur))
-			}
-			base += " Statuses: [" + strings.Join(sParts, ", ") + "]"
+	return header + ": " + strings.Join(parts, "; ")
+}
+
+// formatMemberRow renders one member's examine row with its conditions.
+func formatMemberRow(name string, m *Member) string {
+	status := ""
+	if !m.IsAlive() {
+		status = " (dead)"
+	}
+	row := fmt.Sprintf("%s HP %d/%d ATK %d-%d DEF %d MDEF %d%s", name, m.HP, m.MaxHP, m.ATK[0], m.ATK[1], m.DEF, m.MDEF, status)
+	return appendStatusSuffix(row, m.Statuses)
+}
+
+// appendStatusSuffix annotates a member row with compact [hex 5] durations.
+func appendStatusSuffix(base string, st map[string]int) string {
+	if len(st) == 0 {
+		return base
+	}
+	keys := make([]string, 0, len(st))
+	for k, v := range st {
+		if v > 0 {
+			keys = append(keys, k)
 		}
 	}
-	return base
+	if len(keys) == 0 {
+		return base
+	}
+	sort.Strings(keys)
+	sParts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		dur := st[k] - 1
+		if dur < 0 {
+			dur = 0
+		}
+		sParts = append(sParts, fmt.Sprintf("%s %d", k, dur))
+	}
+	return base + " [" + strings.Join(sParts, ", ") + "]"
 }
 
 func describeEnemyParty(e *EnemyParty) string {
@@ -175,38 +185,12 @@ func describeEnemyParty(e *EnemyParty) string {
 	header := e.DisplayName()
 	var parts []string
 	for i, m := range e.Members {
-		status := ""
-		if !m.IsAlive() {
-			status = " (dead)"
-		}
-		name := e.MemberDisplayName(i)
-		parts = append(parts, fmt.Sprintf("%s HP %d/%d ATK %d-%d DEF %d MDEF %d%s", name, m.HP, m.MaxHP, m.ATK[0], m.ATK[1], m.DEF, m.MDEF, status))
+		parts = append(parts, formatMemberRow(e.MemberDisplayName(i), m))
 	}
 	if header == "" {
 		header = "Enemy"
 	}
-	base := header + ": " + strings.Join(parts, "; ")
-	if e.Statuses != nil && len(e.Statuses) > 0 {
-		keys := make([]string, 0, len(e.Statuses))
-		for k, v := range e.Statuses {
-			if v > 0 {
-				keys = append(keys, k)
-			}
-		}
-		if len(keys) > 0 {
-			sort.Strings(keys)
-			sParts := make([]string, 0, len(keys))
-			for _, k := range keys {
-				dur := e.Statuses[k] - 1
-				if dur < 0 {
-					dur = 0
-				}
-				sParts = append(sParts, fmt.Sprintf("%s %d", k, dur))
-			}
-			base += " Statuses: [" + strings.Join(sParts, ", ") + "]"
-		}
-	}
-	return base
+	return header + ": " + strings.Join(parts, "; ")
 }
 
 func memberLabel(m *Member, idx int) string {

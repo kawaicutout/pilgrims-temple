@@ -19,6 +19,7 @@ type Member struct {
 	Light          int
 	Carry          int
 	Alive          bool
+	Statuses       map[string]int `json:"statuses"`
 	Talents        []string
 	Affixes        []string
 	DamageType     string // physical or magic; empty means physical
@@ -42,6 +43,57 @@ func (m *Member) HasTalent(id string) bool {
 	return false
 }
 
+// observer returns the member whose senses and motion govern the party:
+// the selected member when living, else the active member, else the
+// first living member, else nil. Movement gates, FOV, and trap
+// awareness all key off this one member, so acting with a different
+// member genuinely changes exposure (design §6.5 counterplay).
+func (p *Party) observer() *Member {
+	if p == nil {
+		return nil
+	}
+	if p.Selected >= 0 && p.Selected < len(p.Members) && p.Members[p.Selected].IsAlive() {
+		return p.Members[p.Selected]
+	}
+	if p.Active >= 0 && p.Active < len(p.Members) && p.Members[p.Active].IsAlive() {
+		return p.Members[p.Active]
+	}
+	for _, m := range p.Members {
+		if m.IsAlive() {
+			return m
+		}
+	}
+	return nil
+}
+
+// FirstDead returns the index of the first fallen member, or -1.
+func (p *Party) FirstDead() int {
+	if p == nil {
+		return -1
+	}
+	for i, m := range p.Members {
+		if !m.IsAlive() {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastDead returns the index of the most recent fallen member, or -1.
+// Shrine resurrection takes the most recent dead; wizard entry scans
+// take the first. The two semantics differ by design — use deliberately.
+func (p *Party) LastDead() int {
+	if p == nil {
+		return -1
+	}
+	for i := len(p.Members) - 1; i >= 0; i-- {
+		if !p.Members[i].IsAlive() {
+			return i
+		}
+	}
+	return -1
+}
+
 func (m *Member) HasAffix(id string) bool {
 	for _, a := range m.Affixes {
 		if a == id {
@@ -49,6 +101,29 @@ func (m *Member) HasAffix(id string) bool {
 		}
 	}
 	return false
+}
+
+// ScaleMemberToLevel brings a level-1 generated member to the party level:
+// HP scaling per level with coin-flip ATK/DEF bumps, then full heal.
+func ScaleMemberToLevel(m *Member, level int, rng *rand.Rand) {
+	if m == nil {
+		return
+	}
+	for lvl := 1; lvl < level; lvl++ {
+		m.MaxHP += 1
+		if rng != nil {
+			m.MaxHP += rng.IntN(2)
+			if rng.IntN(2) == 0 {
+				m.ATK[0]++
+				m.ATK[1]++
+			}
+			if rng.IntN(4) == 0 {
+				m.DEF++
+			}
+		}
+	}
+	m.HP = m.MaxHP
+	m.Alive = true
 }
 
 func (m *Member) IsAlive() bool { return m.Alive && m.HP > 0 }
@@ -304,38 +379,25 @@ func (p *Party) ApplyDamageWithType(rng *rand.Rand, raw int, isMagic bool) (hitI
 		}
 	}
 	// of_wrath sole survivor +2 damage when LivingCount==1 (incoming bonus — ensures branch, outgoing handled in combat.go)
-	if p.LivingCount() == 1 && target != nil && target.HasAffix("of_wrath") {
+	if p.LivingCount() == 1 && target != nil && target.HasAffix(AffixWrath) {
 		raw += 2
 	}
 	def := target.DEF
 	if isMagic {
 		def = target.MDEF
 	}
-	// Status modifiers: hex -1, bless +1, curse -1.
-	def += p.effectiveDEFDelta()
+	def += target.effectiveDEFDelta()
 	actual = raw - def
 	if actual < 1 {
 		actual = 1
 	}
-	// Fire resistance reduces damage by 30%.
-	if p.HasStatus(StatusFireResist) {
-		actual = (actual * 7) / 10
-		if actual < 1 {
-			actual = 1
-		}
+	if target != nil && target.HasStatus(StatusFireResist) {
+		actual = resistedFire(actual)
 	}
 	target.HP -= actual
 	if target.HP <= 0 {
 		target.HP = 0
 		target.Alive = false
-	}
-	// of_thorns return 1 on being hit — branch ensures coverage; thorns reflection handled in EnemyTurn where attacker known
-	if target != nil && target.HasAffix("of_thorns") {
-		_ = target
-	}
-	// of_martyr thorns on paladin absorb
-	if target != nil && target.HasAffix("of_martyr") && target.Class == "paladin" {
-		_ = target
 	}
 	return idx, actual
 }

@@ -245,5 +245,7 @@ func (g *Game) RecordScore() {
 		sb = &Scoreboard{}
 	}
 	sb.AddEntry(entry)
-	_ = SaveScoreboard(sb)
+	if err := SaveScoreboard(sb); err != nil {
+		g.Logf("Score record failed: %v.", err)
+	}
 }

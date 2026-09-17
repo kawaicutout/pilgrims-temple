@@ -1,6 +1,7 @@
 {
   "uses": [
     { "id": "recruit", "name": "Recruitment", "desc": "Recruit a new member to your party" },
-    { "id": "resurrect", "name": "Resurrection", "desc": "Resurrect a fallen member for free" }
+    { "id": "resurrect", "name": "Resurrection", "desc": "Resurrect a fallen member for free" },
+    { "id": "levelup", "name": "Level-up", "desc": "Gain a free level-up, XP unchanged" }
   ]
 }

@@ -466,7 +466,11 @@ func (g *Game) CurLevel() *Level { return g.Levels[g.Floor] }
 
 func (g *Game) UpdateFOV() {
 	lvl := g.CurLevel()
-	if g.Party != nil && g.Party.HasStatus(StatusEnlightenment) {
+	var eyes *Member
+	if g.Party != nil {
+		eyes = g.Party.observer()
+	}
+	if eyes != nil && eyes.HasStatus(StatusEnlightenment) {
 		// Enlightenment reveals entire floor.
 		for y := range lvl.H {
 			for x := range lvl.W {
@@ -476,7 +480,7 @@ func (g *Game) UpdateFOV() {
 		}
 		return
 	}
-	if g.Party != nil && g.Party.HasStatus(StatusBlind) {
+	if eyes != nil && eyes.HasStatus(StatusBlind) {
 		ComputeFOV(lvl, g.Party.Pos, 2)
 		if g.WizardReveal {
 			for y := range lvl.H {
@@ -553,19 +557,6 @@ func (g *Game) tickFood() {
 	if g.FoodFloat == 0 && g.Food != 0 {
 		g.FoodFloat = float64(g.Food)
 	}
-	living := EffectiveLivingCount(g.Party)
-	if living == 0 {
-		// fallback to actual living if effective zero (should not happen)
-		living = g.Party.LivingCount()
-		if living == 0 {
-			g.Food = int(g.FoodFloat)
-			if g.FoodFloat < 0 {
-				g.FoodFloat = 0
-				g.Food = 0
-			}
-			return
-		}
-	}
 	if g.Party.LivingCount() == 0 {
 		g.Food = int(g.FoodFloat)
 		if g.FoodFloat < 0 {
@@ -574,16 +565,24 @@ func (g *Game) tickFood() {
 		}
 		return
 	}
-	cost := float64(living)*float64(g.Tuning.Food.PerMemberPerTurn) - g.frugalBonus()
-	if g.Party.HasAffix("of_plenty") {
-		cost -= 0.25
+	cost := 0.0
+	for _, m := range g.Party.Members {
+		if !m.IsAlive() {
+			continue
+		}
+		c := float64(g.Tuning.Food.PerMemberPerTurn)
+		if normalizeRaceID(m.Race) == "troll" && m.MaxHP > 0 && m.HP*2 > m.MaxHP {
+			c *= 2
+		}
+		if m.HasStatus(StatusHaste) {
+			c *= 0.8
+		}
+		if m.HasStatus(StatusSlow) {
+			c *= 1.2
+		}
+		cost += c
 	}
-	if g.Party.HasStatus(StatusHaste) {
-		cost *= 0.8
-	}
-	if g.Party.HasStatus(StatusSlow) {
-		cost *= 1.2
-	}
+	cost -= g.frugalBonus()
 	if cost < 0 {
 		cost = 0
 	}
@@ -681,8 +680,7 @@ func (g *Game) AddFood(n int) {
 
 // dealPartyDamage applies raw damage (DEF/MDEF) with cause; returns true if any survivor remains. (DUP-13)
 func (g *Game) dealPartyDamage(raw int, cause string, isMagic bool) bool {
-	_, actual := g.Party.ApplyDamageWithType(g.RNG, raw, isMagic)
-	_ = actual
+	_, _ = g.Party.ApplyDamageWithType(g.RNG, raw, isMagic)
 	if g.Party.LivingCount() == 0 {
 		g.Over = true
 		if g.Cause == "" {
@@ -722,31 +720,6 @@ func (g *Game) tickRegen() {
 	}
 }
 
-// dropToNextFloor moves party one floor down to StairsUp, handles FOV and logging (DUP-02).
-func (g *Game) dropToNextFloor(reason string) bool {
-	if g.Floor+1 >= g.Tuning.Floors {
-		g.Logf("%s has no lower level -- you climb back out.", reason)
-		return false
-	}
-	g.Floor++
-	g.Party.Pos = g.CurLevel().StairsUp
-	g.Logf("%s drops you to floor %d (one-way).", reason, g.Floor+1)
-	g.UpdateFOV()
-	return true
-}
-
-// tickAfterMove centralizes Turn++ + tickFood + regen + starvation + FOV/EnemyTurn for pitfall path (DUP-02).
-func (g *Game) tickAfterMove() {
-	g.Turn++
-	g.tickFood()
-	g.tickRegen()
-	g.applyStarvation()
-	g.UpdateFOV()
-	if !g.Over {
-		g.EnemyTurn()
-		g.UpdateFOV()
-	}
-}
 
 
 // HelpEntry is one help line for HelpLines table (DUP-11).
@@ -796,898 +769,6 @@ func (g *Game) handleCursor(state *CursorState, dir Dir) bool {
 // Low-risk defer: current duplication between cmd/terminal and cmd/wasm is documented here;
 // moving would require cross-package import cycle audit, deferred with comment.
 
-// handleVault checks locked status via Party.HasRogue (and wizard). Returns true if blocked.
-func (g *Game) handleVault(f *Feature) bool {
-	if f == nil || !f.IsVault() {
-		return false
-	}
-	if f.Locked && !g.canOpenLocked() {
-		g.Logf("Locked vault - need rogue or wizard.")
-		return true
-	}
-	// Allow loot: give treasure gold, handle trap.
-	treasure := f.Treasure
-	if treasure == 0 {
-		treasure = 30
-	}
-	g.Gold += treasure
-	if f.Trapped {
-		dmg := 2 + g.RNG.IntN(3) // 2-4
-		_, actual := g.Party.ApplyDamage(g.RNG, dmg)
-		g.Logf("Vault treasure +%d gold! Trap springs for %d damage!", treasure, actual)
-		if g.RNG.Float64() < 0.20 {
-			g.Party.ApplyStatus(StatusPoison, 6)
-			g.Logf("Trap poisons!")
-		}
-		if g.Party.LivingCount() == 0 {
-			g.Over = true
-			if g.Cause == "" {
-				g.Cause = "Slain by vault trap"
-			}
-			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
-			g.RecordScore()
-		}
-	} else {
-		g.Logf("Vault opened +%d gold!", treasure)
-	}
-	g.removeFeatureAt(f.Pos, FeatureVault)
-	return false
-}
-
-func (g *Game) handleForge(f *Feature) bool {
-	if f == nil || !f.IsForge() {
-		return false
-	}
-	ct := f.CostType
-	if ct == "" {
-		ct = "gold"
-	}
-	cost := f.Cost
-	if cost == 0 {
-		if ct == "food" {
-			cost = 50
-		} else {
-			cost = 25
-		}
-	}
-	if ct == "gold" {
-		if g.Gold < cost {
-			g.Logf("Forge needs %d gold to improve gear (you have %d).", cost, g.Gold)
-			return false
-		}
-		g.Gold -= cost
-		// Improve random living member ATK or DEF.
-		members := g.Party.LivingMembers()
-		if len(members) == 0 {
-			return false
-		}
-		m := members[g.RNG.IntN(len(members))]
-		if g.RNG.IntN(2) == 0 {
-			m.ATK[0]++
-			m.ATK[1]++
-			g.Logf("Forge hammers +%d gold: %s ATK %d-%d.", cost, m.Name, m.ATK[0], m.ATK[1])
-		} else {
-			m.DEF++
-			g.Logf("Forge tempers +%d gold: %s DEF %d.", cost, m.Name, m.DEF)
-		}
-	} else { // food
-		if g.Food < cost {
-			g.Logf("Forge needs %d food to stoke (you have %d).", cost, g.Food)
-			return false
-		}
-		g.Food -= cost
-		g.FoodFloat -= float64(cost)
-		if g.Food < 0 {
-			g.Food = 0
-		}
-		members := g.Party.LivingMembers()
-		if len(members) == 0 {
-			return false
-		}
-		m := members[g.RNG.IntN(len(members))]
-		if g.RNG.IntN(2) == 0 {
-			m.ATK[0]++
-			m.ATK[1]++
-			g.Logf("Forge stoked %d food: %s ATK %d-%d.", cost, m.Name, m.ATK[0], m.ATK[1])
-		} else {
-			m.MDEF++
-			g.Logf("Forge quenched %d food: %s MDEF %d.", cost, m.Name, m.MDEF)
-		}
-	}
-	g.removeFeatureAt(f.Pos, FeatureForge)
-	return true
-}
-
-// TryUseForge attempts deliberate use of a forge at the party's current position.
-// Returns true if a forge was present and successfully used (cost deducted, stats bumped).
-func (g *Game) TryUseForge() bool {
-	f := g.featureAt(g.Party.Pos)
-	if f == nil || !f.IsForge() {
-		return false
-	}
-	// Copy to avoid alias issues after removal.
-	ff := *f
-	used := g.handleForge(&ff)
-	return used
-}
-
-// TryUseFountain attempts deliberate use of a fountain at the party's current position.
-// Returns true if a fountain was present and handled (even if stale).
-func (g *Game) TryUseFountain() bool {
-	f := g.featureAt(g.Party.Pos)
-	if f == nil || !f.IsFountain() {
-		return false
-	}
-	ff := *f
-	g.handleFountain(&ff)
-	return true
-}
-
-// StartMerchant opens merchant wares at pos into g.Merchant state.
-func (g *Game) StartMerchant(pos Pos) bool {
-	f := g.featureAt(pos)
-	if f == nil || !f.IsMerchant() {
-		return false
-	}
-	// Use persistent wares from Feature; fallback for old saves.
-	if len(f.Wares) == 0 {
-		f.Wares = merchantWares(g.RNG)
-	}
-	if len(f.Wares) == 0 {
-		g.Logf("Merchant has nothing to sell right now.")
-		g.removeFeatureAt(pos, FeatureMerchant)
-		return false
-	}
-	g.Merchant = MerchantState{Active: true, Pos: pos, Wares: f.Wares, Selected: 0}
-	var offerStr string
-	for i, w := range f.Wares {
-		if i > 0 {
-			offerStr += ", "
-		}
-		offerStr += fmt.Sprintf("%s (%dg)", w.Name, w.Price)
-	}
-	g.Logf("Merchant wares: %s -- press Enter to buy, Esc to leave.", offerStr)
-	return true
-}
-
-// CancelMerchant closes merchant menu without purchase.
-func (g *Game) CancelMerchant() {
-	if g.Merchant.Active {
-		g.Logf("You step away from the merchant.")
-	}
-	g.Merchant = MerchantState{}
-}
-
-// BuySelectedMerchant purchases ware at index, applies effect, removes merchant feature and advances turn.
-// Returns true if purchase succeeded.
-func (g *Game) BuySelectedMerchant(index int) bool {
-	if !g.Merchant.Active {
-		return false
-	}
-	if index < 0 || index >= len(g.Merchant.Wares) {
-		return false
-	}
-	w := g.Merchant.Wares[index]
-	// Build temporary merchant for BuyWare validation
-	m := &Merchant{Pos: g.Merchant.Pos, Wares: g.Merchant.Wares, Scarce: true}
-	if err := g.BuyWare(m, w.ID); err != nil {
-		g.Logf("Merchant: %v (you have %dg).", err, g.Gold)
-		return false
-	}
-	// Apply ware effect
-	switch w.ID {
-	case "ration":
-		refill := g.Tuning.Food.RationRefill
-		if refill <= 0 {
-			refill = GetTuning().Food.RationRefill
-			if refill <= 0 {
-				refill = 50
-			}
-		}
-		if g.Party.HasTalent("hoarder") {
-			refill += 25
-		}
-		g.Food += refill
-		g.FoodFloat += float64(refill)
-		g.Logf("Merchant sells %s for %dg (+%d food).", w.Name, w.Price, refill)
-	case "potion_heal":
-		healed := 0
-		for _, mem := range g.Party.Members {
-			if mem.IsAlive() && mem.HP < mem.MaxHP {
-				mem.HP += 10
-				if mem.HP > mem.MaxHP {
-					mem.HP = mem.MaxHP
-				}
-				healed++
-			}
-		}
-		if healed > 0 {
-			g.Logf("Merchant sells %s for %dg (healed %d members +10 HP).", w.Name, w.Price, healed)
-		} else {
-			g.Logf("Merchant sells %s for %dg (already at full health).", w.Name, w.Price)
-		}
-	case "scroll_upgrade":
-		members := g.Party.LivingMembers()
-		if len(members) > 0 {
-			picked := members[g.RNG.IntN(len(members))]
-			if g.RNG.IntN(2) == 0 {
-				picked.ATK[0]++
-				picked.ATK[1]++
-				g.Logf("Merchant sells %s for %dg (%s ATK %d-%d).", w.Name, w.Price, picked.Name, picked.ATK[0], picked.ATK[1])
-			} else {
-				picked.DEF++
-				g.Logf("Merchant sells %s for %dg (%s DEF %d).", w.Name, w.Price, picked.Name, picked.DEF)
-			}
-		} else {
-			g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
-		}
-	default:
-		g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
-	}
-	g.removeFeatureAt(g.Merchant.Pos, FeatureMerchant)
-	g.Merchant = MerchantState{}
-	return true
-}
-
-// TryUseMerchant attempts deliberate use of a merchant at the party's current position.
-// Opens the merchant menu (StartMerchant) and returns true if a merchant was present.
-func (g *Game) TryUseMerchant() bool {
-	if g.Party == nil {
-		return false
-	}
-	return g.StartMerchant(g.Party.Pos)
-}
-
-// StartShrine opens shrine menu at pos into g.Shrine state.
-func (g *Game) StartShrine(pos Pos) bool {
-	f := g.featureAt(pos)
-	if f == nil || !f.IsShrine() {
-		return false
-	}
-	g.Shrine = ShrineState{Active: true, Pos: pos, Selected: 0}
-	g.Logf("Shrine offers: Add member, Resurrect, Level up, Leave -- Enter to choose, Esc to leave.")
-	return true
-}
-
-// CancelShrine closes shrine menu without using it, keeping the feature.
-func (g *Game) CancelShrine() {
-	if g.Shrine.Active {
-		g.Logf("You step away from the shrine.")
-	}
-	g.Shrine = ShrineState{}
-}
-
-// TryUseShrine attempts deliberate use of a shrine at the party's current position.
-// Opens the shrine menu (StartShrine) and returns true if a shrine was present.
-func (g *Game) TryUseShrine() bool {
-	if g.Party == nil {
-		return false
-	}
-	return g.StartShrine(g.Party.Pos)
-}
-
-// ExecuteShrineChoice handles shrine menu selection 0..3:
-// 0 Add new party member random (free), 1 Resurrect dead member (free), 2 Gain instant level-up without XP reset, 3 Leave.
-// Returns true if choice was handled (even if it logged a failure like party full). Caller may advance turn for 0-2.
-func (g *Game) ExecuteShrineChoice(index int) bool {
-	if !g.Shrine.Active {
-		return false
-	}
-	if index < 0 || index > 3 {
-		return false
-	}
-	switch index {
-	case 0: // Add new party member random
-		if len(g.Party.Members) >= 4 {
-			g.Logf("Shrine: party already full (4).")
-			return false
-		}
-		classes, err := LoadClasses()
-		pick := "fighter"
-		if err == nil && len(classes) > 0 && g.RNG != nil {
-			pick = classes[g.RNG.IntN(len(classes))].ID
-		}
-		tmp := GeneratePartyWithClasses(g.RNG, []string{pick}, g.Level)
-		if tmp == nil || len(tmp.Members) == 0 {
-			g.Logf("Shrine tries to recruit, but none answer.")
-			return false
-		}
-		m := tmp.Members[0]
-		m.HP = m.MaxHP
-		m.Alive = true
-		g.Party.Members = append(g.Party.Members, m)
-		g.Party.EnsureSelection()
-		ApplyRaceBuffs(g.Party)
-		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
-			g.NextElfIdentifyTurn = g.Turn + iv
-		}
-		if g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned") {
-			interval := 50
-			if g.Party.HasBardAlive() {
-				interval = 45
-			}
-			g.NextLorekeeperTurn = g.Turn + interval
-		}
-		g.Logf("Shrine recruits %s the %s! (+)", m.Name, m.Class)
-		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
-		g.Shrine = ShrineState{}
-		return true
-	case 1: // Resurrect dead member (most recent)
-		deadIdx := -1
-		for i := len(g.Party.Members) - 1; i >= 0; i-- {
-			if !g.Party.Members[i].IsAlive() {
-				deadIdx = i
-				break
-			}
-		}
-		if deadIdx == -1 {
-			g.Logf("Shrine: no fallen pilgrims to resurrect.")
-			return false
-		}
-		m := g.Party.Members[deadIdx]
-		m.Alive = true
-		m.HP = m.MaxHP
-		g.Party.EnsureSelection()
-		ApplyRaceBuffs(g.Party)
-		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
-			g.NextElfIdentifyTurn = g.Turn + iv
-		}
-		if g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned") {
-			interval := 50
-			if g.Party.HasBardAlive() {
-				interval = 45
-			}
-			g.NextLorekeeperTurn = g.Turn + interval
-		}
-		g.Logf("Shrine resurrects %s for free! (+)", m.Name)
-		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
-		g.Shrine = ShrineState{}
-		return true
-	case 2: // Gain instant level-up without XP reset
-		if g.LevelUpPending != nil {
-			g.Logf("Shrine: level up already pending.")
-			return false
-		}
-		oldLevel := g.Level
-		g.Level++
-		g.XPToNext = g.xpForNext()
-		g.Logf("Shrine grants level %d! (XP %d/%d)", g.Level, g.XP, g.XPToNext)
-		for _, m := range g.Party.Members {
-			if !m.IsAlive() {
-				continue
-			}
-			hpGain := 1 + g.RNG.IntN(2)
-			m.MaxHP += hpGain
-			m.HP += hpGain
-			if g.RNG.IntN(2) == 0 {
-				m.ATK[0]++
-				m.ATK[1]++
-			}
-			if g.RNG.IntN(4) == 0 {
-				m.DEF++
-			}
-			g.Logf("%s gains +%d HP.", m.Name, hpGain)
-		}
-		var picks []TalentPick
-		for i, m := range g.Party.Members {
-			if !m.IsAlive() {
-				continue
-			}
-			if g.RNG.Float64() < g.Tuning.LevelUp.TalentChance {
-				pick := TalentPick{MemberIdx: i, MemberName: m.Name, Class: m.Class}
-				if g.RNG.Float64() < g.Tuning.LevelUp.AffixReplaceChance {
-					pick.IsAffix = true
-					pick.Options = []string{GetRandomAffix(g.RNG)}
-					g.Logf("%s will gain an affix: %s", m.Name, FriendlyID(pick.Options[0]))
-				} else {
-					pick.IsAffix = false
-					pick.Options = GetTalentOptions(g.RNG, m.Class, 3)
-					g.Logf("%s may choose a talent.", m.Name)
-				}
-				picks = append(picks, pick)
-			}
-		}
-		if len(picks) > 0 {
-			g.LevelUpPending = &LevelUpState{NewLevel: g.Level, Picks: picks, Current: 0}
-			g.Logf("Level up pending: %d talent picks. Press Tab to choose.", len(picks))
-		}
-		g.Logf("Shrine: old level %d -> %d free blessing.", oldLevel, g.Level)
-		ApplyRaceBuffs(g.Party)
-		if iv := ElfIdentifyInterval(g.Party); iv > 0 {
-			g.NextElfIdentifyTurn = g.Turn + iv
-		}
-		if g.Party.HasTalent("lorekeeper") || g.Party.HasTalent("attuned") {
-			interval := 50
-			if g.Party.HasBardAlive() {
-				interval = 45
-			}
-			g.NextLorekeeperTurn = g.Turn + interval
-		}
-		g.removeFeatureAt(g.Shrine.Pos, FeatureShrine)
-		g.Shrine = ShrineState{}
-		return true
-	case 3: // Leave and come back later
-		g.CancelShrine()
-		return true
-	}
-	return false
-}
-
-// TryUseFeature checks current tile for deliberate features in priority Fountain -> Merchant -> Forge -> Shrine.
-// Returns true if any feature was handled/opened.
-func (g *Game) TryUseFeature() bool {
-	if g.TryUseFountain() {
-		return true
-	}
-	if g.TryUseMerchant() {
-		return true
-	}
-	if g.TryUseForge() {
-		return true
-	}
-	if g.TryUseShrine() {
-		return true
-	}
-	return false
-}
-
-// TryCloseDoor attempts to close an adjacent open door when standing on empty ground.
-// Returns true if a door was closed (consumes turn via caller).
-func (g *Game) TryCloseDoor() bool {
-	lvl := g.CurLevel()
-	if lvl == nil || g.Party == nil {
-		return false
-	}
-	pos := g.Party.Pos
-	// Check nothing underfoot: no feature, no litter, no enemy at pos
-	if g.featureAt(pos) != nil {
-		return false
-	}
-	if lvl.LitterAt(pos) != nil {
-		return false
-	}
-	for _, e := range lvl.Enemies {
-		if e.IsAlive() && e.Pos == pos {
-			return false
-		}
-	}
-	// Find adjacent open door (cardinal first, then diagonal)
-	for _, d := range []Dir{DirN, DirS, DirW, DirE, DirNW, DirNE, DirSW, DirSE} {
-		np := pos.Add(d)
-		if !lvl.InBounds(np) {
-			continue
-		}
-		if lvl.IsDoor(np) && lvl.IsDoorOpen(np) {
-			lvl.SetDoorOpen(np, false)
-			g.Logf("You close the door.")
-			return true
-		}
-	}
-	return false
-}
-
-func (g *Game) handleDen(f *Feature) {
-	if f == nil || !f.IsDen() {
-		return
-	}
-	cnt := f.MonsterCount
-	if cnt == 0 {
-		cnt = 3
-	}
-	g.Logf("Den ahead -- %d monsters guard this lair!", cnt)
-	// Den remains as marker; not removed on warning (spawn handled by TickDens)
-}
-
-// TickDens spawns 1-2 monsters from each den when player within radius 3.
-// Uses level-appropriate enemy generation (pickEnemyForFloor + buildMemberFromEntry)
-// and decrements MonsterCount individually. Den removed when count reaches 0.
-func (g *Game) TickDens() {
-	lvl := g.CurLevel()
-	if lvl == nil || g.Party == nil || g.RNG == nil {
-		return
-	}
-	for i := range lvl.Features {
-		f := &lvl.Features[i]
-		if f.Type != FeatureDen {
-			continue
-		}
-		if f.MonsterCount <= 0 {
-			continue
-		}
-		dx := g.Party.Pos.X - f.Pos.X
-		if dx < 0 {
-			dx = -dx
-		}
-		dy := g.Party.Pos.Y - f.Pos.Y
-		if dy < 0 {
-			dy = -dy
-		}
-		if max(dx, dy) > 3 {
-			continue
-		}
-		remaining := f.MonsterCount
-		spawnN := 1 + g.RNG.IntN(2)
-		if spawnN > remaining {
-			spawnN = remaining
-		}
-		for range spawnN {
-			var spawnPos Pos
-			found := false
-			for range 20 {
-				dx2 := g.RNG.IntN(5) - 2
-				dy2 := g.RNG.IntN(5) - 2
-				cand := Pos{f.Pos.X + dx2, f.Pos.Y + dy2}
-				if cand == lvl.StairsUp || cand == lvl.StairsDown || cand == f.Pos || cand == g.Party.Pos {
-					continue
-				}
-				if !lvl.InBounds(cand) || !lvl.Walkable(cand) {
-					continue
-				}
-				occupied := false
-				for _, e := range lvl.Enemies {
-					if e != nil && e.Pos == cand {
-						occupied = true
-						break
-					}
-				}
-				if occupied {
-					continue
-				}
-				blocked := false
-				for _, feat := range lvl.Features {
-					if feat.Pos == cand && feat.Type != FeatureDen {
-						blocked = true
-						break
-					}
-				}
-				if blocked {
-					continue
-				}
-				spawnPos = cand
-				found = true
-				break
-			}
-			if !found {
-				for _, d := range AllDirs {
-					cand := f.Pos.Add(d)
-					if lvl.Walkable(cand) && cand != lvl.StairsUp && cand != lvl.StairsDown && cand != g.Party.Pos {
-						occupied := false
-						for _, e := range lvl.Enemies {
-							if e != nil && e.Pos == cand {
-								occupied = true
-								break
-							}
-						}
-						if !occupied {
-							spawnPos = cand
-							found = true
-							break
-						}
-					}
-				}
-				if !found {
-					spawnPos = f.Pos
-				}
-			}
-			entry := pickEnemyForFloor(g.RNG, g.Floor)
-			mem := buildMemberFromEntry(entry, g.RNG, g.Floor)
-			ep := &EnemyParty{Pos: spawnPos, Members: []*Member{mem}, Active: 0}
-			lvl.Enemies = append(lvl.Enemies, ep)
-			g.Logf("Den stirs -- %s emerges!", mem.Name)
-		}
-		f.MonsterCount -= spawnN
-		if f.MonsterCount <= 0 {
-			g.Logf("Den emptied.")
-		} else {
-			g.Logf("Den has %d monsters remaining.", f.MonsterCount)
-		}
-	}
-	// Remove empty dens.
-	dst := lvl.Features[:0]
-	for _, feat := range lvl.Features {
-		if feat.Type == FeatureDen && feat.MonsterCount <= 0 {
-			continue
-		}
-		dst = append(dst, feat)
-	}
-	lvl.Features = dst
-}
-
-func (g *Game) handleShrine(f *Feature) {
-	if f == nil || !f.IsShrine() {
-		return
-	}
-	if g.Party.HasStatus(StatusCurse) {
-		g.Party.RemoveStatus(StatusCurse)
-		g.Logf("Shrine cleanses your curse.")
-	}
-	// Try resurrection if any dead member, else recruitment if space.
-	hasDead := false
-	deadIdx := -1
-	for i, m := range g.Party.Members {
-		if !m.IsAlive() {
-			hasDead = true
-			deadIdx = i
-			break
-		}
-	}
-	canRecruit := len(g.Party.Members) < 4
-	// Shrines are free (2026-09-07 decision): no cost data.
-	if hasDead {
-		m := g.Party.Members[deadIdx]
-		m.Alive = true
-		m.HP = m.MaxHP
-		g.Party.EnsureSelection()
-		g.Logf("Shrine resurrects %s for free! (+)", m.Name)
-		g.removeFeatureAt(f.Pos, FeatureShrine)
-		return
-	}
-	if canRecruit {
-		// Recruit free (2026-09-07 decision): shrines have no costs.
-		classes, err := LoadClasses()
-		pick := "fighter"
-		if err == nil && len(classes) > 0 && g.RNG != nil {
-			pick = classes[g.RNG.IntN(len(classes))].ID
-		}
-		tmp := GeneratePartyWithClasses(g.RNG, []string{pick}, 1)
-		if tmp != nil && len(tmp.Members) > 0 {
-			m := tmp.Members[0]
-			for lvl := 1; lvl < g.Level; lvl++ {
-				m.MaxHP += 1 + g.RNG.IntN(2)
-				if g.RNG.IntN(2) == 0 {
-					m.ATK[0]++
-					m.ATK[1]++
-				}
-				if g.RNG.IntN(4) == 0 {
-					m.DEF++
-				}
-			}
-			m.HP = m.MaxHP
-			m.Alive = true
-			g.Party.Members = append(g.Party.Members, m)
-			g.Party.EnsureSelection()
-			g.Logf("Shrine recruits %s the %s! (+)", m.Name, m.Class)
-			g.removeFeatureAt(f.Pos, FeatureShrine)
-			return
-		}
-		g.Logf("Shrine tries to recruit, but none answer.")
-		return
-	}
-	g.Logf("Shrine glows faintly -- your party is whole and needs no resurrection.")
-}
-
-func (g *Game) handleFountain(f *Feature) {
-	if f == nil || !f.IsFountain() {
-		return
-	}
-	outs := GetFountainOutcomes()
-	if len(outs) == 0 {
-		g.Logf("Fountain water is stale.")
-		g.removeFeatureAt(f.Pos, FeatureFountain)
-		return
-	}
-	idx := 0
-	if g.RNG != nil {
-		idx = g.RNG.IntN(len(outs))
-	}
-	o := outs[idx]
-	dh := o.DeltaHP
-	if dh == 0 {
-		dh = o.Delta
-	}
-	// blessed_hands +1 healing
-	if dh > 0 && g.Party.HasTalent("blessed_hands") {
-		dh++
-	}
-	if dh > 0 {
-		for _, m := range g.Party.Members {
-			if m.IsAlive() {
-				m.HP += dh
-				if m.HP > m.MaxHP {
-					m.HP = m.MaxHP
-				}
-			}
-		}
-		g.Logf("Fountain %s: %s (+%d HP)", o.Name, o.Desc, dh)
-	} else if dh < 0 {
-		_, actual := g.Party.ApplyDamage(g.RNG, -dh)
-		g.Logf("Fountain %s: %s (%d damage)", o.Name, o.Desc, actual)
-		if g.Party.LivingCount() == 0 {
-			g.Over = true
-			if g.Cause == "" {
-				g.Cause = "Poison"
-			}
-			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
-			g.RecordScore()
-		}
-	} else {
-		g.Logf("Fountain %s: %s", o.Name, o.Desc)
-	}
-	if o.Effect == "bless" {
-		g.Party.ApplyStatus(StatusBless, 101)
-		g.Logf("Blessed waters grant +1 DEF for 100 turns.")
-	} else if o.Effect == "curse" {
-		g.Party.ApplyStatus(StatusCurse, 201)
-		g.Logf("Cursed waters weaken you -1 DEF until cured.")
-	}
-	g.removeFeatureAt(f.Pos, FeatureFountain)
-}
-
-func (g *Game) handleMerchant(f *Feature) {
-	if f == nil || !f.IsMerchant() {
-		return
-	}
-	if len(f.Wares) == 0 {
-		f.Wares = merchantWares(g.RNG)
-	}
-	if len(f.Wares) == 0 {
-		g.Logf("Merchant (M) has nothing to sell right now.")
-		g.removeFeatureAt(f.Pos, FeatureMerchant)
-		return
-	}
-	m := &Merchant{Pos: f.Pos, Wares: f.Wares, Scarce: true}
-	// Build offer list
-	var offerStr string
-	for i, w := range f.Wares {
-		if i > 0 {
-			offerStr += ", "
-		}
-		offerStr += fmt.Sprintf("%s (%dg)", w.Name, w.Price)
-	}
-	// Find cheapest affordable ware
-	cheapestIdx := -1
-	cheapestPrice := 1 << 30
-	for i, w := range f.Wares {
-		if g.Gold >= w.Price && w.Price < cheapestPrice {
-			cheapestPrice = w.Price
-			cheapestIdx = i
-		}
-	}
-	if cheapestIdx == -1 {
-		g.Logf("Merchant offers: %s -- need more gold (you have %dg).", offerStr, g.Gold)
-		return
-	}
-	w := f.Wares[cheapestIdx]
-	if err := g.BuyWare(m, w.ID); err != nil {
-		g.Logf("Merchant: %v", err)
-		return
-	}
-	// Apply ware effect
-	switch w.ID {
-	case "ration":
-		refill := g.Tuning.Food.RationRefill
-		if refill <= 0 {
-			refill = GetTuning().Food.RationRefill
-			if refill <= 0 {
-				refill = 50
-			}
-		}
-		if g.Party.HasTalent("hoarder") {
-			refill += 25
-		}
-		g.Food += refill
-		g.Logf("Merchant sells %s for %dg (+%d food).", w.Name, w.Price, refill)
-	case "potion_heal":
-		healed := 0
-		for _, mem := range g.Party.Members {
-			if mem.IsAlive() && mem.HP < mem.MaxHP {
-				mem.HP += 10
-				if mem.HP > mem.MaxHP {
-					mem.HP = mem.MaxHP
-				}
-				healed++
-			}
-		}
-		if healed > 0 {
-			g.Logf("Merchant sells %s for %dg (healed %d members +10 HP).", w.Name, w.Price, healed)
-		} else {
-			g.Logf("Merchant sells %s for %dg (already at full health).", w.Name, w.Price)
-		}
-	case "scroll_upgrade":
-		members := g.Party.LivingMembers()
-		if len(members) > 0 {
-			picked := members[g.RNG.IntN(len(members))]
-			if g.RNG.IntN(2) == 0 {
-				picked.ATK[0]++
-				picked.ATK[1]++
-				g.Logf("Merchant sells %s for %dg (%s ATK %d-%d).", w.Name, w.Price, picked.Name, picked.ATK[0], picked.ATK[1])
-			} else {
-				picked.DEF++
-				g.Logf("Merchant sells %s for %dg (%s DEF %d).", w.Name, w.Price, picked.Name, picked.DEF)
-			}
-		} else {
-			g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
-		}
-	default:
-		g.Logf("Merchant sells %s for %dg.", w.Name, w.Price)
-	}
-	g.removeFeatureAt(f.Pos, FeatureMerchant)
-}
-func (g *Game) handlePitfall(f *Feature) bool {
-	if f == nil || !f.IsPitfall() {
-		return false
-	}
-	if g.Party.HasStatus(StatusLevitation) {
-		g.Logf("You float over the pitfall.")
-		return false
-	}
-	// Detection: rogue/wizard or wizard mode reveal.
-	// Dwarf tremorsense extends aware radius: aware if tremorsenseRadius >= manhattan(pos,pit)
-	aware := !f.Hidden || g.Party.HasRogueOrWizard() || g.Wizard
-	if f.Hidden && !aware {
-		if r := SynergyTremorsense(g.Party); r > 0 {
-			dx := g.Party.Pos.X - f.Pos.X
-			if dx < 0 {
-				dx = -dx
-			}
-			dy := g.Party.Pos.Y - f.Pos.Y
-			if dy < 0 {
-				dy = -dy
-			}
-			if dx+dy <= r {
-				aware = true
-			}
-		}
-	}
-	// attuned/attuned_tag +1 aware range, steady_hands 10% trap detect extra
-	if f.Hidden && !aware {
-		if g.Party.HasTalent("attuned") || g.Party.HasTalent("attuned_tag") {
-			dx := g.Party.Pos.X - f.Pos.X
-			if dx < 0 {
-				dx = -dx
-			}
-			dy := g.Party.Pos.Y - f.Pos.Y
-			if dy < 0 {
-				dy = -dy
-			}
-			if dx+dy <= 1+1 {
-				aware = true
-			}
-		}
-	}
-	if f.Hidden && !aware && g.Party.HasTalent("steady_hands") && g.RNG != nil && g.RNG.Float64() < 0.10 {
-		aware = true
-	}
-	// ghost_step 50% trap ignore on move when hidden & aware (also wander skip elsewhere)
-	if f.Hidden && aware && g.Party.HasTalent("ghost_step") && g.RNG != nil && g.RNG.Float64() < 0.50 {
-		g.Logf("Ghost step: you slip past the pitfall.")
-		return false
-	}
-	if f.Hidden && !aware {
-		dmg := f.Damage
-		if dmg == 0 {
-			dmg = 2 + g.RNG.IntN(3)
-		}
-		_, actual := g.Party.ApplyDamage(g.RNG, dmg)
-		g.Logf("Hidden pitfall! You fall -- %d damage!", actual)
-		if g.RNG.Float64() < 0.10 {
-			g.Party.ApplyStatus(StatusPoison, 4)
-			g.Logf("Trap poisons!")
-		}
-		if g.Party.LivingCount() == 0 {
-			g.Over = true
-			if g.Cause == "" {
-				g.Cause = "Fell into pit"
-			}
-			g.Logf("You have fallen. Seed %d. Score %d.", g.Seed, g.CalculateScore())
-			g.RecordScore()
-			return true
-		}
-		g.dropToNextFloor("Pitfall")
-		g.removeFeatureAt(f.Pos, FeaturePitfall)
-		return true
-	}
-	if f.Hidden && aware {
-		g.Logf("You spot a hidden pitfall and step around its edge... but the floor gives way!")
-	}
-	if !f.Hidden {
-		g.Logf("Pitfall ahead -- one-way drop to the next level.")
-	}
-	g.Party.Pos = f.Pos
-	g.dropToNextFloor("Pitfall")
-	g.removeFeatureAt(f.Pos, FeaturePitfall)
-	return true
-}
 
 // Action results
 type ActionResult struct {
@@ -1702,8 +783,10 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		return ActionResult{}
 	}
 	lvl := g.CurLevel()
-	if g.Party.HasStatus(StatusParalysis) || g.Party.HasStatus(StatusStun) {
-		if g.Party.HasStatus(StatusStun) {
+	mover := g.Party.observer()
+	moverParalyzed := mover != nil && (mover.HasStatus(StatusParalysis) || mover.HasStatus(StatusStun))
+	if moverParalyzed {
+		if mover.HasStatus(StatusStun) {
 			g.Logf("You are stunned and cannot move!")
 		} else {
 			g.Logf("You are paralyzed and cannot move!")
@@ -1711,12 +794,12 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 		g.EndPlayerTurn("")
 		return ActionResult{}
 	}
-	if g.Party.HasStatus(StatusEntangle) || g.Party.HasStatus(StatusSleep) {
+	if mover != nil && (mover.HasStatus(StatusEntangle) || mover.HasStatus(StatusSleep)) {
 		g.Logf("You are rooted and cannot move!")
 		g.EndPlayerTurn("")
 		return ActionResult{}
 	}
-	if g.Party.HasStatus(StatusConfusion) {
+	if mover != nil && mover.HasStatus(StatusConfusion) {
 		dirs := []Dir{DirN, DirS, DirW, DirE}
 		dir = dirs[g.RNG.IntN(len(dirs))]
 		g.Logf("You stumble %s in confusion.", dirName(dir))
@@ -1775,7 +858,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 					// Second+ bump: attack it; requires value (HP) to break.
 					mem := g.Party.Members[g.Party.Selected]
 					base := (mem.ATK[0] + mem.ATK[1]) / 2
-					if g.Party.HasStatus(StatusStrength) {
+					if mem.HasStatus(StatusStrength) {
 						base += 2
 					}
 					if base < 2 {
@@ -1807,7 +890,7 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			g.Party.Active = g.Party.Selected
 			attackerMember := g.Party.Members[g.Party.Active]
 			attacker := attackerMember.Name
-			dmg, hitIdx, killed := PlayerBumpEnemy(g.RNG, g.Party, e)
+			dmg, hitIdx, killed, struckTwice := PlayerBumpEnemy(g.RNG, g.Party, e)
 			// Dwarf +2 dmg when below 50% HP
 			if normalizeRaceID(attackerMember.Race) == "dwarf" && attackerMember.MaxHP > 0 && attackerMember.HP*2 < attackerMember.MaxHP {
 				// apply extra 2 damage to the hit enemy member if still alive
@@ -1851,12 +934,16 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 			} else {
 				g.Logf("%s hits %s for %d.", attacker, memberName, dmg)
 			}
+			if struckTwice {
+				g.Logf("%s strikes %s again!", attacker, memberName)
+			}
 			if attackerMember.EffectChance > 0 && g.RNG.Float64() < attackerMember.EffectChance {
 				effect := attackerMember.Effect
 				if effect == "" {
 					effect = "hex"
 				}
-				applied, _ := applyEffect(e, effect, g.RNG, false)
+				tgt := hitMember(e.Members, e.Active, hitIdx)
+				applied, _ := applyEffect(tgt, effect, g.RNG, false)
 				if applied {
 					switch effect {
 					case "hex":
@@ -1886,32 +973,8 @@ func (g *Game) TryMove(dir Dir) ActionResult {
 					g.Logf("%s tries to %s %s", attacker, effect, memberName)
 				}
 			}
-			if g.LevelUpPending != nil {
-				g.Turn++
-				g.tickFood()
-				if g.Turn%10 == 0 {
-					for _, m := range g.Party.Members {
-						if m.IsAlive() && m.HP < m.MaxHP {
-							m.HP++
-						}
-					}
-				}
-				if g.Turn%5 == 0 {
-					for _, m := range g.Party.Members {
-						if m.IsAlive() && m.HP < m.MaxHP && m.HasTalent("enduring_regen") {
-							m.HP++
-							if m.HP > m.MaxHP {
-								m.HP = m.MaxHP
-							}
-						}
-					}
-				}
-				g.applyStarvation()
-				g.UpdateFOV()
-				return ActionResult{Attacked: true}
-			}
-			g.EndPlayerTurn("")
-			return ActionResult{Attacked: true}
+		g.EndPlayerTurn("")
+		return ActionResult{Attacked: true}
 		}
 	}
 	// Feature checks at target tile before normal move.
@@ -2027,23 +1090,6 @@ func dirName(d Dir) string {
 	}
 }
 
-func (g *Game) handleFloorArrival() {
-	if g.VisitedFloors == nil {
-		g.VisitedFloors = make(map[int]bool)
-	}
-	if g.TransitionFiredForLevel == nil {
-		g.TransitionFiredForLevel = make(map[int]bool)
-	}
-	if !g.VisitedFloors[g.Floor] && !g.TransitionFiredForLevel[g.Floor] {
-		g.ApplyFloorTransition()
-		g.VisitedFloors[g.Floor] = true
-		g.TransitionFiredForLevel[g.Floor] = true
-	} else {
-		g.VisitedFloors[g.Floor] = true
-		g.logBiomeEntry()
-	}
-	g.UpdateFOV()
-}
 
 type stairSpec struct {
 	delta      int
@@ -2052,106 +1098,6 @@ type stairSpec struct {
 	blockedMsg string
 }
 
-func (g *Game) moveFloor(spec stairSpec) bool {
-	if g.Over {
-		return false
-	}
-	lvl := g.CurLevel()
-	if g.Party.Pos != spec.src(lvl) {
-		g.Logf("%s", spec.blockedMsg)
-		return false
-	}
-	if spec.delta > 0 && g.Floor+spec.delta >= g.Tuning.Floors {
-		g.Logf("The way down is sealed.")
-		return false
-	}
-	if spec.delta < 0 && g.Floor == 0 {
-		g.Logf("You are at the entrance.")
-		return false
-	}
-	g.Floor += spec.delta
-	g.Party.Pos = spec.dst(g.CurLevel())
-	if spec.delta > 0 {
-		g.Logf("You descend to floor %d.", g.Floor+1)
-	} else {
-		g.Logf("You ascend to floor %d.", g.Floor+1)
-	}
-	g.handleFloorArrival()
-	return true
-}
-
-func (g *Game) TryStairsDown() {
-	if !g.moveFloor(stairSpec{delta: 1, src: func(l *Level) Pos { return l.StairsDown }, dst: func(l *Level) Pos { return l.StairsUp }, blockedMsg: "No stairs down here."}) {
-		return
-	}
-	g.EnemyTurn()
-}
-
-func (g *Game) TryStairsUp() {
-	if g.Over {
-		return
-	}
-	lvl := g.CurLevel()
-	if g.Party.Pos == lvl.StairsUp && g.Floor == 0 && g.RelicCollected {
-		g.Escaped = true
-		g.Over = true
-		g.Won = true
-		g.Cause = "Escaped"
-		g.Logf("You escape the temple with the relic! Victory - seed %d. Score %d.", g.Seed, g.CalculateScore())
-		g.RecordScore()
-		_ = DeleteSave()
-		return
-	}
-	if !g.moveFloor(stairSpec{delta: -1, src: func(l *Level) Pos { return l.StairsUp }, dst: func(l *Level) Pos { return l.StairsDown }, blockedMsg: "No stairs up here."}) {
-		return
-	}
-}
-
-func (g *Game) ApplyFloorTransition() {
-	// Biome entry feel: log evocative line on floor entry.
-	g.logBiomeEntry()
-	// Forage (druid): +100 food per bearer. Restoration (cleric): full heal all living members.
-	for _, m := range g.Party.Members {
-		if !m.IsAlive() {
-			continue
-		}
-		if m.HasTalent("forage") {
-			g.AddFood(100)
-			g.Logf("%s forages +100 food (now %d).", m.Name, g.Food)
-		}
-		if m.HasTalent("restoration") {
-			healed := 0
-			for _, mm := range g.Party.Members {
-				if mm.IsAlive() && mm.HP < mm.MaxHP {
-					mm.HP = mm.MaxHP
-					healed++
-				}
-			}
-			// clear negative statuses: hex/rend/bleed/spore/poison/curse/sleep/paralysis/confusion/entangle
-			for _, mm := range g.Party.Members {
-				if mm.IsAlive() {
-					_ = mm
-				}
-			}
-			if g.Party != nil {
-				for _, sid := range []string{StatusHex, StatusRend, StatusBleed, StatusSpore, StatusPoison, StatusCurse, StatusSleep, StatusParalysis, StatusConfusion, StatusEntangle} {
-					g.Party.RemoveStatus(sid)
-				}
-			}
-			if healed > 0 {
-				g.Logf("%s restores the party to full health and clears afflictions.", m.Name)
-			} else {
-				g.Logf("%s channels restoration (party already healthy, afflictions cleared).", m.Name)
-			}
-			// Only one restoration proc per party per transition (avoid duplicate full-heal spam if multiple clerics).
-			break
-		}
-	}
-	// Reset second_wind per floor
-	for _, m := range g.Party.Members {
-		m.SecondWindUsed = false
-	}
-}
 func (g *Game) EndPlayerTurn(msg string) {
 	if msg != "" {
 		g.Logf("%s", msg)
@@ -2159,24 +1105,44 @@ func (g *Game) EndPlayerTurn(msg string) {
 	g.Turn++
 	g.tickFood()
 	g.tickRegen()
-	// Tick party statuses and apply DoTs.
+	// Tick member conditions and apply DoTs per member.
 	if g.Party != nil {
-		expired := g.Party.TickStatuses()
-		for _, id := range expired {
-			switch id {
-			case StatusStrength:
-				g.Logf("Strength fades.")
-			case StatusInvisibility:
-				g.Logf("Invisibility fades.")
-			case StatusFireResist:
-				g.Logf("Fire resistance fades.")
-			case StatusLevitation:
-				g.Logf("Levitation fades.")
-			case StatusEnlightenment:
-				g.Logf("Enlightenment fades.")
-			case StatusParalysis:
-				g.Logf("Paralysis wears off.")
-			case StatusSummon:
+		for _, m := range g.Party.Members {
+			for _, id := range m.TickStatuses() {
+				switch id {
+				case StatusStrength:
+					g.Logf("Strength fades.")
+				case StatusInvisibility:
+					g.Logf("Invisibility fades.")
+				case StatusFireResist:
+					g.Logf("Fire resistance fades.")
+				case StatusLevitation:
+					g.Logf("Levitation fades.")
+				case StatusEnlightenment:
+					g.Logf("Enlightenment fades.")
+				case StatusParalysis:
+					g.Logf("Paralysis wears off.")
+				case StatusBlind:
+					g.Logf("Blindness lifts.")
+				case StatusHaste:
+					g.Logf("Haste fades.")
+				case StatusSlow:
+					g.Logf("Slow fades.")
+				case StatusRegenerate:
+					g.Logf("Regeneration fades.")
+				case StatusStun:
+					g.Logf("Stun wears off.")
+				case StatusConfusion:
+					g.Logf("Confusion clears.")
+				case StatusHex:
+					g.Logf("Hex fades.")
+				case StatusCurse:
+					g.Logf("Curse lifts.")
+				}
+			}
+		}
+		for _, id := range g.Party.TickStatuses() {
+			if id == StatusSummon {
 				for i, m := range g.Party.Members {
 					if len(m.Name) >= 8 && m.Name[:8] == "Summoned" {
 						g.Party.Members = append(g.Party.Members[:i], g.Party.Members[i+1:]...)
@@ -2184,25 +1150,16 @@ func (g *Game) EndPlayerTurn(msg string) {
 						break
 					}
 				}
-			case StatusBlind:
-				g.Logf("Blindness lifts.")
-			case StatusHaste:
-				g.Logf("Haste fades.")
-			case StatusSlow:
-				g.Logf("Slow fades.")
-			case StatusRegenerate:
-				g.Logf("Regeneration fades.")
-			case StatusStun:
-				g.Logf("Stun wears off.")
-			case StatusConfusion:
-				g.Logf("Confusion clears.")
-			case StatusHex:
-				g.Logf("Hex fades.")
-			case StatusCurse:
-				g.Logf("Curse lifts.")
 			}
 		}
-		if g.Party.HasStatus(StatusEnlightenment) {
+		enlightened := false
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && m.HasStatus(StatusEnlightenment) {
+				enlightened = true
+				break
+			}
+		}
+		if enlightened {
 			if lvl := g.CurLevel(); lvl != nil {
 				for y := range lvl.H {
 					for x := range lvl.W {
@@ -2211,48 +1168,57 @@ func (g *Game) EndPlayerTurn(msg string) {
 				}
 			}
 		}
-		// DoT — data-driven via statuses.json dots (poison 1, bleed 2)
-		if g.Party.HasStatus(StatusRend) || g.Party.HasStatus(StatusBleed) {
-			dot := statusDotDamage(StatusBleed)
-			if dot == 0 {
-				dot = 2
-			}
-			_, actual := g.Party.ApplyDamage(g.RNG, dot)
-			g.Logf("Bleed deals %d damage!", actual)
-			if g.Party.LivingCount() == 0 {
-				g.Over = true
-				if g.Cause == "" {
-					g.Cause = "Bleed"
+		// DoT — data-driven via statuses.json dots (poison 1, bleed 2).
+		bleedDot := statusDotDamage(StatusBleed)
+		if bleedDot == 0 {
+			bleedDot = 2
+		}
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && (m.HasStatus(StatusRend) || m.HasStatus(StatusBleed)) {
+				m.HP -= bleedDot
+				if m.HP <= 0 {
+					m.HP = 0
+					m.Alive = false
 				}
-				g.Logf("You have bled out. Seed %d.", g.Seed)
-				g.RecordScore()
+				g.Logf("%s bleeds for %d damage!", m.Name, bleedDot)
 			}
 		}
-		if g.Party.HasStatus(StatusSpore) || g.Party.HasStatus(StatusPoison) {
-			dot := statusDotDamage(StatusPoison)
-			if dot == 0 {
-				dot = 1
+		if g.Party.LivingCount() == 0 {
+			g.Over = true
+			if g.Cause == "" {
+				g.Cause = "Bleed"
 			}
-			_, actual := g.Party.ApplyDamage(g.RNG, dot)
-			g.Logf("Poison deals %d damage!", actual)
-			if g.Party.LivingCount() == 0 {
-				g.Over = true
-				if g.Cause == "" {
-					g.Cause = "Poison"
+			g.Logf("You have bled out. Seed %d.", g.Seed)
+			g.RecordScore()
+		}
+		poisonDot := statusDotDamage(StatusPoison)
+		if poisonDot == 0 {
+			poisonDot = 1
+		}
+		for _, m := range g.Party.Members {
+			if m.IsAlive() && (m.HasStatus(StatusSpore) || m.HasStatus(StatusPoison)) {
+				m.HP -= poisonDot
+				if m.HP <= 0 {
+					m.HP = 0
+					m.Alive = false
 				}
-				g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
-				g.RecordScore()
+				g.Logf("%s suffers %d poison damage!", m.Name, poisonDot)
 			}
 		}
-		// Regenerate — duration data-driven via statuses.json (20t); heals 1 HP every 2 ticks.
-		if g.Party.HasStatus(StatusRegenerate) && g.Turn%2 == 0 {
+		if g.Party.LivingCount() == 0 {
+			g.Over = true
+			if g.Cause == "" {
+				g.Cause = "Poison"
+			}
+			g.Logf("You have succumbed to poison. Seed %d.", g.Seed)
+			g.RecordScore()
+		}
+		// Regenerate — duration data-driven via statuses.json (20t); each regenerating member heals 1 HP every 2 ticks.
+		if g.Turn%2 == 0 {
 			healed := 0
 			for _, m := range g.Party.Members {
-				if m.IsAlive() && m.HP < m.MaxHP {
+				if m.IsAlive() && m.HP < m.MaxHP && m.HasStatus(StatusRegenerate) {
 					m.HP++
-					if m.HP > m.MaxHP {
-						m.HP = m.MaxHP
-					}
 					healed++
 				}
 			}
@@ -2264,7 +1230,10 @@ func (g *Game) EndPlayerTurn(msg string) {
 	if lvl := g.CurLevel(); lvl != nil {
 		for _, e := range lvl.Enemies {
 			if e != nil && e.IsAlive() {
-				_ = e.TickStatuses()
+				e.TickStatuses() // party-wide timers only (summon)
+				for _, m := range e.Members {
+					m.TickStatuses()
+				}
 			}
 		}
 	}
@@ -2373,55 +1342,52 @@ func (g *Game) EnemyTurn() {
 		// Regen tick for troll and similar
 		e.RegenTick()
 		e.EnsureActive()
-		// Enemy DoTs — data-driven via statuses.json (bleed 2, poison 1)
-		if e.HasStatus(StatusRend) || e.HasStatus(StatusBleed) {
-			dot := statusDotDamage(StatusBleed)
-			if dot == 0 {
-				dot = 2
-			}
-			for _, m := range e.Members {
-				if m.IsAlive() {
-					m.HP -= dot
-					if m.HP <= 0 {
-						m.HP = 0
-						m.Alive = false
-					}
+		// Enemy DoTs tick per member — data-driven via statuses.json (bleed 2, poison 1).
+		dot := statusDotDamage(StatusBleed)
+		if dot == 0 {
+			dot = 2
+		}
+		for _, m := range e.Members {
+			if m.IsAlive() && (m.HasStatus(StatusRend) || m.HasStatus(StatusBleed)) {
+				m.HP -= dot
+				if m.HP <= 0 {
+					m.HP = 0
+					m.Alive = false
 				}
 			}
-			if !e.IsAlive() {
-				g.Logf("%s bleeds out!", e.DisplayName())
-				g.AddKill()
-				g.rollKillDrop(e)
-				continue
-			}
 		}
-		if e.HasStatus(StatusSpore) || e.HasStatus(StatusPoison) {
-			dot := statusDotDamage(StatusPoison)
-			if dot == 0 {
-				dot = 1
-			}
-			for _, m := range e.Members {
-				if m.IsAlive() {
-					m.HP -= dot
-					if m.HP <= 0 {
-						m.HP = 0
-						m.Alive = false
-					}
-				}
-			}
-			if !e.IsAlive() {
-				g.Logf("%s succumbs to poison!", e.DisplayName())
-				g.AddKill()
-				g.rollKillDrop(e)
-				continue
-			}
-		}
-		// Status skip: paralysis/entangle/sleep/stun prevent action.
-		if e.HasStatus(StatusParalysis) || e.HasStatus(StatusEntangle) || e.HasStatus(StatusSleep) || e.HasStatus(StatusStun) {
+		if !e.IsAlive() {
+			g.Logf("%s bleeds out!", e.DisplayName())
+			g.AddKill()
+			g.rollKillDrop(e)
 			continue
 		}
-		// Invisibility prevents enemy targeting entirely.
-		if g.Party.HasStatus(StatusInvisibility) {
+		pdot := statusDotDamage(StatusPoison)
+		if pdot == 0 {
+			pdot = 1
+		}
+		for _, m := range e.Members {
+			if m.IsAlive() && (m.HasStatus(StatusSpore) || m.HasStatus(StatusPoison)) {
+				m.HP -= pdot
+				if m.HP <= 0 {
+					m.HP = 0
+					m.Alive = false
+				}
+			}
+		}
+		if !e.IsAlive() {
+			g.Logf("%s succumbs to poison!", e.DisplayName())
+			g.AddKill()
+			g.rollKillDrop(e)
+			continue
+		}
+		// Status skip: the acting member's paralysis/entangle/sleep/stun prevent action.
+		act := enemyActor(e)
+		if act != nil && (act.HasStatus(StatusParalysis) || act.HasStatus(StatusEntangle) || act.HasStatus(StatusSleep) || act.HasStatus(StatusStun)) {
+			continue
+		}
+		// Invisibility hides individuals: untargetable only when every living member is unseen.
+		if partyUnseen(g.Party) {
 			continue
 		}
 		dx := g.Party.Pos.X - e.Pos.X
@@ -2430,10 +1396,14 @@ func (g *Game) EnemyTurn() {
 		if cheb == 1 {
 			atk := e.Members[e.Active]
 			bonus := 0
-			if e.HasStatus(StatusStrength) {
+			if act != nil && act.HasStatus(StatusStrength) {
 				bonus = 2
 			}
 			raw := RollRaw(g.RNG, atk.ATK[0]+bonus, atk.ATK[1]+bonus)
+			// Slow: flat quarter penalty on the rolled damage (1 stays 1).
+			if atk.HasStatus(StatusSlow) {
+				raw -= raw / 4
+			}
 			isMagic := atk.DamageType == "magic"
 			hitIdx, actual := g.Party.ApplyDamageWithType(g.RNG, raw, isMagic)
 			defender := "you"
@@ -2462,6 +1432,34 @@ func (g *Game) EnemyTurn() {
 					}
 				}
 			}
+			// Haste: 50% second strike on the same defender. Riders fire once.
+			if hitIdx >= 0 && hitIdx < len(g.Party.Members) {
+				tgt := g.Party.Members[hitIdx]
+				if tgt.IsAlive() && atk.IsAlive() && atk.HasStatus(StatusHaste) && g.RNG.Float64() < 0.5 {
+					raw2 := RollRaw(g.RNG, atk.ATK[0]+bonus, atk.ATK[1]+bonus)
+					if atk.HasStatus(StatusSlow) {
+						raw2 -= raw2 / 4
+					}
+					def2 := tgt.DEF
+					if isMagic {
+						def2 = tgt.MDEF
+					}
+					def2 += tgt.effectiveDEFDelta()
+					actual2 := raw2 - def2
+					if actual2 < 1 {
+						actual2 = 1
+					}
+					if tgt.HasStatus(StatusFireResist) && isMagic {
+						actual2 = resistedFire(actual2)
+					}
+					tgt.HP -= actual2
+					if tgt.HP <= 0 {
+						tgt.HP = 0
+						tgt.Alive = false
+					}
+					g.Logf("%s strikes %s again for %d!", attackerName, defender, actual2)
+				}
+			}
 			if atk.EffectChance > 0 {
 				if g.RNG.Float64() < atk.EffectChance {
 					effect := atk.Effect
@@ -2469,7 +1467,8 @@ func (g *Game) EnemyTurn() {
 						effect = "hex"
 					}
 					isMagicEff := atk.DamageType == "magic"
-					applied, resisted := applyEffect(g.Party, effect, g.RNG, isMagicEff)
+					tgt := hitMember(g.Party.Members, g.Party.Active, hitIdx)
+					applied, resisted := applyEffect(tgt, effect, g.RNG, isMagicEff)
 					if resisted {
 						g.Logf("%s resists %s!", defender, effect)
 					} else if applied {
@@ -2518,7 +1517,7 @@ func (g *Game) EnemyTurn() {
 			continue
 		}
 		// Confusion: random movement instead of BFS.
-		if e.HasStatus(StatusConfusion) {
+		if act != nil && act.HasStatus(StatusConfusion) {
 			dirs := []Dir{DirN, DirS, DirW, DirE}
 			d := dirs[g.RNG.IntN(len(dirs))]
 			nxt := e.Pos.Add(d)

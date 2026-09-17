@@ -5,6 +5,9 @@ BIN_WINDOWS = bin/pilgrims-temple.exe
 BIN_LINUX_R   = bin/pilgrims-temple-renderer
 BIN_WINDOWS_R = bin/pilgrims-temple-renderer.exe
 WASM_R_DIR = web-renderer
+WASM     = web/main.wasm
+WASM_BR  = web/main.wasm.br
+WASM_EXEC_JS = web/wasm_exec.js
 
 LDFLAGS  = -s -w
 

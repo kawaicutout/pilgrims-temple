@@ -388,7 +388,7 @@ func SynergyXPBonus(p *Party) float64 {
 	if c, ok := counts["human"]; ok && c > 0 {
 		bonus += float64(c) * 0.05
 	}
-	// Legacy: if other races have xpBonus and threshold met, include them (for compat)
+	// Data-driven: other races contribute SynergyBuff.XPBonus when threshold met.
 	LoadRaces()
 	for raceID, cnt := range counts {
 		if raceID == "human" {
@@ -536,12 +536,6 @@ func EffectiveLivingCount(p *Party) int {
 	}
 	return n
 }
-
-// EffectivePartySize alias
-func EffectivePartySize(p *Party) int { return EffectiveLivingCount(p) }
-
-// TrollFoodMultiplier returns effective living count for food tick (troll double when healthy)
-func TrollFoodMultiplier(p *Party) int { return EffectiveLivingCount(p) }
 
 // ShouldTrollRegen returns true every 3 ticks
 func ShouldTrollRegen(turn int) bool { return turn > 0 && turn%3 == 0 }

@@ -3,8 +3,8 @@
 A turn-based party roguelike for roguetemple's Fortnight 2 (September 1–15,
 2026). The player builds 1–3 pilgrims and descends 8 floors to claim the
 relic, then climbs back to the surface. The party shares one tile and moves
-as one unit; one member acts per turn, attacks land hardest on whoever acted
-last, and a shared food clock limits the run. Written in Go, shipped as a
+as one unit; one member acts per turn, attacks hit the last actor hardest,
+and a shared food clock limits the run. Written in Go, shipped as a
 native terminal binary and as WebAssembly (WASM) for itch.io.
 
 ## How to play
@@ -12,10 +12,10 @@ native terminal binary and as WebAssembly (WASM) for itch.io.
 Build a roster (seed, then class, race, and name per pilgrim; blank means
 random), then descend. Each turn: select a member with q/w/e/r (free), then
 act — move, bump to attack, use (`u`), throw (`t`), pick up (`g`), rest
-(`z`), or wait (`5`). Acting draws attacks toward the actor, so spend durable
+(`z`), or wait (`5`). Acting draws attacks toward the actor, so use durable
 members on risky turns.
 
-Two clocks race the run. Food drains every turn for every living member;
+Two clocks limit the run. Food drains every turn for every living member;
 rations, forage, and lean parties stretch it. Health drains in fights;
 rest heals slowly, potions and scrolls heal fast. Potions and scrolls start
 unidentified: using one identifies every item sharing its look. Death is

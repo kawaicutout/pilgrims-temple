@@ -233,7 +233,21 @@ func (e *EnemyParty) IsAlive() bool {
 	return false
 }
 
+// hitMember resolves the member an effect lands on: the struck member
+// when living, else the party's active member, else nil. Works for
+// player and enemy parties (same Member type).
+func hitMember(members []*Member, active, hitIdx int) *Member {
+	if hitIdx >= 0 && hitIdx < len(members) && members[hitIdx].IsAlive() {
+		return members[hitIdx]
+	}
+	if active >= 0 && active < len(members) && members[active].IsAlive() {
+		return members[active]
+	}
+	return nil
+}
+
 func (e *EnemyParty) LivingCount() int {
+
 	n := 0
 	for _, m := range e.Members {
 		if m.IsAlive() {
@@ -241,6 +255,42 @@ func (e *EnemyParty) LivingCount() int {
 		}
 	}
 	return n
+}
+
+// enemyActor returns the enemy member that acts this turn: the active
+// member when living, else the first living member, else nil.
+func enemyActor(e *EnemyParty) *Member {
+	if e == nil {
+		return nil
+	}
+	if e.Active >= 0 && e.Active < len(e.Members) && e.Members[e.Active].IsAlive() {
+		return e.Members[e.Active]
+	}
+	for _, m := range e.Members {
+		if m.IsAlive() {
+			return m
+		}
+	}
+	return nil
+}
+
+// partyUnseen reports whether no living member can be targeted: every
+// living member carries invisibility.
+func partyUnseen(p *Party) bool {
+	if p == nil {
+		return false
+	}
+	seen := false
+	for _, m := range p.Members {
+		if !m.IsAlive() {
+			continue
+		}
+		seen = true
+		if !m.HasStatus(StatusInvisibility) {
+			return false
+		}
+	}
+	return seen
 }
 
 func (e *EnemyParty) Color() string {
@@ -444,6 +494,16 @@ func GetEnemyData() []enemyEntry {
 	copy(out, src)
 	return out
 }
+// magicDepthBonus keeps magic-wielding enemies threatening past floor 2,
+// where player MDEF and HP pools outgrow the base attack curve. One
+// source for both generation paths (level pool and biome tables).
+func magicDepthBonus(damageType string, floor int) int {
+	if damageType == "magic" && floor > 2 {
+		return 1
+	}
+	return 0
+}
+
 func pickEnemyForFloor(rng *rand.Rand, floor int) enemyEntry {
 	entries := loadEnemies()
 	var pool []enemyEntry
@@ -552,12 +612,11 @@ func (l *Level) RegenerateEnemies(rng *rand.Rand, floor int) {
 			if entry.Regen {
 				hp += 4
 			}
-			atkMin := 2 + floor
-			atkMax := atkMin + 2 + rng.IntN(2)
-			if entry.DamageType == "magic" && floor > 2 {
-				atkMin++
-				atkMax++
-			}
+		atkMin := 2 + floor
+		atkMax := atkMin + 2 + rng.IntN(2)
+		bonus := magicDepthBonus(entry.DamageType, floor)
+		atkMin += bonus
+		atkMax += bonus
 			def := 0
 			mdef := 0
 			if floor >= 2 {

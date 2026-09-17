@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"math/rand/v2"
 	"sort"
 	"strings"
@@ -104,6 +103,41 @@ func (l *Level) ItemAt(p Pos) *GroundItem {
 	return nil
 }
 
+// pickupStackable stashes one potion/scroll: carry guard, gnome
+// first-of-kind identify, halfling extra. Reports whether kept; the
+// caller retains rejected items on the ground.
+func (g *Game) pickupStackable(it GroundItem, kind string) bool {
+	if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
+		g.Logf("Inventory full — cannot pick up %s.", it.Name)
+		return false
+	}
+	g.Party.Inventory = append(g.Party.Inventory, it)
+	g.Logf("Picked up %s: %s.", kind, it.Name)
+	// Gnome 10% instant identify first of kind
+	if g.Party.HasRace("gnome") && !IsIdentified(appearanceFromItem(it)) {
+		app := appearanceFromItem(it)
+		isFirst := true
+		for _, inv := range g.Party.Inventory[:len(g.Party.Inventory)-1] {
+			if appearanceFromItem(inv) == app {
+				isFirst = false
+				break
+			}
+		}
+		if isFirst && g.RNG != nil && g.RNG.Float64() < 0.10 {
+			IdentifyOnUse(app)
+			g.Logf("Gnomish insight identifies %s as %s!", app, friendlyTypeName(TypeForAppearance(app), it.Kind))
+		}
+	}
+	if g.Party.HasRace("halfling") && g.RNG != nil && g.RNG.Float64() < 0.10 {
+		if g.Party.CarryUsed() < g.Party.CarryCapacity() {
+			dup := it
+			g.Party.Inventory = append(g.Party.Inventory, dup)
+			g.Logf("Halfling luck: extra %s!", it.Name)
+		}
+	}
+	return true
+}
+
 // TryPickup picks up all items at party position via 'g'.
 // Returns true if something picked.
 func (g *Game) TryPickup() bool {
@@ -149,67 +183,10 @@ func (g *Game) TryPickup() bool {
 			g.Food += f
 			g.FoodFloat += float64(f)
 			g.Logf("Picked up ration (+%d food).", f)
-		case "potion":
-			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
+		case "potion", "scroll":
+			if !g.pickupStackable(it, it.Kind) {
 				remaining = append(remaining, it)
 				inventoryFull = true
-				g.Logf("Inventory full — cannot pick up %s.", it.Name)
-				continue
-			}
-			g.Party.Inventory = append(g.Party.Inventory, it)
-			g.Logf("Picked up potion: %s.", it.Name)
-			// Gnome 10% instant identify first of kind
-			if g.Party.HasRace("gnome") && !IsIdentified(appearanceFromItem(it)) {
-				app := appearanceFromItem(it)
-				isFirst := true
-				for _, inv := range g.Party.Inventory[:len(g.Party.Inventory)-1] {
-					if appearanceFromItem(inv) == app {
-						isFirst = false
-						break
-					}
-				}
-				if isFirst && g.RNG != nil && g.RNG.Float64() < 0.10 {
-					IdentifyOnUse(app)
-					g.Logf("Gnomish insight identifies %s as %s!", app, friendlyTypeName(TypeForAppearance(app), it.Kind))
-				}
-			}
-			if g.Party.HasRace("halfling") && g.RNG != nil && g.RNG.Float64() < 0.10 {
-				if g.Party.CarryUsed() < g.Party.CarryCapacity() {
-					dup := it
-					g.Party.Inventory = append(g.Party.Inventory, dup)
-					g.Logf("Halfling luck: extra %s!", it.Name)
-				}
-			}
-		case "scroll":
-			if g.Party.CarryUsed() >= g.Party.CarryCapacity() {
-				remaining = append(remaining, it)
-				inventoryFull = true
-				g.Logf("Inventory full — cannot pick up %s.", it.Name)
-				continue
-			}
-			g.Party.Inventory = append(g.Party.Inventory, it)
-			g.Logf("Picked up scroll: %s.", it.Name)
-			// Gnome 10% instant identify first of kind for scrolls too
-			if g.Party.HasRace("gnome") && !IsIdentified(appearanceFromItem(it)) {
-				app := appearanceFromItem(it)
-				isFirst := true
-				for _, inv := range g.Party.Inventory[:len(g.Party.Inventory)-1] {
-					if appearanceFromItem(inv) == app {
-						isFirst = false
-						break
-					}
-				}
-				if isFirst && g.RNG != nil && g.RNG.Float64() < 0.10 {
-					IdentifyOnUse(app)
-					g.Logf("Gnomish insight identifies %s as %s!", app, friendlyTypeName(TypeForAppearance(app), it.Kind))
-				}
-			}
-			if g.Party.HasRace("halfling") && g.RNG != nil && g.RNG.Float64() < 0.10 {
-				if g.Party.CarryUsed() < g.Party.CarryCapacity() {
-					dup := it
-					g.Party.Inventory = append(g.Party.Inventory, dup)
-					g.Logf("Halfling luck: extra %s!", it.Name)
-				}
 			}
 		default:
 			g.Logf("Picked up %s.", it.Name)
@@ -364,26 +341,12 @@ func (g *Game) InventoryUseEntries() []UseEntry {
 	})
 	return entries
 }
-// InventoryPotionEntries returns potion-only grouped entries for the throw menu, sorted by appearance.
-func (g *Game) InventoryPotionEntries() []UseEntry {
+// InventoryEntriesByKind returns kind-filtered use entries, sorted by appearance.
+func (g *Game) InventoryEntriesByKind(kind string) []UseEntry {
 	entries := g.InventoryUseEntries()
 	var out []UseEntry
 	for _, e := range entries {
-		if e.Kind == "potion" {
-			out = append(out, e)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Appearance < out[j].Appearance })
-	return out
-}
-
-
-// InventoryScrollEntries returns scroll-only grouped entries for the use menu, sorted by appearance.
-func (g *Game) InventoryScrollEntries() []UseEntry {
-	entries := g.InventoryUseEntries()
-	var out []UseEntry
-	for _, e := range entries {
-		if e.Kind == "scroll" {
+		if e.Kind == kind {
 			out = append(out, e)
 		}
 	}
@@ -420,7 +383,7 @@ func (g *Game) takeUseItem(appearance string) (GroundItem, string, bool) {
 		g.Logf("No %s to use.", appearance)
 		return GroundItem{}, "", false
 	}
-	if g.Party.HasStatus(StatusSilence) {
+	if eyes := g.Party.observer(); eyes != nil && eyes.HasStatus(StatusSilence) {
 		// Silence blocks scroll and active talent use.
 		itCheck := g.Party.Inventory[idx]
 		if itCheck.Kind == "scroll" {
@@ -429,9 +392,7 @@ func (g *Game) takeUseItem(appearance string) (GroundItem, string, bool) {
 		}
 	}
 	it := g.Party.Inventory[idx]
-	saved := false
 	if it.Kind == "scroll" && ShouldGnomeSaveScroll(g.RNG, g.Party) {
-		saved = true
 		g.Logf("Gnomish thrift: scroll preserved!")
 	} else {
 		g.Party.Inventory = append(g.Party.Inventory[:idx], g.Party.Inventory[idx+1:]...)
@@ -449,7 +410,6 @@ func (g *Game) takeUseItem(appearance string) (GroundItem, string, bool) {
 	} else {
 		g.Logf("Used %s.", it.Name)
 	}
-	_ = saved
 	return it, trueType, true
 }
 
@@ -563,7 +523,7 @@ func (g *Game) TryUseItemAt(index int) bool {
 // TryThrowItemAt consumes the potion at potion-menu index and throws it at target.
 // It identifies the appearance via TryThrowAppearance and advances turn.
 func (g *Game) TryThrowItemAt(index int, target Pos) bool {
-	entries := g.InventoryPotionEntries()
+	entries := g.InventoryEntriesByKind("potion")
 	if index < 0 || index >= len(entries) {
 		return false
 	}
@@ -809,9 +769,6 @@ func SpawnFloorLoot(lvl *Level, rng *rand.Rand, floor int, biome *Biome) []Groun
 		it.Pos = candidates[i]
 		out = append(out, it)
 		lvl.Items = append(lvl.Items, it)
-	}
-	if len(out) > 0 {
-		_ = fmt.Sprintf("loot %d", len(out))
 	}
 	return out
 }

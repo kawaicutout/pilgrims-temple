@@ -459,7 +459,7 @@ func (g *Game) Render() Frame {
 	floorStr := fmt.Sprintf("Floor %d/%d", g.Floor+1, t.Floors)
 	lightStr := fmt.Sprintf("Light %d", g.Party.BestLight())
 	aware := ""
-	if g.Party.HasRogueOrWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard {
+	if eyes := g.Party.observer(); g.Party.HasRogueOrWizard() || (eyes != nil && eyes.HasStatus(StatusLevitation)) || g.Wizard {
 		aware = "Aware"
 	}
 	foodStr := fmt.Sprintf("Food %d %s", g.Food, g.HungerState())
@@ -560,7 +560,8 @@ func (g *Game) Render() Frame {
 				hints = fmt.Sprintf("Vault: g to loot %d gold%s  |  Move: numpad/arrow/hjkl  Help:?", f.Treasure, map[bool]string{true: " (trapped)", false: ""}[f.Trapped])
 			}
 		} else if f.IsPitfall() {
-			aware := !f.Hidden || g.Party.HasRogueOrWizard() || g.Party.HasStatus(StatusLevitation) || g.Wizard
+			eyes := g.Party.observer()
+			aware := g.IsTrapAware(f) || (eyes != nil && eyes.HasStatus(StatusLevitation))
 			if f.Hidden && !aware {
 				hints = "Pitfall: hidden (step carefully)  |  Move: numpad/arrow/hjkl  Help:?"
 			} else if f.Hidden && aware {
@@ -670,8 +671,8 @@ func (g *Game) RenderUseMenu(selected int) Frame {
 			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
 		}
 	}
-	potionEntries := g.InventoryPotionEntries()
-	scrollEntries := g.InventoryScrollEntries()
+	potionEntries := g.InventoryEntriesByKind("potion")
+	scrollEntries := g.InventoryEntriesByKind("scroll")
 	total := len(potionEntries) + len(scrollEntries)
 	title := "USE ITEM"
 	sub := "Select potion/scroll to use"
@@ -879,7 +880,7 @@ func (g *Game) RenderThrowMenu(selected int) Frame {
 			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
 		}
 	}
-	entries := g.InventoryPotionEntries()
+	entries := g.InventoryEntriesByKind("potion")
 	title := "THROW POTION"
 	sub := "Select potion to throw"
 	if len(entries) == 0 {
@@ -1044,6 +1045,10 @@ func (g *Game) RenderShrineMenu() Frame {
 		if selected > 3 {
 			selected = 3
 		}
+		// Options come from shrines.json (recruit/resurrect/level-up),
+		// with Leave appended in code: leaving is cancellation, not a
+		// shrine use. Falls back to literals on odd data so indices
+		// always match ExecuteShrineChoice.
 		opts := []struct {
 			Name string
 			Desc string
@@ -1051,8 +1056,17 @@ func (g *Game) RenderShrineMenu() Frame {
 			{"Add new party member", "Recruit random outsider at current level"},
 			{"Resurrect fallen member", "Restore most recent fallen"},
 			{"Gain level (XP unchanged)", "Level+1, XP same, talent pick"},
-			{"Leave shrine intact", "Step away, shrine remains"},
 		}
+		if uses := GetShrineUses(); len(uses) == len(opts) {
+			for i := range opts {
+				opts[i].Name = uses[i].Name
+				opts[i].Desc = uses[i].Desc
+			}
+		}
+		opts = append(opts, struct {
+			Name string
+			Desc string
+		}{"Leave shrine intact", "Step away, shrine remains"})
 		hasDead := false
 		for _, m := range g.Party.Members {
 			if !m.IsAlive() {

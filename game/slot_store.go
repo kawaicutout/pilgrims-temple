@@ -1,14 +1,65 @@
-//go:build !js
-
 package game
 
 import (
 	"encoding/json"
-	"os"
+	"fmt"
 	"sort"
 )
 
-const scoreboardFileName = "scores.json"
+// slotStore abstracts one-slot persistence: a file on desktop,
+// localStorage on web. Absent slots read as nil, nil; deletes tolerate
+// absence. All consume-on-load, MOD-gating, and sorting live here, once.
+type slotStore interface {
+	read(slot string) ([]byte, error)
+	write(slot string, data []byte) error
+	delete(slot string) error
+	exists(slot string) bool
+}
+
+func saveGameToSlot(st slotStore, slot string, g *Game) error {
+	if g == nil {
+		return fmt.Errorf("nil game")
+	}
+	data, err := json.Marshal(SaveSlot{Version: saveVersion, Game: g})
+	if err != nil {
+		return fmt.Errorf("marshal save: %w", err)
+	}
+	return st.write(slot, data)
+}
+
+func loadGameFromSlot(st slotStore, slot string) (*Game, error) {
+	data, err := st.read(slot)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("no save")
+	}
+	var s SaveSlot
+	if err := json.Unmarshal(data, &s); err == nil && s.Game != nil {
+		if err := st.delete(slot); err != nil {
+			return nil, fmt.Errorf("consume save: %w", err)
+		}
+		return s.Game, nil
+	}
+	// Fallback: raw Game JSON (legacy).
+	var g Game
+	if err := json.Unmarshal(data, &g); err != nil {
+		return nil, fmt.Errorf("parse save: %w", err)
+	}
+	if err := st.delete(slot); err != nil {
+		return nil, fmt.Errorf("consume save: %w", err)
+	}
+	return &g, nil
+}
+
+func hasSaveSlot(st slotStore, slot string) bool {
+	return st.exists(slot)
+}
+
+func deleteSaveSlot(st slotStore, slot string) error {
+	return st.delete(slot)
+}
 
 // Scoreboard persists past runs.
 type Scoreboard struct {
@@ -20,34 +71,7 @@ func (sb *Scoreboard) AddEntry(e ScoreEntry) {
 	sb.Entries = append(sb.Entries, e)
 }
 
-// loadScoreboardRaw reads raw file without sorting (internal).
-func loadScoreboardRaw() (*Scoreboard, error) {
-	data, err := os.ReadFile(scoreboardFileName)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &Scoreboard{}, nil
-		}
-		return nil, err
-	}
-	if len(data) == 0 {
-		return &Scoreboard{}, nil
-	}
-	var sb Scoreboard
-	if err := json.Unmarshal(data, &sb); err != nil {
-		return nil, err
-	}
-	if sb.Entries == nil {
-		sb.Entries = []ScoreEntry{}
-	}
-	return &sb, nil
-}
-
-// LoadScoreboard reads scores.json if present, else empty. Returns entries sorted by Score descending.
-func LoadScoreboard() (*Scoreboard, error) {
-	sb, err := loadScoreboardRaw()
-	if err != nil {
-		return nil, err
-	}
+func sortScoreboard(sb *Scoreboard) {
 	sort.Slice(sb.Entries, func(i, j int) bool {
 		if sb.Entries[i].Score != sb.Entries[j].Score {
 			return sb.Entries[i].Score > sb.Entries[j].Score
@@ -57,10 +81,37 @@ func LoadScoreboard() (*Scoreboard, error) {
 		}
 		return sb.Entries[i].Seed < sb.Entries[j].Seed
 	})
+}
+
+// loadScoreboardRaw reads raw without sorting (internal).
+func loadScoreboardRaw() (*Scoreboard, error) {
+	data, err := defaultStore().read(scoreSlot)
+	if err != nil {
+		return nil, err
+	}
+	sb := &Scoreboard{}
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, sb); err != nil {
+			return nil, err
+		}
+	}
+	if sb.Entries == nil {
+		sb.Entries = []ScoreEntry{}
+	}
 	return sb, nil
 }
 
-// SaveScoreboard writes scoreboard to scores.json.
+// LoadScoreboard reads the slot, else empty. Entries sort by Score descending.
+func LoadScoreboard() (*Scoreboard, error) {
+	sb, err := loadScoreboardRaw()
+	if err != nil {
+		return nil, err
+	}
+	sortScoreboard(sb)
+	return sb, nil
+}
+
+// SaveScoreboard writes the scoreboard unless data is modified.
 func SaveScoreboard(sb *Scoreboard) error {
 	if HasModifiedData() {
 		return nil
@@ -72,11 +123,13 @@ func SaveScoreboard(sb *Scoreboard) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(scoreboardFileName, data, 0644)
+	return defaultStore().write(scoreSlot, data)
 }
 
-// scoreboardFilePath is exposed for tests/helpers.
-func scoreboardFilePath() string { return scoreboardFileName }
+// Save stores the run in the default slot.
+func Save(g *Game) error {
+	return saveGameToSlot(defaultStore(), saveSlot, g)
+}
 
 // GetHighScores returns top n entries sorted by Score descending. Truncated to n.
 func (sb *Scoreboard) GetHighScores(n int) []ScoreEntry {
@@ -182,4 +235,19 @@ func joinPlus(parts []string) string {
 		out += "+" + p
 	}
 	return out
+}
+
+// Load reads the default slot (consumed on load).
+func Load() (*Game, error) {
+	return loadGameFromSlot(defaultStore(), saveSlot)
+}
+
+// HasSave reports whether the default save slot exists.
+func HasSave() bool {
+	return hasSaveSlot(defaultStore(), saveSlot)
+}
+
+// DeleteSave removes the default save slot.
+func DeleteSave() error {
+	return deleteSaveSlot(defaultStore(), saveSlot)
 }

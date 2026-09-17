@@ -360,7 +360,10 @@ func (rs *RaceSelectState) Back() bool {
 
 func (rs *RaceSelectState) Done() bool { return len(rs.Classes) > 0 && len(rs.Picks) == len(rs.Classes) }
 
-func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
+// newGameShell builds the run skeleton both constructors share: tuning,
+// RNG, levels, relic. Callers set the party, log the roster, and finish
+// with startPrologue.
+func newGameShell(seed int64, tuning Tuning) (*Game, *rand.Rand) {
 	SetGlobalTuning(tuning)
 	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
 	InitIdentificationSeed(seed)
@@ -379,6 +382,21 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 	final := g.Levels[tuning.Floors-1]
 	g.Relic = final.StairsDown
 	final.Set(g.Relic, TileRelic)
+	return g, rng
+}
+
+// startPrologue logs the threshold/tutorial lines and computes FOV.
+func (g *Game) startPrologue() {
+	g.Logf("You stand at the temple threshold.")
+	// First-20-turns micro-tutorial: one-time on floor 0 Turn 0
+	if g.Floor == 0 && g.Turn == 0 {
+		g.Logf("Move 8/2/4/6 or arrows/hjkl, 5/. or Space to wait, q/w/e/r pick member, g pick up, ? for help.")
+	}
+	g.UpdateFOV()
+}
+
+func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
+	g, rng := newGameShell(seed, tuning)
 	g.Party = GeneratePartyWithClasses(rng, classes, 1)
 	start := g.Levels[0].StairsUp
 	g.Party.Pos = start
@@ -393,34 +411,12 @@ func NewGameWithClasses(seed int64, tuning Tuning, classes []string) *Game {
 		}
 		names += fmt.Sprintf("%s (%s)", m.Name, m.Class)
 	}
-	g.Logf("You stand at the temple threshold.")
-	// First-20-turns micro-tutorial: one-time on floor 0 Turn 0
-	if g.Floor == 0 && g.Turn == 0 {
-		g.Logf("Move 8/2/4/6 or arrows/hjkl, 5/. or Space to wait, q/w/e/r pick member, g pick up, ? for help.")
-	}
-	g.UpdateFOV()
+	g.startPrologue()
 	return g
 }
 
 func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, races []string) *Game {
-	SetGlobalTuning(tuning)
-	rng := rand.New(rand.NewPCG(uint64(seed), 0x9e3779b97f4a7c15))
-	InitIdentificationSeed(seed)
-	g := &Game{
-		Seed: seed, RNG: rng, Tuning: tuning,
-		Food: tuning.Food.StartClock, FoodFloat: float64(tuning.Food.StartClock), Level: 1,
-		VisitedFloors: make(map[int]bool), TransitionFiredForLevel: make(map[int]bool),
-	}
-	g.XPToNext = g.xpForNext()
-	g.Levels = make([]*Level, tuning.Floors)
-	for i := range tuning.Floors {
-		lvl := NewLevel(tuning.Map.Width, tuning.Map.Height)
-		lvl.Generate(rng, i)
-		g.Levels[i] = lvl
-	}
-	final := g.Levels[tuning.Floors-1]
-	g.Relic = final.StairsDown
-	final.Set(g.Relic, TileRelic)
+	g, rng := newGameShell(seed, tuning)
 	g.Party = GeneratePartyWithClassesAndRaces(rng, classes, races, 1)
 	start := g.Levels[0].StairsUp
 	g.Party.Pos = start
@@ -444,99 +440,8 @@ func NewGameWithClassesAndRaces(seed int64, tuning Tuning, classes []string, rac
 		names += fmt.Sprintf("%s (%s%s)", m.Name, raceName, FriendlyID(m.Class))
 	}
 	g.Logf("Party: %s", names)
-	g.Logf("You stand at the temple threshold.")
-	if g.Floor == 0 && g.Turn == 0 {
-		g.Logf("Move 8/2/4/6 or arrows/hjkl, 5/. or Space to wait, q/w/e/r pick member, g pick up, ? for help.")
-	}
-	g.UpdateFOV()
+	g.startPrologue()
 	return g
-}
-
-// RenderMainMenuWithScores loads the Scoreboard via LoadScoreboard (handles missing file/localStorage gracefully)
-// and renders recent entries (top 5 by score descending) with columns: Rank, Score, PartyLevel, Gold, Depth, Seed, Victory/Cause, Members summary.
-// Keeps existing menu options above scores and uses available map width for scoreboard footer.
-// Deprecated: use RenderScoresScreen for the dedicated scores view; main menu now shows no scores.
-func RenderMainMenuWithScores(tuning Tuning, selected int) Frame {
-	w, h := tuning.Map.Width, tuning.Map.Height
-	cells := make([][]Cell, h)
-	for y := range h {
-		cells[y] = make([]Cell, w)
-		for x := range w {
-			cells[y][x] = Cell{Glyph: ' ', FG: "bg", BG: "bg"}
-		}
-	}
-	title := "PILGRIMS' TEMPLE"
-	drawCentered(cells, w, h/2-3, title, "gold-bright")
-	for i, opt := range GetMainMenuOptions() {
-		prefix := "  "
-		fg := "gray-1"
-		if i == selected {
-			prefix = "> "
-			fg = "gold-bright"
-		}
-		line := prefix + opt
-		drawCentered(cells, w, h/2+1+i, line, fg)
-	}
-	// Scoreboard footer below menu choices, using available map width.
-	sb, err := LoadScoreboard()
-	if err != nil || sb == nil {
-		sb = &Scoreboard{}
-	}
-	entries := sb.GetHighScores(5)
-	yStart := h/2 + 1 + len(GetMainMenuOptions()) + 1
-	if yStart < h {
-		drawCentered(cells, w, yStart, "-- SCOREBOARD --", "gold")
-		yStart++
-	}
-	if len(entries) == 0 {
-		if yStart < h {
-			msg := "No scores yet \u2014 survive the temple!"
-			if len(msg) > w-2 {
-				msg = msg[:w-5] + "..."
-			}
-			drawCentered(cells, w, yStart, msg, "gray-1")
-		}
-	} else {
-		// Header
-		if yStart < h {
-			header := " # Score Lv Gold Depth Seed       Result     Members"
-			if len(header) > w-2 {
-				header = header[:w-2]
-			}
-			drawString(cells, 1, yStart, header, "gray-2")
-			yStart++
-		}
-		for idx, e := range entries {
-			y := yStart + idx
-			if y >= h {
-				break
-			}
-			result := e.CauseOfDeath
-			if e.Victory {
-				result = "Victory"
-			}
-			if result == "" {
-				result = "Unknown"
-			}
-			members := MembersSummary(e)
-			line := fmt.Sprintf("%2d. %5d Lv%d G%d D%d S%d %-10s %s", idx+1, e.Score, e.PartyLevel, e.Gold, e.DepthReached, e.Seed, result, members)
-			if len(line) > w-2 {
-				line = line[:w-5] + "..."
-			}
-			fg := "gray-1"
-			if e.Victory {
-				fg = "gold-bright"
-			}
-			drawString(cells, 1, y, line, fg)
-		}
-	}
-	panel := []string{}
-	for len(panel) < 12 {
-		panel = append(panel, "")
-	}
-	status := ""
-	hints := ""
-	return Frame{W: w, H: h, Cells: cells, Panel: panel, Status: status, Log: make([]string, tuning.Layout.LogLines), Hints: hints, MinCols: tuning.Layout.MinCols, MinRows: tuning.Layout.MinRows}
 }
 
 // RenderScoresScreen renders the scrolling scoreboard for the Scores menu option.

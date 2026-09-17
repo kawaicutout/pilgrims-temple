@@ -1,6 +1,5 @@
 package game
 
-import "fmt"
 type WizardOption struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -91,24 +90,6 @@ func (g *Game) WizardSpawnLoot() {
 	g.WizardSpawnLootItems()
 }
 
-// WizardSpawnLootLegacy is kept for compatibility if needed (adds gold only).
-func (g *Game) WizardSpawnLootLegacy() {
-	g.SetWizard()
-	// Random treasure: 25-90 gold plus occasional food
-	n := 25 + g.RNG.IntN(66) // 25-90
-	if g.RNG.Float64() < 0.3 {
-		n += 20 + g.RNG.IntN(30)
-	}
-	g.AddGold(n)
-	extra := ""
-	if g.RNG.Float64() < 0.25 {
-		f := 50 + g.RNG.IntN(100)
-		g.Food += f
-		g.FoodFloat += float64(f)
-		extra = fmt.Sprintf(" and %d food", f)
-	}
-	g.Logf("Wizard: Spawn Random Loot (+%d gold%s)", n, extra)
-}
 func (g *Game) WizardAddFood() {
 	g.SetWizard()
 	g.Food += 1000
@@ -147,20 +128,9 @@ func (g *Game) WizardAddMember() bool {
 		return false
 	}
 	m := tmp.Members[0]
-	// Bring to current level approximation: give HP scaling roughly
-	// GeneratePartyWithClasses already at level 1; bump to g.Level.
-	for lvl := 1; lvl < g.Level; lvl++ {
-		m.MaxHP += 1 + g.RNG.IntN(2)
-		if g.RNG.IntN(2) == 0 {
-			m.ATK[0]++
-			m.ATK[1]++
-		}
-		if g.RNG.IntN(4) == 0 {
-			m.DEF++
-		}
-	}
-	m.HP = m.MaxHP
-	m.Alive = true
+	// Bring to current level approximation: GeneratePartyWithClasses
+	// builds at level 1; scale to g.Level.
+	ScaleMemberToLevel(m, g.Level, g.RNG)
 	g.Party.Members = append(g.Party.Members, m)
 	g.Party.EnsureSelection()
 	g.Logf("Wizard: Add Party Member -> %s the %s joined", m.Name, m.Class)
@@ -213,6 +183,7 @@ func (g *Game) WizardResurrectMember(idx int) bool {
 	// Restore as per shrine: re-scale to party level, no missed level-up awards
 	// For wizard, just restore to max HP and alive, keeping original talents/affixes
 	m.Alive = true
+	m.Statuses = nil // restored clean: death ends all conditions
 	m.HP = m.MaxHP
 	// Ensure HP is at least 1 and scales with level if needed (simple: ensure max HP reflects level)
 	// If member was dead for several levels, we could rescale, but for wizard we just restore as is
@@ -242,11 +213,8 @@ func (g *Game) WizardExecute(id string) {
 		if g.Party.Selected < len(g.Party.Members) && !g.Party.Members[g.Party.Selected].IsAlive() {
 			g.WizardResurrectMember(g.Party.Selected)
 		} else {
-			for i, m := range g.Party.Members {
-				if !m.IsAlive() {
-					g.WizardResurrectMember(i)
-					break
-				}
+			if idx := g.Party.FirstDead(); idx >= 0 {
+				g.WizardResurrectMember(idx)
 			}
 		}
 	case "reveal_all":

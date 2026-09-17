@@ -1,9 +1,9 @@
 # Milestones — Pilgrims' Temple
 
-> **Superseded 2026-09-01 — Level.Items @ `game/biome.go:1019` + `TryPickup` @ `game/loot.go:61` + `WizardSpawnLootItems` @ `game/loot.go:1393`** — The 2026-09-01 audit below claimed floor items were absent; they have since been implemented. History is retained verbatim below for changelog.
+> **Superseded 2026-09-01 — Level.Items @ `game/biome.go:1019` + `TryPickup` @ `game/loot.go:61` + `WizardSpawnLootItems` @ `game/loot.go:1393`** — The 2026-09-01 audit below claimed floor items were absent. They are implemented now. History is retained verbatim below for changelog.
 
 ## M5 Audit — Floor Items & WizardSpawnLoot (historical, superseded)
-**Finding:** `game/economy.go:WizardSpawnLoot()` currently does `AddGold(50)` only — no floor item spawn.
+**Finding:** `game/economy.go:WizardSpawnLoot()` currently does `AddGold(50)` only — no floor item spawn. **[STALE — superseded per banner above; loot now spawns items]**
 
 Floor item system (Level.Items, potion/scroll/ration on ground, pickup via `g` key, `WizardSpawnLoot` random loot drop, `Level.Generate` floor loot placement) is **not yet implemented**:
 
@@ -11,10 +11,10 @@ Floor item system (Level.Items, potion/scroll/ration on ground, pickup via `g` k
 - No `g` key handling (`game/input.go` has no pickup binding); no `Level.Items` / `Item` type in `game/`.
 - `game/economy.go:Spawn Random Loot` (wizard option `spawn_loot`) is documented as "Add 50 gold" and implementation matches.
 
-**Decision:** Per contract, defer floor item spawn to **M5 (World generation plus content and balance)**. `WizardSpawnLoot` remains gold-only for now; do not create a half floor-item system. When M5 implements ground items, `WizardSpawnLoot` should also spawn a random consumable/ration on the current floor via `Level.Items`.
+**Decision:** Per contract, defer floor item spawn to **M5 (World generation plus content and balance)**. `WizardSpawnLoot` remains gold-only for now **[STALE — implemented since]**; do not create a half floor-item system. When M5 implements ground items, `WizardSpawnLoot` should also spawn a random consumable/ration on the current floor via `Level.Items`.
 
 **Acceptance for this ticket:**
-- No new floor-item code added in this pass — audit only (+ placeholder `game/items.go` noting deferral).
+- No new floor-item code added in this pass — audit only (+ placeholder `game/items.go` noting deferral). **[STALE — `game/items.go` was never created; items live in consumables/loot/economy]**
 - Verification via `grep` shows no `Level.Items` nor floor pickup path.
 
 ## On-Transition Talents (this ticket)
@@ -28,4 +28,4 @@ Floor item system (Level.Items, potion/scroll/ration on ground, pickup via `g` k
 
 - `DESIGN.md` §5.5 (classes `restoration`/`forage` active tal­ents trigger `on_floor_transition`)
 - `game/data/classes.json` — active IDs `restoration`, `forage`
-- `game/wizard.go` — `WizardSpawnLoot` gold-only until M5
+- `game/wizard.go` — `WizardSpawnLoot` gold-only until M5 **[STALE — now spawns items]**

@@ -136,7 +136,7 @@ func RawJSON(name string) ([]byte, error) {
 	return dataFS.ReadFile("data/" + name)
 }
 
-// loadJSON is generic data loader handling ReadFile / Unmarshal / fallback (DUP-09).
+// loadJSON is a generic data loader: ReadFile, Unmarshal, then the fallback on any failure.
 func loadJSON[T any](path string, fallback T, cache **T) T {
 	if *cache != nil {
 		return **cache

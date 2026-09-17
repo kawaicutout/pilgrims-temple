@@ -3,92 +3,62 @@
 package game
 
 import (
-	"encoding/json"
 	"fmt"
 	"syscall/js"
 )
 
-// SaveToStorage marshals the Game to JSON and stores it in localStorage under pilgirms_save (one slot).
-func SaveToStorage(g *Game) error {
-	if g == nil {
-		return fmt.Errorf("nil game")
+// Web slots live in localStorage.
+const saveSlot = "pilgrims_save"
+const scoreSlot = "pilgrims_scores"
+
+// storageStore persists slots in localStorage.
+type storageStore struct{}
+
+func defaultStore() slotStore { return storageStore{} }
+
+func openStorage() (js.Value, error) {
+	v := js.Global().Get("localStorage")
+	if v.IsNull() || v.IsUndefined() {
+		return js.Value{}, fmt.Errorf("localStorage unavailable")
 	}
-	slot := SaveSlot{Version: saveVersion, Game: g}
-	data, err := json.Marshal(slot)
+	return v, nil
+}
+
+func (storageStore) read(slot string) ([]byte, error) {
+	ls, err := openStorage()
 	if err != nil {
-		return fmt.Errorf("marshal save: %w", err)
+		return nil, err
 	}
-	ls := js.Global().Get("localStorage")
-	if ls.IsNull() || ls.IsUndefined() {
-		return fmt.Errorf("localStorage unavailable")
+	v := ls.Call("getItem", slot)
+	if v.IsNull() || v.IsUndefined() || v.String() == "" {
+		return nil, nil
 	}
-	ls.Call("setItem", storageKey, string(data))
+	return []byte(v.String()), nil
+}
+
+func (storageStore) write(slot string, data []byte) error {
+	ls, err := openStorage()
+	if err != nil {
+		return err
+	}
+	ls.Call("setItem", slot, string(data))
 	return nil
 }
 
-// LoadFromStorage reads the save slot from localStorage and deletes it (consume-on-load).
-func LoadFromStorage() (*Game, error) {
-	ls := js.Global().Get("localStorage")
-	if ls.IsNull() || ls.IsUndefined() {
-		return nil, fmt.Errorf("localStorage unavailable")
+func (storageStore) delete(slot string) error {
+	ls, err := openStorage()
+	if err != nil {
+		return err
 	}
-	v := ls.Call("getItem", storageKey)
-	if v.IsNull() || v.IsUndefined() {
-		return nil, fmt.Errorf("no save")
-	}
-	s := v.String()
-	if s == "" {
-		return nil, fmt.Errorf("no save")
-	}
-	var slot SaveSlot
-	if err := json.Unmarshal([]byte(s), &slot); err == nil && slot.Game != nil {
-		ls.Call("removeItem", storageKey)
-		return slot.Game, nil
-	}
-	var g Game
-	if err := json.Unmarshal([]byte(s), &g); err != nil {
-		return nil, fmt.Errorf("parse save: %w", err)
-	}
-	ls.Call("removeItem", storageKey)
-	return &g, nil
+	ls.Call("removeItem", slot)
+	return nil
 }
 
-// HasStorage reports whether a save exists in localStorage.
-func HasStorage() bool {
-	ls := js.Global().Get("localStorage")
-	if ls.IsNull() || ls.IsUndefined() {
+func (storageStore) exists(slot string) bool {
+	ls, err := openStorage()
+	if err != nil {
 		return false
 	}
-	v := ls.Call("getItem", storageKey)
+	v := ls.Call("getItem", slot)
 	return !v.IsNull() && !v.IsUndefined() && v.String() != ""
-}
-
-// DeleteStorage removes the save from localStorage.
-func DeleteStorage() error {
-	ls := js.Global().Get("localStorage")
-	if ls.IsNull() || ls.IsUndefined() {
-		return fmt.Errorf("localStorage unavailable")
-	}
-	ls.Call("removeItem", storageKey)
-	return nil
-}
-
-// Save is shorthand for SaveToStorage.
-func Save(g *Game) error {
-	return SaveToStorage(g)
-}
-
-// Load is shorthand for LoadFromStorage (consumed on load).
-func Load() (*Game, error) {
-	return LoadFromStorage()
-}
-
-// HasSave reports whether the default save slot exists.
-func HasSave() bool {
-	return HasStorage()
-}
-
-// DeleteSave removes the default save slot.
-func DeleteSave() error {
-	return DeleteStorage()
 }

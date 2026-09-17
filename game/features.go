@@ -77,9 +77,6 @@ func (f Feature) IsForge() bool   { return f.Type == FeatureForge }
 func (f Feature) IsDen() bool     { return f.Type == FeatureDen }
 func (f Feature) IsPitfall() bool { return f.Type == FeaturePitfall }
 
-// HasType reports whether f is of given type (DUP-12 unified).
-func (f Feature) HasType(typ FeatureType) bool { return f.Type == typ }
-
 func (f Feature) AsVault() Vault {
 	return Vault{Pos: f.Pos, Locked: f.Locked, Treasure: f.Treasure, Trapped: f.Trapped}
 }
@@ -122,19 +119,6 @@ func NewPitfallFeature(pos Pos, hidden bool, damage int) Feature {
 	}
 	return Feature{Pos: pos, Type: FeaturePitfall, Hidden: hidden, Damage: damage}
 }
-
-// IsMerchantFeature is a helper for callers holding Feature values.
-func IsMerchantFeature(f Feature) bool { return f.IsMerchant() }
-
-// IsFountainFeature helper.
-func IsFountainFeature(f Feature) bool { return f.IsFountain() }
-
-// IsShrineFeature helper.
-func IsShrineFeature(f Feature) bool  { return f.IsShrine() }
-func IsVaultFeature(f Feature) bool   { return f.IsVault() }
-func IsForgeFeature(f Feature) bool   { return f.IsForge() }
-func IsDenFeature(f Feature) bool     { return f.IsDen() }
-func IsPitfallFeature(f Feature) bool { return f.IsPitfall() }
 
 var glyphMap = map[FeatureType]rune{
 	FeatureMerchant: 'M',
@@ -412,7 +396,7 @@ func GetFountainOutcomes() []FountainOutcome {
 	return out
 }
 
-// ShrineUse is one shrine function (recruit vs resurrect). Shrines are free.
+// ShrineUse is one shrine function (recruit, resurrect, level-up). Shrines are free.
 type ShrineUse struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -425,24 +409,27 @@ type shrinesFile struct {
 
 var shrinesCache []ShrineUse
 
+// defaultShrineUses mirrors shrines.json when the file is missing or broken.
+func defaultShrineUses() []ShrineUse {
+	return []ShrineUse{
+		{ID: "recruit", Name: "Recruitment", Desc: "Recruit a new member to your party"},
+		{ID: "resurrect", Name: "Resurrection", Desc: "Resurrect a fallen member for free"},
+		{ID: "levelup", Name: "Level-up", Desc: "Gain a free level-up, XP unchanged"},
+	}
+}
+
 func loadShrines() []ShrineUse {
 	if shrinesCache != nil {
 		return shrinesCache
 	}
 	b, err := dataFS.ReadFile("data/shrines.json")
 	if err != nil {
-		shrinesCache = []ShrineUse{
-			{ID: "recruit", Name: "Recruitment", Desc: "Recruit a new member to your party"},
-			{ID: "resurrect", Name: "Resurrection", Desc: "Resurrect a fallen member for free"},
-		}
+		shrinesCache = defaultShrineUses()
 		return shrinesCache
 	}
 	var sf shrinesFile
 	if err := json.Unmarshal(b, &sf); err != nil || len(sf.Uses) == 0 {
-		shrinesCache = []ShrineUse{
-			{ID: "recruit", Name: "Recruitment", Desc: "Recruit a new member to your party"},
-			{ID: "resurrect", Name: "Resurrection", Desc: "Resurrect a fallen member for free"},
-		}
+		shrinesCache = defaultShrineUses()
 		return shrinesCache
 	}
 	shrinesCache = sf.Uses
@@ -464,12 +451,11 @@ func GetShrineUses() []ShrineUse {
 // MaybeSpawnFeatures places merchants/fountains/shrines on random floor tiles
 // not on stairs or enemy positions, respecting tunable scarce rates.
 // Returns the spawned features (0-3 per floor, typically 0-1 of each type).
-// Deterministic from rng; floor is used only to allow future scaling.
-func MaybeSpawnFeatures(lvl *Level, floor int, rng *rand.Rand) []Feature {
+// Deterministic from rng; floor is kept for future scaling.
+func MaybeSpawnFeatures(lvl *Level, _ int, rng *rand.Rand) []Feature {
 	if lvl == nil || rng == nil {
 		return nil
 	}
-	_ = floor
 	cfg := loadFeaturesConfig()
 	// Per-biome overlay: if lvl has BiomeID, apply PerBiomeVariants[biomeID] rates.
 	// Falls back to top-level rates when biome key missing. Keeps _comment entry intact.

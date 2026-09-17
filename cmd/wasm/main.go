@@ -3,6 +3,7 @@
 package main
 
 import (
+	"log"
 	"archive/zip"
 	"bytes"
 	"encoding/json"
@@ -228,31 +229,6 @@ func main() {
 		logDiv.Set("innerHTML", buildLogHTML(frame.Log))
 		hintsDiv.Set("textContent", frame.Hints)
 	}
-type appState int
-const (
-	stateMenu appState = iota
-	stateCharSelect
-	stateRaceSelect
-	statePlaying
-	stateWizard
-	stateWizardAddMember
-	stateWizardRemoveMember
-	stateWizardResurrectMember
-	stateUseInventory
-	stateUseTarget
-	stateUseMember
-	stateThrowMenu
-	stateThrowCursor
-	stateMerchant
-	stateShrine
-	stateScores
-	stateMenuHelp
-	stateSeed
-	stateCreationClass
-	stateCreationRace
-	stateCreationName
-	stateReview
-)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
@@ -373,7 +349,9 @@ const (
 		} else if g.Won {
 			statusDiv.Set("textContent", "VICTORY! Seed "+itoa(g.Seed)+" - refresh to play again.")
 		} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 			statusDiv.Set("textContent", "YOU DIED. Seed "+itoa(g.Seed)+" - refresh to play again.")
 		} else if g.LevelUpPending != nil {
 			frame2 := g.RenderLevelUp()
@@ -964,7 +942,7 @@ const (
 				break
 			}
 			if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.UsePending.Active && !g.Over && !g.Quit {
-				entries := g.InventoryPotionEntries()
+				entries := g.InventoryEntriesByKind("potion")
 				if len(entries) == 0 {
 					g.Logf("No potions to throw.")
 					renderGame()
@@ -992,14 +970,11 @@ const (
 				renderGame()
 			}
 			if g.Quit {
-				if !g.Over {
-					_ = game.Save(g)
-				}
-				state = stateMenu
-				g = nil
-				renderMenu()
+				quitToMenu(&g, &state, renderMenu)
 			} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 				if k == game.KeyQuit || k == game.KeyEnter {
 					state = stateMenu
 					g = nil
@@ -1092,14 +1067,11 @@ const (
 						renderLevelUp()
 					}
 					if g.Quit {
-						if !g.Over {
-							_ = game.Save(g)
-						}
-						state = stateMenu
-						g = nil
-						renderMenu()
+						quitToMenu(&g, &state, renderMenu)
 					} else if g.Over {
-						_ = game.DeleteSave()
+						if err := game.DeleteSave(); err != nil {
+							log.Printf("save delete failed: %v", err)
+						}
 						state = stateMenu
 						g = nil
 						renderMenu()
@@ -1131,14 +1103,11 @@ const (
 					renderLevelUp()
 				}
 				if g.Quit {
-				if !g.Over {
-					_ = game.Save(g)
-				}
-					state = stateMenu
-					g = nil
-					renderMenu()
+					quitToMenu(&g, &state, renderMenu)
 				} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 					if k == game.KeyQuit || k == game.KeyEnter {
 						state = stateMenu
 						g = nil
@@ -1154,14 +1123,11 @@ const (
 						renderLevelUp()
 					}
 					if g.Quit {
-				if !g.Over {
-					_ = game.Save(g)
-				}
-						state = stateMenu
-						g = nil
-						renderMenu()
+						quitToMenu(&g, &state, renderMenu)
 					} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 						if k == game.KeyQuit || k == game.KeyEnter {
 							state = stateMenu
 							g = nil
@@ -1176,7 +1142,7 @@ const (
 				renderGame()
 				break
 			}
-			entries := g.InventoryPotionEntries()
+			entries := g.InventoryEntriesByKind("potion")
 			switch k {
 			case game.KeyUp:
 				if len(entries) > 0 {
@@ -1230,14 +1196,11 @@ const (
 					renderLevelUp()
 				}
 				if g.Quit {
-				if !g.Over {
-					_ = game.Save(g)
-				}
-					state = stateMenu
-					g = nil
-					renderMenu()
+					quitToMenu(&g, &state, renderMenu)
 				} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 					if k == game.KeyQuit || k == game.KeyEnter {
 						state = stateMenu
 						g = nil
@@ -1253,14 +1216,11 @@ const (
 						renderLevelUp()
 					}
 					if g.Quit {
-				if !g.Over {
-					_ = game.Save(g)
-				}
-						state = stateMenu
-						g = nil
-						renderMenu()
+						quitToMenu(&g, &state, renderMenu)
 					} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 						if k == game.KeyQuit || k == game.KeyEnter {
 							state = stateMenu
 							g = nil
@@ -1307,14 +1267,11 @@ const (
 							renderLevelUp()
 						}
 						if g.Quit {
-				if !g.Over {
-					_ = game.Save(g)
-				}
-							state = stateMenu
-							g = nil
-							renderMenu()
+							quitToMenu(&g, &state, renderMenu)
 						} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 							if k == game.KeyQuit || k == game.KeyEnter {
 								state = stateMenu
 								g = nil
@@ -1374,14 +1331,11 @@ const (
 								renderLevelUp()
 							}
 							if g.Quit {
-				if !g.Over {
-					_ = game.Save(g)
-				}
-								state = stateMenu
-								g = nil
-								renderMenu()
+								quitToMenu(&g, &state, renderMenu)
 							} else if g.Over {
-				_ = game.DeleteSave()
+				if err := game.DeleteSave(); err != nil {
+					log.Printf("save delete failed: %v", err)
+				}
 								if k == game.KeyQuit || k == game.KeyEnter {
 									state = stateMenu
 									g = nil
@@ -1449,13 +1403,7 @@ const (
 					state = stateWizardRemoveMember
 					renderGame()
 				case "resurrect":
-					wizardRemoveIdx = -1
-					for i, m := range g.Party.Members {
-						if !m.IsAlive() {
-							wizardRemoveIdx = i
-							break
-						}
-					}
+					wizardRemoveIdx = g.Party.FirstDead()
 					if wizardRemoveIdx < 0 {
 						g.Logf("Wizard: Resurrect - no fallen pilgrims")
 						state = statePlaying
@@ -1618,6 +1566,45 @@ const (
 	})
 	js.Global().Get("document").Call("addEventListener", "keydown", keyHandler)
 	select {}
+}
+
+type appState int
+const (
+	stateMenu appState = iota
+	stateCharSelect
+	stateRaceSelect
+	statePlaying
+	stateWizard
+	stateWizardAddMember
+	stateWizardRemoveMember
+	stateWizardResurrectMember
+	stateUseInventory
+	stateUseTarget
+	stateUseMember
+	stateThrowMenu
+	stateThrowCursor
+	stateMerchant
+	stateShrine
+	stateScores
+	stateMenuHelp
+	stateSeed
+	stateCreationClass
+	stateCreationRace
+	stateCreationName
+	stateReview
+)
+
+// quitToMenu applies the shared save policy and returns to the main menu,
+// logging save errors to the browser console instead of swallowing them.
+func quitToMenu(g **game.Game, state *appState, showMenu func()) {
+	if *g != nil {
+		if _, err := (*g).PostAction(); err != nil {
+			log.Printf("menu save failed: %v", err)
+		}
+	}
+	*g = nil
+	*state = stateMenu
+	showMenu()
 }
 
 func itoa(v int64) string {

@@ -1,6 +1,35 @@
 package game
 
-import "math/rand/v2"
+import (
+	"math/rand/v2"
+	"strings"
+)
+
+// Talent and affix IDs referenced by combat resolution. One spelling each;
+// a typo here fails loudly at one site instead of silently disabling a rule.
+const (
+	TalentRadiant      = "radiant"
+	TalentShrug        = "shrug"
+	TalentDeitysGift   = "deitys_gift"
+	TalentVeteransGrip = "veterans_grip"
+	TalentCleave       = "cleave"
+	AffixWrath         = "of_wrath"
+	AffixThorns        = "of_thorns"
+	AffixMartyr        = "of_martyr"
+)
+
+// Undead roster for radiant bonus. Class IDs match case-insensitively.
+var undeadKeywords = []string{"undead", "skeleton", "zombie", "ghost", "ghoul", "wraith", "lich"}
+
+// resistedFire applies the 30% fire-resist reduction shared by player and
+// enemy damage paths. Floor 1 so resistance never fully negates a hit.
+func resistedFire(dmg int) int {
+	dmg = (dmg * 7) / 10
+	if dmg < 1 {
+		dmg = 1
+	}
+	return dmg
+}
 
 // RollRaw picks uniformly in [min,max] (no DEF).
 func RollRaw(rng *rand.Rand, atkMin, atkMax int) int {
@@ -37,25 +66,30 @@ func RollDamageWithDefense(rng *rand.Rand, atkMin, atkMax int, defender *Member,
 }
 
 // PlayerBumpEnemy handles player party bumping an enemy party.
-// Returns damage dealt, index of enemy member hit, and whether that member died.
-func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, hitIdx int, killed bool) {
+// Returns damage dealt, index of enemy member hit, whether that member died,
+// and whether haste granted a second strike on the same target.
+func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, hitIdx int, killed bool, struckTwice bool) {
 	party.EnsureSelection()
 	enemy.EnsureActive()
 	atk := party.Members[party.Active]
 	// veterans_grip +1 dmg fighter BuffB per bearer with talent
 	extraGrip := 0
-	if atk.HasTalent("veterans_grip") {
+	if atk.HasTalent(TalentVeteransGrip) {
 		extraGrip = 1
 	}
 	// Pick target in enemy party active-weighted
 	hitIdx = pickEnemyTarget(rng, enemy)
 	if hitIdx < 0 {
-		return 0, -1, false
+		return 0, -1, false, false
 	}
 	target := enemy.Members[hitIdx]
 	isMagic := atk.DamageType == "magic"
 	dmg = RollRaw(rng, atk.ATK[0]+extraGrip, atk.ATK[1]+extraGrip)
-	if party.HasStatus(StatusStrength) {
+	// Slow: flat quarter penalty on the rolled damage (1 stays 1).
+	if atk.HasStatus(StatusSlow) {
+		dmg -= dmg / 4
+	}
+	if atk.HasStatus(StatusStrength) {
 		dmg += 2
 	}
 	// radiant +50% vs undead (check enemy ID contains undead/skeleton/zombie/ghost)
@@ -66,11 +100,11 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 			isUndead = true
 		}
 	}
-	if isUndead && atk.HasTalent("radiant") {
+	if isUndead && atk.HasTalent(TalentRadiant) {
 		dmg = (dmg * 3) / 2
 	}
 	// of_wrath sole survivor +2 outgoing when LivingCount==1 and attacker has affix
-	if party.LivingCount() == 1 && atk.HasAffix("of_wrath") {
+	if party.LivingCount() == 1 && atk.HasAffix(AffixWrath) {
 		dmg += 2
 	}
 	// Apply DEF or MDEF of target, with enemy hex/bless/curse.
@@ -78,17 +112,14 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 	if isMagic {
 		def = target.MDEF
 	}
-	def += enemy.effectiveDEFDelta()
+	def += target.effectiveDEFDelta()
 	actual := dmg - def
 	if actual < 1 {
 		actual = 1
 	}
 	// Enemy fire resist reduces fire damage (heuristic: magic fire)
-	if enemy.HasStatus(StatusFireResist) && isMagic {
-		actual = (actual * 7) / 10
-		if actual < 1 {
-			actual = 1
-		}
+	if target != nil && target.HasStatus(StatusFireResist) && isMagic {
+		actual = resistedFire(actual)
 	}
 	target.HP -= actual
 	dmg = actual // return actual after DEF for log
@@ -98,23 +129,23 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 		killed = true
 	}
 	// deitys_gift heal 2 on attack — blocked by silence
-	if !party.HasStatus(StatusSilence) && atk.HasTalent("deitys_gift") && atk.IsAlive() && atk.HP < atk.MaxHP {
+	if atk != nil && !atk.HasStatus(StatusSilence) && atk.HasTalent(TalentDeitysGift) && atk.IsAlive() && atk.HP < atk.MaxHP {
 		atk.HP += 2
 		if atk.HP > atk.MaxHP {
 			atk.HP = atk.MaxHP
 		}
 	}
 	// shrug 20% clear one negative status from self on attack — blocked by silence
-	if !party.HasStatus(StatusSilence) && atk.HasTalent("shrug") && rng != nil && rng.Float64() < 0.20 {
+	if atk != nil && !atk.HasStatus(StatusSilence) && atk.HasTalent(TalentShrug) && rng != nil && rng.Float64() < 0.20 {
 		for _, sid := range []string{StatusHex, StatusRend, StatusBleed, StatusSpore, StatusPoison, StatusCurse, StatusParalysis, StatusConfusion, StatusEntangle, StatusSleep, StatusBlind, StatusSilence, StatusStun, StatusSlow} {
-			if party.HasStatus(sid) {
-				party.RemoveStatus(sid)
+			if atk.HasStatus(sid) {
+				atk.RemoveStatus(sid)
 				break
 			}
 		}
 	}
 	// cleave overflow on kill: if HasTalent("cleave") and killed then 2 dmg to every other member on tile
-	if killed && atk.HasTalent("cleave") {
+	if killed && atk.HasTalent(TalentCleave) {
 		for i, m := range enemy.Members {
 			if i != hitIdx && m.IsAlive() {
 				m.HP -= 2
@@ -125,22 +156,45 @@ func PlayerBumpEnemy(rng *rand.Rand, party *Party, enemy *EnemyParty) (dmg int, 
 			}
 		}
 	}
-	return dmg, hitIdx, killed
+	// Haste: 50% chance the acting member strikes the same target again.
+	// One action's riders (gifts, shrugs, cleaves) fire once; only damage repeats.
+	if hitIdx >= 0 && hitIdx < len(enemy.Members) {
+		tgt := enemy.Members[hitIdx]
+		if tgt.IsAlive() && atk.IsAlive() && atk.HasStatus(StatusHaste) && rng != nil && rng.Float64() < 0.5 {
+			raw2 := RollRaw(rng, atk.ATK[0]+extraGrip, atk.ATK[1]+extraGrip)
+			if atk.HasStatus(StatusSlow) {
+				raw2 -= raw2 / 4
+			}
+			def2 := tgt.DEF
+			if isMagic {
+				def2 = tgt.MDEF
+			}
+			def2 += tgt.effectiveDEFDelta()
+			actual2 := raw2 - def2
+			if actual2 < 1 {
+				actual2 = 1
+			}
+			if tgt.HasStatus(StatusFireResist) && isMagic {
+				actual2 = resistedFire(actual2)
+			}
+			tgt.HP -= actual2
+			dmg += actual2
+			if tgt.HP <= 0 {
+				tgt.HP = 0
+				tgt.Alive = false
+				killed = true
+			}
+			struckTwice = true
+		}
+	}
+	return dmg, hitIdx, killed, struckTwice
 }
 
 func containsUndead(id string) bool {
-	low := id
-	// simple contains check
-	if len(low) >= 6 {
-		for _, kw := range []string{"undead", "skeleton", "zombie", "ghost", "ghoul", "wraith", "lich"} {
-			if len(kw) > len(low) {
-				continue
-			}
-			for i := 0; i <= len(low)-len(kw); i++ {
-				if low[i:i+len(kw)] == kw {
-					return true
-				}
-			}
+	low := strings.ToLower(id)
+	for _, kw := range undeadKeywords {
+		if strings.Contains(low, kw) {
+			return true
 		}
 	}
 	return false

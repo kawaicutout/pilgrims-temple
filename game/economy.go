@@ -133,8 +133,7 @@ func SpawnMerchant(rng *rand.Rand, lvl *Level, pos Pos) *Merchant {
 }
 
 // MaybeSpawnMerchant chance is scarce (~15% per floor). Returns nil if none.
-func MaybeSpawnMerchant(rng *rand.Rand, floor int) bool {
-	_ = floor
+func MaybeSpawnMerchant(rng *rand.Rand, _ int) bool {
 	return rng.Float64() < 0.15
 }
 

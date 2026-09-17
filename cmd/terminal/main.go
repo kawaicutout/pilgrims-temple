@@ -13,6 +13,62 @@ import (
 	"partyrogue/game"
 )
 
+	// App states
+	type appState int
+	const (
+		stateMenu appState = iota
+		stateCharSelect
+		stateRaceSelect
+		statePlaying
+		stateWizard
+		stateWizardAddMember
+		stateWizardRemoveMember
+		stateWizardResurrectMember
+		stateUseInventory
+		stateUseTarget
+		stateUseMember
+		stateThrowMenu
+		stateThrowCursor
+		stateMerchant
+		stateShrine
+		stateScores
+		stateMenuHelp
+		stateSeed
+		stateCreationClass
+		stateCreationRace
+		stateCreationName
+		stateReview
+	)
+
+// quitToMenu applies the shared save policy and returns to the main menu,
+// logging save errors to stderr instead of swallowing them.
+func quitToMenu(g **game.Game, state *appState, showMenu func()) {
+	if *g != nil {
+		if _, err := (*g).PostAction(); err != nil {
+			log.Printf("menu save failed: %v", err)
+		}
+	}
+	*g = nil
+	*state = stateMenu
+	showMenu()
+}
+
+// stepMember moves idx by delta with wraparound, landing on the next
+// member whose living state matches alive. Stays put if none match.
+func stepMember(members []*game.Member, idx, delta int, alive bool) int {
+	n := len(members)
+	if n == 0 {
+		return idx
+	}
+	for range members {
+		idx = (idx + delta + n) % n
+		if members[idx].IsAlive() == alive {
+			break
+		}
+	}
+	return idx
+}
+
 func main() {
 	tuning, err := game.LoadTuning()
 	if err != nil {
@@ -47,9 +103,6 @@ func main() {
 	styleGray1 := styleBG.Foreground(gray1)
 	styleGray2 := styleBG.Foreground(gray2)
 	styleSlate := styleBG.Foreground(slateCol)
-	_ = styleGold
-	_ = styleSlate
-
 	drawFrame := func(frame game.Frame) {
 		w, h := s.Size()
 		minW := frame.MinCols
@@ -220,32 +273,6 @@ func main() {
 		s.Show()
 	}
 
-	// App states
-	type appState int
-	const (
-		stateMenu appState = iota
-		stateCharSelect
-		stateRaceSelect
-		statePlaying
-		stateWizard
-		stateWizardAddMember
-		stateWizardRemoveMember
-		stateWizardResurrectMember
-		stateUseInventory
-		stateUseTarget
-		stateUseMember
-		stateThrowMenu
-		stateThrowCursor
-		stateMerchant
-		stateShrine
-		stateScores
-		stateMenuHelp
-		stateSeed
-		stateCreationClass
-		stateCreationRace
-		stateCreationName
-		stateReview
-	)
 	state := stateMenu
 	menu := &game.MainMenuState{Selected: 0}
 	var cs *game.CharSelectState
@@ -843,7 +870,7 @@ func main() {
 				}
 				// Throw inventory: open throw menu then cursor
 				if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.UsePending.Active && !g.Over && !g.Quit {
-					entries := g.InventoryPotionEntries()
+					entries := g.InventoryEntriesByKind("potion")
 					if len(entries) == 0 {
 						g.Logf("No potions to throw.")
 						drawFrame(g.Render())
@@ -875,10 +902,7 @@ func main() {
 				}
 				if g.Quit {
 					// Return to menu, not a death
-					state = stateMenu
-					_ = game.Save(g)
-					g = nil
-					drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+					quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 				} else if g.Over {
 					// Wait for Esc to return to menu
 					for {
@@ -888,7 +912,9 @@ func main() {
 							k2 := game.NormalizeKey(key2, code2)
 							if k2 == game.KeyQuit || k2 == game.KeyEnter {
 								state = stateMenu
-								_ = game.DeleteSave()
+								if err := game.DeleteSave(); err != nil {
+									log.Printf("save delete failed: %v", err)
+								}
 								g = nil
 								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 								break
@@ -989,10 +1015,7 @@ func main() {
 							drawFrame(g.RenderLevelUp())
 						}
 						if g.Quit {
-							state = stateMenu
-							_ = game.Save(g)
-							g = nil
-							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+							quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 						} else if g.Over {
 							for {
 								ev2 := s.PollEvent()
@@ -1001,7 +1024,9 @@ func main() {
 									k2 := game.NormalizeKey(key2, code2)
 									if k2 == game.KeyQuit || k2 == game.KeyEnter {
 										state = stateMenu
-										_ = game.DeleteSave()
+										if err := game.DeleteSave(); err != nil {
+											log.Printf("save delete failed: %v", err)
+										}
 										g = nil
 										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										break
@@ -1043,10 +1068,7 @@ func main() {
 						drawFrame(g.RenderLevelUp())
 					}
 					if g.Quit {
-						state = stateMenu
-						_ = game.Save(g)
-						g = nil
-						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+						quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 					} else if g.Over {
 						for {
 							ev2 := s.PollEvent()
@@ -1055,7 +1077,9 @@ func main() {
 								k2 := game.NormalizeKey(key2, code2)
 								if k2 == game.KeyQuit || k2 == game.KeyEnter {
 									state = stateMenu
-									_ = game.DeleteSave()
+									if err := game.DeleteSave(); err != nil {
+										log.Printf("save delete failed: %v", err)
+									}
 									g = nil
 									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									break
@@ -1079,10 +1103,7 @@ func main() {
 							drawFrame(g.RenderLevelUp())
 						}
 						if g.Quit {
-							state = stateMenu
-							_ = game.Save(g)
-							g = nil
-							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+							quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 						} else if g.Over {
 							for {
 								ev2 := s.PollEvent()
@@ -1091,7 +1112,9 @@ func main() {
 									k2 := game.NormalizeKey(key2, code2)
 									if k2 == game.KeyQuit || k2 == game.KeyEnter {
 										state = stateMenu
-										_ = game.DeleteSave()
+										if err := game.DeleteSave(); err != nil {
+											log.Printf("save delete failed: %v", err)
+										}
 										g = nil
 										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										break
@@ -1114,7 +1137,7 @@ func main() {
 					drawFrame(g.Render())
 					break
 				}
-				entries := g.InventoryPotionEntries()
+				entries := g.InventoryEntriesByKind("potion")
 				switch k {
 				case game.KeyUp:
 					if len(entries) > 0 {
@@ -1168,10 +1191,7 @@ func main() {
 						drawFrame(g.RenderLevelUp())
 					}
 					if g.Quit {
-						state = stateMenu
-						_ = game.Save(g)
-						g = nil
-						drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+						quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 					} else if g.Over {
 						for {
 							ev2 := s.PollEvent()
@@ -1180,7 +1200,9 @@ func main() {
 								k2 := game.NormalizeKey(key2, code2)
 								if k2 == game.KeyQuit || k2 == game.KeyEnter {
 									state = stateMenu
-									_ = game.DeleteSave()
+									if err := game.DeleteSave(); err != nil {
+										log.Printf("save delete failed: %v", err)
+									}
 									g = nil
 									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 									break
@@ -1205,10 +1227,7 @@ func main() {
 							drawFrame(g.RenderLevelUp())
 						}
 						if g.Quit {
-							state = stateMenu
-							_ = game.Save(g)
-							g = nil
-							drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+							quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 						} else if g.Over {
 							for {
 								ev2 := s.PollEvent()
@@ -1217,7 +1236,9 @@ func main() {
 									k2 := game.NormalizeKey(key2, code2)
 									if k2 == game.KeyQuit || k2 == game.KeyEnter {
 										state = stateMenu
-										_ = game.DeleteSave()
+										if err := game.DeleteSave(); err != nil {
+											log.Printf("save delete failed: %v", err)
+										}
 										g = nil
 										drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 										break
@@ -1274,10 +1295,7 @@ func main() {
 								drawFrame(g.RenderLevelUp())
 							}
 							if g.Quit {
-								state = stateMenu
-								_ = game.Save(g)
-								g = nil
-								drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+								quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 							} else if g.Over {
 								for {
 									ev2 := s.PollEvent()
@@ -1286,7 +1304,9 @@ func main() {
 										k2 := game.NormalizeKey(key2, code2)
 										if k2 == game.KeyQuit || k2 == game.KeyEnter {
 											state = stateMenu
-											_ = game.DeleteSave()
+											if err := game.DeleteSave(); err != nil {
+												log.Printf("save delete failed: %v", err)
+											}
 											g = nil
 											drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 											break
@@ -1355,10 +1375,7 @@ func main() {
 									drawFrame(g.RenderLevelUp())
 								}
 								if g.Quit {
-									state = stateMenu
-									_ = game.Save(g)
-									g = nil
-									drawFrame(game.RenderMainMenu(tuning, menu.Selected))
+									quitToMenu(&g, &state, func() { drawFrame(game.RenderMainMenu(tuning, menu.Selected)) })
 								} else if g.Over {
 									for {
 										ev2 := s.PollEvent()
@@ -1367,7 +1384,9 @@ func main() {
 											k2 := game.NormalizeKey(key2, code2)
 											if k2 == game.KeyQuit || k2 == game.KeyEnter {
 												state = stateMenu
-												_ = game.DeleteSave()
+												if err := game.DeleteSave(); err != nil {
+													log.Printf("save delete failed: %v", err)
+												}
 												g = nil
 												drawFrame(game.RenderMainMenu(tuning, menu.Selected))
 												break
@@ -1446,13 +1465,7 @@ func main() {
 						drawFrame(g.Render())
 					case "resurrect":
 						// Enter resurrect selection (dead members)
-						wizardResurrectIdx := -1
-						for i, m := range g.Party.Members {
-							if !m.IsAlive() {
-								wizardResurrectIdx = i
-								break
-							}
-						}
+						wizardResurrectIdx := g.Party.FirstDead()
 						if wizardResurrectIdx < 0 {
 							g.Logf("Wizard: Resurrect - no fallen pilgrims")
 							state = statePlaying
@@ -1499,18 +1512,7 @@ func main() {
 							tmp := game.GeneratePartyWithClasses(g.RNG, []string{classID}, 1)
 							if tmp != nil && len(tmp.Members) > 0 {
 								m := tmp.Members[0]
-								for lvl := 1; lvl < g.Level; lvl++ {
-									m.MaxHP += 1 + g.RNG.IntN(2)
-									if g.RNG.IntN(2) == 0 {
-										m.ATK[0]++
-										m.ATK[1]++
-									}
-									if g.RNG.IntN(4) == 0 {
-										m.DEF++
-									}
-								}
-								m.HP = m.MaxHP
-								m.Alive = true
+								game.ScaleMemberToLevel(m, g.Level, g.RNG)
 								g.Party.Members = append(g.Party.Members, m)
 								g.Party.EnsureSelection()
 								g.Logf("Wizard: Add Party Member -> %s the %s joined", m.Name, m.Class)
@@ -1534,31 +1536,16 @@ func main() {
 						drawFrame(game.RenderCharSelect(tuning, wizardAddCS))
 					}
 				}
+
 			case stateWizardRemoveMember:
 				switch k {
 				case game.KeyUp:
 					// move to previous living
-					for range g.Party.Members {
-						wizardRemoveIdx--
-						if wizardRemoveIdx < 0 {
-							wizardRemoveIdx = len(g.Party.Members) - 1
-						}
-						if g.Party.Members[wizardRemoveIdx].IsAlive() {
-							break
-						}
-					}
+					wizardRemoveIdx = stepMember(g.Party.Members, wizardRemoveIdx, -1, true)
 					g.Party.Selected = wizardRemoveIdx
 					drawFrame(g.Render())
 				case game.KeyDown:
-					for range g.Party.Members {
-						wizardRemoveIdx++
-						if wizardRemoveIdx >= len(g.Party.Members) {
-							wizardRemoveIdx = 0
-						}
-						if g.Party.Members[wizardRemoveIdx].IsAlive() {
-							break
-						}
-					}
+					wizardRemoveIdx = stepMember(g.Party.Members, wizardRemoveIdx, 1, true)
 					g.Party.Selected = wizardRemoveIdx
 					drawFrame(g.Render())
 				case game.KeyEnter:
@@ -1575,27 +1562,11 @@ func main() {
 			case stateWizardResurrectMember:
 				switch k {
 				case game.KeyUp:
-					for range g.Party.Members {
-						wizardRemoveIdx--
-						if wizardRemoveIdx < 0 {
-							wizardRemoveIdx = len(g.Party.Members) - 1
-						}
-						if !g.Party.Members[wizardRemoveIdx].IsAlive() {
-							break
-						}
-					}
+					wizardRemoveIdx = stepMember(g.Party.Members, wizardRemoveIdx, -1, false)
 					g.Party.Selected = wizardRemoveIdx
 					drawFrame(g.Render())
 				case game.KeyDown:
-					for range g.Party.Members {
-						wizardRemoveIdx++
-						if wizardRemoveIdx >= len(g.Party.Members) {
-							wizardRemoveIdx = 0
-						}
-						if !g.Party.Members[wizardRemoveIdx].IsAlive() {
-							break
-						}
-					}
+					wizardRemoveIdx = stepMember(g.Party.Members, wizardRemoveIdx, 1, false)
 					g.Party.Selected = wizardRemoveIdx
 					drawFrame(g.Render())
 				case game.KeyEnter:

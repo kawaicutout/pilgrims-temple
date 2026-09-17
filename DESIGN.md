@@ -64,7 +64,7 @@ Consequences:
 
 - Acting draws attacks. The player trades power for exposure with every action and mitigates exposure by acting with durable members.
 - There are no ranks and no swap mechanic. Section 6.2 applies the same distribution to melee, ranged attacks, and spells, and to player attacks against enemy parties.
-- The paladin is the one exception: while a paladin is the active member, it absorbs all single-target damage — nothing gets through (Section 5.5; **all BuffA wired per RM2** — paladin absorb, bard chorus +1 ATK/DEF plus 10% BuffA factor, `shining_armor` 10%, `healers_grace` HoT, `thick_skin` 30%, `potent_scrolls` 20% via `game/data/classes.json` + `game/data/talents.json`).
+- The paladin is the one exception. While a paladin is the active member, it absorbs all single-target damage — nothing gets through (Section 5.5; **all BuffA wired per RM2** — paladin absorb, bard chorus +1 ATK/DEF plus 10% BuffA factor, `shining_armor` 10%, `healers_grace` HoT, `thick_skin` 30%, `potent_scrolls` 20% via `game/data/classes.json` + `game/data/talents.json`).
 - The rule is one sentence and holds at every party size, including party of one.
 
 ### 3.5 The two pressures
@@ -72,9 +72,9 @@ Consequences:
 Each run is a race against two resources, and party composition is how the player defends against both:
 
 - **Food is a time limit.** A shared clock consumes food every world turn, rest included. The pressure lands by party size: a large party burns food fast and must fight to refuel — some enemy parties guard rations and other loot, so combat is how a big party keeps the clock fed — while a smaller party stretches the same food further and can avoid combat, so a careful solo run is viable (its pressure is health, not food).
-- **Health is a risk limit.** Damage concentrates on the acting member and spills probabilistically to the rest. Rest heals but is slower than combat and does not improve with party level, so late-game runs push the player toward healing consumables. A dedicated healer is the exception: its passive healing rises only when the player spends a talent on it, so consumables remain the default pressure release. A small party has few members to absorb those hits — cheap on food but lean on health — while a mid-sized party balances the two.
+- **Health is a risk limit.** Damage concentrates on the acting member and spills probabilistically to the rest. Rest heals, but it is slower than combat. It does not improve with party level. Late-game runs push the player toward healing consumables. A dedicated healer is the exception: its passive healing rises only when the player spends a talent on it, so consumables remain the default pressure release. A small party has few members to absorb those hits — cheap on food but lean on health — while a mid-sized party balances the two.
 
-Members mitigate one pressure or the other. Choosing who to recruit, who survives, and when to rest is the strategic loop; combat decides how much health the party spends, and food decides how much time the party has to spend it.
+Members mitigate one pressure or the other. Choosing who to recruit, who survives, and when to rest is the strategic loop. Each fight costs health. Each turn costs food.
 
 ## 4. The Party
 
@@ -86,8 +86,8 @@ The party moves as one unit. Any member can be the mover: movement is a party ac
 
 - The run starts with 1–3 members built in creation (seed, then per pilgrim race, class, and name with blank random; `NewGameFull`). Recruits during the run still cap the party at 4.
 - Recruitment features in the dungeon add members up to the cap of 4. The specific features (prisons, captive adventurers) are jam content.
-- Shrines are chance-placed level features: each floor has a random chance of spawning one, so a run may see none at all. A shrine has four menu options via `ExecuteShrineChoice` — recruit a new member, restore a dead member, grant a free level-up (XP unchanged), or leave intact. Shrines are free (2026-09-07 decision): `game/data/shrines.json` lists the uses with no cost fields, and the recruit/resurrect/level-up paths deduct nothing. Restoration returns the member as they were — class, attributes, talents, affixes, and applied upgrades — with attributes re-scaled to the party level and the level-up awards missed while dead not granted (Section 5.3).
-- Recruits are generated at the current party level using the standard generation rules (Section 5.2), so a found member is useful immediately.
+- Shrines are chance-placed level features: each floor has a random chance of spawning one, so a run may see none at all. A shrine has four menu options via `ExecuteShrineChoice`: recruit a new member, restore a dead member, grant a free level-up with XP unchanged, or leave intact. Shrines are free (2026-09-07 decision): `game/data/shrines.json` lists the uses with no cost fields, and the recruit/resurrect/level-up paths deduct nothing. Restoration returns the member as they were — class, attributes, talents, affixes, and applied upgrades — with attributes re-scaled to the party level and the level-up awards missed while dead not granted (Section 5.3).
+- The game generates recruits at the current party level from the standard rules (Section 5.2), so a found member is useful immediately.
 - Members cannot be dismissed.
 - Party size trades power against food (Section 3.5). A fourth member adds attributes and passives but accelerates the food clock; a smaller party runs leaner. This tradeoff is deliberate and makes a careful solo run possible.
 
@@ -96,7 +96,7 @@ The party moves as one unit. Any member can be the mover: movement is a party ac
 Members contribute passives even when they do not act:
 
 - Light radius equals the best member's light radius. Enemy parties have their own sight ranges (Section 6.1): vision is asymmetric, and a distant enemy group can spot the party before the party's light reveals it.
-- Skill checks of a "best member" type (detection, perception) use the best member — spotting a trap before it triggers, for example. Access-gated features (locked routes and containers) require the relevant class: only a rogue or wizard opens locks (Section 5.5).
+- Skill checks of a "best member" type (detection, perception) are class-presence gates, not magnitudes: any living rogue or wizard opens locks and spots for the party — members are interchangeable here. (Amended 2026-09-08: no best-member comparison exists.)
 - Carrying capacity equals the sum of members.
 
 A member's death removes those contributions immediately.
@@ -134,7 +134,13 @@ Class rosters, attribute ranges, and affix lists are jam content, built inside t
 
 ### 5.4 Enemy generation
 
-Enemy parties use the same generation rules and the same level budget as the player's party. An enemy party is one entity for targeting, area effects, and turn economy.
+Enemy parties scale with depth on their own tables: floor-driven HP and
+attack baselines (`game/biome.go`) with talent/affix chances from
+`game/data/enemies.json`, budgeted to track player power across floors
+without sharing the player generator. (Amended 2026-09-08: the
+asymmetry is deliberate — players build up through classes and gear;
+dungeons scale by depth. The old "same rules" sentence was wrong.) An
+enemy party is one entity for targeting, area effects, and turn economy.
 
 ### 5.5 Classes and party composition
 
@@ -152,10 +158,30 @@ The eight classes below are illustrative of the system, now **shipped via `game/
 | Wizard | Item economy | Potent Scrolls: +20% scroll effects; identifies over time; opens locks | Food and dungeon resources |
 | Barbarian | Misuse safety | Thick Skin: 30% resist to negative effects | Health and item resources |
 | Paladin | Absolute front-line | Vow of Protection: while active, absorbs all single-target damage | Health |
+The paladin is the one exception to active-weighted targeting (Section 3.4): while active it absorbs all single-target damage, so shielding the party costs the paladin's action every turn (wired per RM2).
 
 Passive effects stack between members of the same or different classes. Most classes mitigate one pressure directly; the bard is a meta-class that mitigates neither directly but multiplies the other members' contribution to both. This makes party composition the core build decision: the player spends limited party slots and a shared food clock on a mix that survives the run's health pressure within its food budget.
 
 The barbarian makes unidentified-item misuse survivable — a counterweight to the identification systems of Section 11.1. The paladin is the one exception to active-weighted targeting (Section 3.4): while active it absorbs all single-target damage, so shielding the party costs the paladin's action every turn (wired per RM2).
+
+### 5.6 Races
+
+Each pilgrim has a race chosen at creation (CHOOSE RACES). Race is a
+flat buff plus a synergy rule; all numbers are data
+(`game/data/races.json`), mechanics in `game/race.go`:
+| Race | Personal buff | Party / synergy | Pressure |
+|---|---|---|---|
+| Human | +1 HP, +1 HP/level | +5% XP per living human, stacking | XP engine |
+| Elf | +1 DEF | +2 light, non-stacking; identify tick every 250 turns, −50 per extra elf, min 50 | Dungeon resources |
+| Dwarf | +4 HP, +1 DEF, +2 damage strictly below half HP | Tremorsense: trap awareness at 4 tiles +1 per extra dwarf | Health |
+| Halfling | +1 HP | 5% chance to fully avoid damage/negative effects; 10% extra item on pickup | Item resources |
+| Gnome | +2 MDEF | 10% instant-identify of first-of-kind on pickup; 5% per gnome to not consume a scroll | Item economy |
+| Half-orc | +2 ATK | +1 ATK per other half-orc (2+ to activate) | Damage |
+| Troll | +4 HP, +2 ATK, regen 1 HP every 3rd turn | Double food cost while strictly above half HP | Power at food cost |
+
+Synergy buffs fire at member-count thresholds (usually 1–2 of the
+race). Specified 2026-09-08 from shipped behavior; prior doc carried
+no race section.
 
 ## 6. Combat
 
@@ -185,6 +211,29 @@ Statuses attach to individual members and expire per member. Party-level effects
 
 On death, the member leaves the tile roster, selection auto-switches (Section 3.3), passive contributions vanish (Section 4.3), and applied upgrades are lost (Section 7.3). The shared pack persists.
 
+### 6.7 Ranged attacks and area effects
+
+Some attacks work at range (specified 2026-09-08; §15 no
+longer defers ranged combat):
+
+- **Thrown potions** (`t`/`T`): inventory menu plus tile cursor.
+  Damage resolves as a single-target attack against the defending
+  party, favoring its active unit (active-weighted per §6.2).
+- **Area scrolls** (fireball: 10 fire damage, Chebyshev radius 2,
+  30% reduction on fire-resistant targets): every member of every
+  party on each in-radius tile takes the hit, per §6.3. Fireball
+  reveals nothing — the old whole-map reveal was a preserved data
+  bug, removed 2026-09-08.
+
+**Haste and slow** (model decided 2026-09-08; code follows in MS3).
+Haste grants the acting member a 50% chance of an immediate second
+strike against the same target — exposure is unchanged, the party
+already acted. Slow applies a flat outgoing-damage penalty ([proposed
+−25%, for review]). Both keep one action per party per turn (§3.2,
+§6.1): haste never adds member actions, slow never removes them. The
+pace layer stays: haste ×0.8 / slow ×1.2 food upkeep.
+
+
 ## 7. Items and Economy
 
 ### 7.1 Shared pack
@@ -203,7 +252,7 @@ Single-use application items that permanently improve one member, for example a 
 
 ### 7.4 Rations
 
-The party shares one hunger clock and one ration pool. The clock counts turns of food remaining: every world turn (Section 6.1) it ticks down by a per-member upkeep, and resting spends the same per-turn upkeep for its rest turns, with no surcharge (Section 11.3). The hunger state is a party attribute derived from the clock level (Section 11.2). Consuming a ration from the pack refills the clock.
+The party shares one hunger clock and one ration pool. The clock counts turns of food remaining: every world turn (Section 6.1) it ticks down by a per-member upkeep, and resting spends the same per-turn upkeep for its rest turns, with no surcharge (Section 11.3). The clock is a float under fractional modifiers (verdant, frugal, of_plenty, haste/slow pace) and truncates for display, so the shown number is approximate once modifiers apply (2026-09-08). The hunger state is a party attribute derived from the clock level (Section 11.2). Consuming a ration from the pack refills the clock.
 
 The food clock is the run's time limit; a larger party is stronger per turn but spends the clock faster.
 
@@ -211,12 +260,22 @@ The food clock is the run's time limit; a larger party is stronger per turn but 
 
 Gold is the run's currency. It appears wherever loot appears: slain enemies roll drops (usually gold or food, rarely a potion or scroll on their tile; `rollKillDrop`), and random dungeon finds (like consumables, sometimes placed by level generation) have a chance to include it. Gold has one use — merchants, scarce level features that turn gold into items (consumables, rations, and the permanent upgrades of Section 7.3). Wares and prices are jam content; that gold comes from loot and converts into items is the design commitment.
 
+### 7.6 Summoning (exception)
+
+The Summon Aid scroll is the one recruitment vector outside Section
+4.2 (specified 2026-09-08): a random class generated at the party
+level joins with a "Summoned" name for 15 turns, then departs
+(expiry strips the summoned member). It fizzles at the cap of 4 and
+works enemy-side symmetrically — with one known gap: enemy-side
+expiry has no removal pass yet (flagged for MS3). No feature, no cost
+beyond the scroll.
+
 ## 8. Run Structure
 
 - The run descends through a fixed number of floors (default 8, `game/data/tuning.json:3` `floors:8`).
 - The final floor has no stairs down: generation places `TileRelic` (`*`) where they would be. Stepping onto it claims the relic (`RelicCollected`): no inventory slot is used, the side panel shows `Relic: return to surface`, and the log says `You got the relic. Return to the surface.` The run is won by climbing back to floor 0 `StairsUp` with the relic, which sets `Escaped` plus the escape bonus (`tuning.json:36` `escapeBonus:500`).
 - Death of all members ends the run. The death screen shows the seed and the score.
-- A run can be suspended and resumed: save lib `game/save*.go` (`game/save.go:14` `SaveSlot`, `game/save_desktop.go:86` `HasSave`, `game/save_js.go:86` `HasSave`) — **wired per RM3 (Wave 2)**. One slot; the game saves on exit and the save is consumed on load (`game/save_desktop.go:33` `LoadFromFile` deletes file), so a finished run cannot be reloaded (no save-scumming). Saving and score records are not meta-progression: a save suspends one run, and scores are records; neither affects the next run's gameplay (Section 2).
+- A run can be suspended and resumed: save lib `game/save*.go` (`game/save.go:14` `SaveSlot`, `game/save_desktop.go:86` `HasSave`, `game/save_js.go:86` `HasSave`) — **wired per RM3 (Wave 2)**. One slot. The game saves on exit, and loading consumes the save (`game/save_desktop.go:33` `LoadFromFile` deletes file). A finished run cannot be reloaded (no save-scumming). Saving and score records are not meta-progression: a save suspends one run, and scores are records; neither affects the next run's gameplay (Section 2).
 - Hit points regenerate slowly per member, once per world turn (Section 6.1). The rest command accelerates regeneration at the risk of encounters (Section 11.3). Rest is slower than combat and its healing does not improve with party level, so its value fades as the run deepens (Section 3.5).
 - The score formula rewards floors reached, kills, and surviving members, plus a bonus for escaping back to the surface; the relative weights are tuning (`game/data/tuning.json:32-36` `scoreWeights: floor 100 / kill 10 / survivor 50 / escapeBonus 500`; `game/score.go:106` `scoreForPure`).
 - The score table is per device — a local file on desktop, browser storage on web — and lists the best runs (score, seed, floor reached). It records; it does not progress. Scores are trust-based: the editable data folder (Section 13.1) makes desktop tampering trivial, so they are personal records, not competition.
@@ -229,6 +288,11 @@ Gold is the run's currency. It appears wherever loot appears: slain enemies roll
 - Enemy party composition scales with depth: shallow floors lean toward lone monsters, deeper floors toward larger and role-mixed parties.
 - Item placement is weighted by depth.
 - Level features are placed per floor at tunable rates; the committed examples are merchants (gold into items, Section 7.5), fountains (a risky drink with a good or bad outcome), and shrines (chance-placed: recruitment and resurrection, Section 4.2).
+- Four more features shipped with §9 rates in `game/data/features.json` (specified 2026-09-08; per-biome overlays retune them):
+  - **Vaults** (0.12, locked, treasure 25–80, 20% trapped for 2–4 + possible poison): rogue or wizard to open (§4.3); consumed on loot.
+  - **Forges** (0.10; 25 gold or 50 food): a random living member gains +1 attack range or +1 defense — permanent upgrades (§7.3). Insufficient funds is a no-op.
+  - **Dens** (0.12; 3–5 monsters): a marker that spawns 1–2 nearby monsters per tick until spent.
+  - **Pitfalls** (0.10; hidden half the time, 2–4 damage): levitation floats over; obvious or trap-aware parties (rogue/wizard, dwarf tremorsense, attuned +1 range, steady hands 10%) drop through unhurt, unaware parties take the hit plus possible poison. Either way the fall is one-way, down one floor.
 - Generation guarantees: stairs are always present and reachable on every floor, and the relic is always on the final floor; no seed is unwinnable.
 - Generation goals: party composition, map layout, enemy composition, and the item set all vary meaningfully per seed, satisfying the jam's procedural generation criterion.
 
@@ -339,9 +403,20 @@ Potions and scrolls are unidentified until first use. Knowledge is party-wide an
 
 Identification is per appearance. Using one item reveals the type of every item that shares its appearance (Section 7.2), so all vials of a learned color show their real type from then on. The wizard's passive (Section 5.5) auto-identifies held appearances over time — a second, slower path; using an item remains the universal method. Appearance is re-rolled each run, which prevents cross-run meta-gaming of colors.
 
+Five paths identify, not two (specified 2026-09-08): **use** (universal,
+immediate); **wizard attunement** (1 held appearance per 50 turns,
+45 with a living bard, ticking at turn end and during rest);
+**elven senses** (interval 250 turns, −50 per extra elf, floor 50);
+**gnome curiosity** (10% instant identify of first-of-kind on pickup,
+plus 5% per gnome to not consume a scroll); **lorekeeper study** (1
+held appearance per 50 turns during rest, 45 with a living bard,
+sharing one ticker with attunement so they never double-fire). The
+old `ShouldAutoID` turn-%-50 predicate is uncalled dead code (see
+audit S7). These paths are part of the design.
+
 ### 11.2 Hunger
 
-The party shares one hunger clock and one ration pool (Section 7.4). Every world turn advances the clock by the per-member upkeep (Section 6.1); resting spends the same per-turn upkeep for each rest turn, with no surcharge (Section 11.3). The hunger state derives from the clock level: as food remaining falls, the party progresses from Ok through Hungry to Starving, with attribute penalties at the extremes. Rations are items in the shared pack; consuming one refills the clock.
+The party shares one hunger clock and one ration pool (Section 7.4). Every world turn advances the clock by the per-member upkeep (Section 6.1); resting spends the same per-turn upkeep for each rest turn, with no surcharge (Section 11.3). The hunger state derives from the clock level: as food remaining falls, the party progresses from Ok through Hungry to Starving. Hungry and Starving carry no attribute penalties. Damage starts at zero food: each world turn deals 1 HP to every living member. (Amended 2026-09-08: the old "penalties at the extremes" sentence was wrong.) Rations are items in the shared pack; consuming one refills the clock.
 
 The clock is the run's time limit (Section 3.5). A careful player with few members can stretch the same food across more turns, which is the mechanical basis for solo runs.
 
@@ -361,7 +436,7 @@ Each run starts from a shown seed. The death and victory screens display the see
 |---|---|
 | Turn-based | Section 3.2: discrete turns, one action per party per turn. |
 | Run-based, no meta-progression | Sections 2 and 8: nothing that affects gameplay persists between runs — identification knowledge, levels, items. A suspended run (save) and local score records are the only persisted data, and neither changes the next run. |
-| Permanent consequences | Member death is permanent; upgrades and talents die with the member. The sole exception is a chance-placed shrine resurrection that restores the member fully at a cost (Section 4.2). |
+| Permanent consequences | Member death is permanent; upgrades and talents die with the member. The sole exception is a chance-placed free shrine resurrection that restores the member fully (Section 4.2). |
 | Meaningful PCG | Section 9: party composition, maps, enemies, and items vary per seed. |
 | Single character or small party | The party is the core system, not decoration. |
 
@@ -431,18 +506,23 @@ Cut lines (original order, now **re-dated 2026-09-02** — most **delivered**):
 - Affix gain on level up — **delivered** (`game/data/affixes.json` 7+7; `game/talents.go:1044` `AffixReplaceChance` 0.10).
 - Escape bonus — **delivered** (`tuning.json:36` `escapeBonus:500`; `game/score.go:138` `escaped:=Escaped` per RM3a).
 - Floor count (8) — **delivered** (`tuning.json:3` `floors:8`).
-- Level features (merchants, fountains, resurrection shrines) — **delivered** (`game/features.go:13-14`; `game/data/features.json` `fountains 0.2` `shrines 0.25` `merchants 0.15`; shrine 4-option menu `game/game.go:960`).
-- `perBiomeVariants` — **implemented per RM8a** (`game/data/features.json:9-14` `crypt {vaultRate 0.15 forgeRate 0.08}` `ossuary {vaultRate 0.1 denRate 0.15}` `fungal {pitfallRate 0.12 denRate 0.14}` etc.; wired via `game/features.go:219` `PerBiomeVariants`).
-- Game data editor + web data upload — **delivered** (`archive/zip` parsing inside WASM + `localStorage` persistence + reset in `cmd/wasm/main.go`; overlay in `game/data.go`; minimal JSON editor in the web shell).
+## 15. Open Questions — settled 2026-09-08 except class balance
 
-## 15. Open Questions
+- Affix gain cadence on level ups — **settled: 0.10**
+  (`tuning.json` `affixReplaceChance`; Section 5.3).
+- XP curve — **settled: base 100 × factor 1.5** (`tuning.json`
+  `xpBase`/`xpFactor`).
+- Score weighting — **settled: floor 100 / kill 10 / survivor 50 /
+  escape 500** (`tuning.json` `scoreWeights`; Section 8).
+- Food tuning — **settled: upkeep 1/member/turn, refill 250, clock
+  2000, Hungry 0.25, Starving 0.05** (`tuning.json`; Sections 3.5,
+  7.4, 11.2).
+- Rest exchange rate — **settled: 10-turn batches, 15 HP, 1 HP
+  natural regen** (`tuning.json`; Section 11.3).
+- Class balance — **held for playtesting** (relic reachable without
+  a combat class? druid economy too cheap?). The one live question.
+- Shrine spawn rate — **settled: 0.25** (`features.json`; Sections
+  4.2, 4.4).
+- Light radius, recruitment rate — **settled: 6, 0.3** (`tuning.json`).
 
-- Affix gain cadence on level ups (Section 5.3).
-- XP curve, recruitment rate, light radius defaults.
-- Score weighting: the relative weights of floors, kills, and surviving members in the settled formula (Section 8).
-- Food tuning: the per-member upkeep rate, the hunger-state thresholds, and the ration refill amount (the model and its party-size direction are settled in Sections 3.5, 7.4, and 11.2; only these numbers remain).
-- Rest exchange rate: tuning around the default (10 turns for 15 HP per member, Section 11.3), and how sharply rest falls behind combat damage in the late game.
-- Class balance: whether players can reach the relic without a combat class, and whether the druid's food reduction makes large parties too cheap.
-- Shrine spawn rate: how often shrines appear per floor — the dial that sets how often death's permanence bends (Sections 4.2 and 4.4).
-
-**Deferred, not planned (post-jam candidates).** Ranged combat, ritual spellcasting, and audio are outside the jam scope — noted so they are not forgotten, not planned. **Races shipped** per RM8a: `game/data/races.json` + `game/race.go` + `game/menu.go:616` “CHOOSE RACES” (7 races: human/elf/dwarf/halfling/gnome/half_orc/troll; charBuff/partyBuff/synergyBuff data-driven).
+**Deferred, not planned (post-jam candidates).** Ritual spellcasting and audio are outside the jam scope — noted so they are not forgotten, not planned. (Ranged combat left this list 2026-09-08: throw-potion cursor mode and area scrolls shipped, now specified in Section 6.7.) **Races shipped** per RM8a: `game/data/races.json` + `game/race.go` + `game/menu.go:616` “CHOOSE RACES” (7 races: human/elf/dwarf/halfling/gnome/half_orc/troll; charBuff/partyBuff/synergyBuff data-driven).

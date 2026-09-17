@@ -1,8 +1,27 @@
 package main
 
 import (
+	"log"
+
 	"partyrogue/game"
 )
+
+// postOutcome applies the shared save policy and navigates, logging
+// save errors to stderr instead of swallowing them.
+func (a *App) postOutcome(outcome game.PostOutcome, err error) {
+	if err != nil {
+		log.Printf("save failed: %v", err)
+	}
+	switch outcome {
+	case game.PostMenu:
+		a.g = nil
+		a.state = stateMenu
+		a.show(game.RenderMainMenu(a.tuning, a.menu.Selected))
+	case game.PostDeath:
+		a.state = stateOver
+		a.show(a.g.Render())
+	}
+}
 
 // postAction runs the standard after-action epilogue: redraw, level-up
 // overlay, quit-to-menu with save, or death modal. Mirrors cmd/terminal.
@@ -16,15 +35,8 @@ func (a *App) postAction() {
 	if a.g.LevelUpPending != nil {
 		a.show(a.g.RenderLevelUp())
 	}
-	if a.g.Quit {
-		_ = game.Save(a.g)
-		a.g = nil
-		a.state = stateMenu
-		a.show(game.RenderMainMenu(a.tuning, a.menu.Selected))
-	} else if a.g.Over {
-		a.state = stateOver
-		a.show(a.g.Render())
-	}
+	outcome, err := a.g.PostAction()
+	a.postOutcome(outcome, err)
 }
 
 func (a *App) playKeys(ev keyEvent, k game.Key) {
@@ -161,7 +173,7 @@ func (a *App) playingKeys(ev keyEvent, k game.Key) {
 		return
 	}
 	if k == game.KeyThrow && (g.Look == nil || !g.Look.Active) && !g.ThrowPending.Active && !g.UsePending.Active && !g.Over && !g.Quit {
-		entries := g.InventoryPotionEntries()
+		entries := g.InventoryEntriesByKind("potion")
 		if len(entries) == 0 {
 			g.Logf("No potions to throw.")
 			a.show(g.Render())
@@ -191,15 +203,8 @@ func (a *App) playingKeys(ev keyEvent, k game.Key) {
 	if g.LevelUpPending != nil {
 		a.show(g.RenderLevelUp())
 	}
-	if g.Quit {
-		_ = game.Save(g)
-		a.g = nil
-		a.state = stateMenu
-		a.show(game.RenderMainMenu(a.tuning, a.menu.Selected))
-	} else if g.Over {
-		a.state = stateOver
-		a.show(g.Render())
-	}
+	outcome, err := g.PostAction()
+	a.postOutcome(outcome, err)
 }
 
 func (a *App) useInventoryKeys(k game.Key) {
@@ -297,7 +302,7 @@ func (a *App) useMemberKeys(k game.Key) {
 	}
 }
 
-func (a *App) useTargetKeys(ev keyEvent, k game.Key) {
+func (a *App) useTargetKeys(_ keyEvent, k game.Key) {
 	g := a.g
 	if g == nil {
 		a.state = statePlaying
@@ -322,7 +327,6 @@ func (a *App) useTargetKeys(ev keyEvent, k game.Key) {
 			a.postAction()
 		}
 	}
-	_ = ev
 }
 
 func (a *App) throwMenuKeys(k game.Key) {
@@ -332,7 +336,7 @@ func (a *App) throwMenuKeys(k game.Key) {
 		a.show(a.g.Render())
 		return
 	}
-	entries := g.InventoryPotionEntries()
+	entries := g.InventoryEntriesByKind("potion")
 	switch k {
 	case game.KeyUp:
 		if len(entries) > 0 {
@@ -368,7 +372,7 @@ func (a *App) throwMenuKeys(k game.Key) {
 	}
 }
 
-func (a *App) throwCursorKeys(ev keyEvent, k game.Key) {
+func (a *App) throwCursorKeys(_ keyEvent, k game.Key) {
 	g := a.g
 	if g == nil {
 		a.state = statePlaying
@@ -393,7 +397,6 @@ func (a *App) throwCursorKeys(ev keyEvent, k game.Key) {
 			a.postAction()
 		}
 	}
-	_ = ev
 }
 
 func (a *App) merchantKeys(k game.Key) {
@@ -549,13 +552,7 @@ func (a *App) wizardKeys(k game.Key) {
 			a.state = stateWizardRemoveMember
 			a.show(g.Render())
 		case "resurrect":
-			wizardResurrectIdx := -1
-			for i, m := range g.Party.Members {
-				if !m.IsAlive() {
-					wizardResurrectIdx = i
-					break
-				}
-			}
+			wizardResurrectIdx := g.Party.FirstDead()
 			if wizardResurrectIdx < 0 {
 				g.Logf("Wizard: Resurrect - no fallen pilgrims")
 				a.state = statePlaying
